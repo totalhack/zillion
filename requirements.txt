@@ -1,6 +1,8 @@
 climax
+marshmallow>=3.0.0rc1
 mysqlclient
 pandas
+pylint
 simplejson
 sqlalchemy
 

@@ -12,7 +12,6 @@ except ImportError:
 from pprint import pformat
 import string
 import sys
-import time
 
 import climax
 from dateutil import parser as dateparser
@@ -200,9 +199,6 @@ def _default(self, obj):
 
 _default.default = JSONEncoder().default
 JSONEncoder.default = _default
-
-def jsonr(obj):
-    return Response(json.dumps(obj), mimetype="application/json")
 
 class JSONMixin():
     # Probably needs a better home

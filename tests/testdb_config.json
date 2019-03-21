@@ -1,0 +1,22 @@
+{
+    "datasources": {
+        "testdb": {
+            "tables": {
+                "partners": {
+                    "type": "dimension",
+                    "autocolumns": true
+                },
+                
+                "campaigns": {
+                    "type": "dimension",
+                    "autocolumns": true
+                },
+                
+                "sales": {
+                    "type": "fact",
+                    "autocolumns": true
+                }
+            }
+        }
+    }
+}
