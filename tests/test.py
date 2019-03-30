@@ -45,6 +45,14 @@ class TestSQLAW(TestBase):
         wh = Warehouse(self.ds_map)
         self.assertIn('revenue', wh.dimensions)
 
+    def testReport(self):
+        Warehouse.apply_config(self.config, self.ds_map)
+        wh = Warehouse(self.ds_map)
+        facts = ['sales.revenue', 'sales.quantity']
+        dimensions = ['partner_name', 'campaign_name']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
 @climax.command(parents=[testcli])
 @climax.argument('testnames', type=str, nargs='*', help='Names of tests to run')
 def main(testnames, debug):

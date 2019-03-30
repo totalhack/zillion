@@ -4,17 +4,65 @@
             "tables": {
                 "partners": {
                     "type": "dimension",
-                    "autocolumns": true
+                    "autocolumns": true,
+                    "columns": {
+                        "id": {
+                            "fieldname": "partner_id"
+                        },
+                        "name": {
+                            "fieldname": "partner_name"
+                        }
+                    }
                 },
                 
                 "campaigns": {
                     "type": "dimension",
-                    "autocolumns": true
+                    "autocolumns": true,
+                    "parent": "partners",
+                    "columns": {
+                        "id": {
+                            "fieldname": "campaign_id"
+                        },
+                        "name": {
+                            "fieldname": "campaign_name"
+                        },
+                        "partner_id": {
+                            "fieldname": "partner_id"
+                        }
+                    }
+                },
+
+                "leads": {
+                    "type": "fact",
+                    "autocolumns": true,
+                    "columns": {
+                        "id": {
+                            "fieldname": "lead_id"
+                        },
+                        "created_at": {
+                            "fieldname": "created_at"
+                        },
+                        "campaign_id": {
+                            "fieldname": "campaign_id"
+                        }
+                    }
                 },
                 
                 "sales": {
                     "type": "fact",
-                    "autocolumns": true
+                    "autocolumns": true,
+                    "parent": "leads",
+                    "columns": {
+                        "id": {
+                            "fieldname": "sale_id"
+                        },
+                        "created_at": {
+                            "fieldname": "created_at"
+                        },
+                        "lead_id": {
+                            "fieldname": "lead_id"
+                        }
+                    }
                 }
             }
         }
