@@ -146,7 +146,7 @@ def warn(msg, label='WARNING'):
 def error(msg, label='ERROR'):
     log(msg, label=label, color='red')
 
-class PrintMixin():
+class PrintMixin:
     repr_attrs = []
 
     def __repr__(self):
@@ -200,7 +200,7 @@ def _default(self, obj):
 _default.default = JSONEncoder().default
 JSONEncoder.default = _default
 
-class JSONMixin():
+class JSONMixin:
     # Probably needs a better home
     def to_dict(self):
         if isinstance(self, dict):

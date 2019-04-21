@@ -27,28 +27,24 @@ class TestSQLAW(TestBase):
         self.config = None
 
     def testWarehouseInit(self):
-        Warehouse.apply_config(self.config, self.ds_map)
-        wh = Warehouse(self.ds_map)
+        wh = Warehouse(self.ds_map, config=self.config)
         self.assertTrue(wh.dimension_tables)
         self.assertTrue(wh.dimensions)
 
     def testTableConfigOverride(self):
         self.config['datasources']['testdb']['tables']['sales']['type'] = 'dimension'
-        Warehouse.apply_config(self.config, self.ds_map)
-        wh = Warehouse(self.ds_map)
+        wh = Warehouse(self.ds_map, config=self.config)
         self.assertIn('sales', wh.dimension_tables['testdb'])
 
     def testColumnConfigOverride(self):
         table_config = self.config['datasources']['testdb']['tables']['sales']
         table_config['columns'] = {'revenue': {'type':'dimension'}}
-        Warehouse.apply_config(self.config, self.ds_map)
-        wh = Warehouse(self.ds_map)
+        wh = Warehouse(self.ds_map, config=self.config)
         self.assertIn('revenue', wh.dimensions)
 
     def testReport(self):
-        Warehouse.apply_config(self.config, self.ds_map)
-        wh = Warehouse(self.ds_map)
-        facts = ['sales.revenue', 'sales.quantity']
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue', 'sales.quantity']
         dimensions = ['partner_name', 'campaign_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)

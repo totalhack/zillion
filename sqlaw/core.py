@@ -11,17 +11,22 @@ COLUMN_TYPES = [
     'dimension'
 ]
 
-NUMERIC_SA_TYPES = [
+INTEGER_SA_TYPES = [
     sa.BigInteger,
     sa.sql.sqltypes.BIGINT,
-    sa.sql.sqltypes.DECIMAL,
-    sa.Float,
-    sa.sql.sqltypes.FLOAT,
     sa.Integer,
     sa.sql.sqltypes.INTEGER,
-    sa.Numeric,
-    sa.sql.sqltypes.NUMERIC,
-    sa.sql.sqltypes.REAL,
     sa.SmallInteger,
     sa.sql.sqltypes.SMALLINT,
 ]
+
+FLOAT_SA_TYPES = [
+    sa.sql.sqltypes.DECIMAL,
+    sa.Float,
+    sa.sql.sqltypes.FLOAT,
+    sa.Numeric,
+    sa.sql.sqltypes.NUMERIC,
+    sa.sql.sqltypes.REAL,
+]
+
+NUMERIC_SA_TYPES = INTEGER_SA_TYPES + FLOAT_SA_TYPES

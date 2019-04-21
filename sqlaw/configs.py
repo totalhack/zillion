@@ -1,6 +1,7 @@
 from collections import OrderedDict
+import re
 
-from marshmallow import Schema, fields, ValidationError
+from marshmallow import Schema, fields as mfields, ValidationError
 
 from sqlaw.core import TABLE_TYPES, COLUMN_TYPES
 from sqlaw.utils import (dbg,
@@ -8,6 +9,9 @@ from sqlaw.utils import (dbg,
                          json,
                          st,
                          initializer)
+
+FIELD_NAME_REGEX = '[0-9a-zA-Z_]+'
+AGGREGATION_TYPES = set(['sum', 'avg'])
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""
@@ -19,7 +23,7 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
         result = schema.loads(raw)
         result = json.loads(raw, object_pairs_hook=object_pairs_hook)
     except ValidationError as e:
-        error('Schema Validation Error')
+        error('Schema Validation Error: %s' % schema)
         print(json.dumps(str(e), indent=2))
         raise
     return result
@@ -35,20 +39,10 @@ def is_valid_table_type(val):
         return
     raise ValidationError('Invalid table type: %s' % val)
 
-class TableTypeField(fields.Field):
+class TableTypeField(mfields.Field):
     def _validate(self, value):
         is_valid_table_type(value)
         super(TableTypeField, self)._validate(value)
-
-def is_valid_column_type(val):
-    if val in COLUMN_TYPES:
-        return
-    raise ValidationError('Invalid column type: %s' % val)
-
-class ColumnTypeField(fields.Field):
-    def _validate(self, value):
-        is_valid_column_type(value)
-        super(ColumnTypeField, self)._validate(value)
 
 class BaseSchema(Schema):
     class Meta:
@@ -56,24 +50,47 @@ class BaseSchema(Schema):
         json_module = json
 
 class ColumnInfoSchema(BaseSchema):
-    fieldname = fields.Str()
-    type = ColumnTypeField(default='auto', missing='auto')
-    active = fields.Boolean(default=True, missing=True)
+    fields = mfields.List(mfields.Str())
+    active = mfields.Boolean(default=True, missing=True)
 
 class ColumnConfigSchema(ColumnInfoSchema):
     pass
 
 class TableInfoSchema(BaseSchema):
     type = TableTypeField(required=True)
-    autocolumns = fields.Boolean(default=False, missing=False)
-    active = fields.Boolean(default=True, missing=True)
-    parent = fields.Str(default=None, missing=None)
+    autocolumns = mfields.Boolean(default=False, missing=False)
+    active = mfields.Boolean(default=True, missing=True)
+    parent = mfields.Str(default=None, missing=None)
 
 class TableConfigSchema(TableInfoSchema):
-    columns = fields.Dict(keys=fields.Str(), values=fields.Nested(ColumnConfigSchema))
+    columns = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema))
 
 class DataSourceConfigSchema(BaseSchema):
-    tables = fields.Dict(keys=fields.Str(), values=fields.Nested(TableConfigSchema))
+    tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
+
+def is_valid_field_name(val):
+    if val is None:
+        raise ValidationError('Field name can not be null')
+    if re.match(FIELD_NAME_REGEX, val):
+        return True
+    raise ValidationError('Field name must satisfy regex "%s": %s' % (FIELD_NAME_REGEX, val))
+
+def is_valid_aggregation(val):
+    if val in AGGREGATION_TYPES:
+        return True
+    raise ValidationError('Invalid aggregation: %s' % val)
+
+class FactConfigSchema(BaseSchema):
+    name = mfields.String(required=True, validate=is_valid_field_name)
+    type = mfields.String(required=True) # TODO: validate this
+    aggregation = mfields.String(default='sum', missing='sum', validate=is_valid_aggregation)
+    rounding = mfields.Integer(default=None, missing=None)
+
+class DimensionConfigSchema(BaseSchema):
+    name = mfields.String(required=True, validate=is_valid_field_name)
+    type = mfields.String(required=True)
 
 class SQLAWConfigSchema(BaseSchema):
-    datasources = fields.Dict(keys=fields.Str(), values=fields.Nested(DataSourceConfigSchema), required=True)
+    facts = mfields.List(mfields.Nested(FactConfigSchema))
+    dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
+    datasources = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(DataSourceConfigSchema), required=True)

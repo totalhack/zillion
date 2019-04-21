@@ -1,4 +1,26 @@
 {
+    "facts": [
+        {
+            "name": "revenue",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2
+        },
+        {
+            "name": "revenue_avg",
+            "type": "Numeric(10,2)",
+            "aggregation": "avg",
+            "rounding": 2
+        }
+    ],
+
+    "dimensions": [
+        {
+            "name": "partner_id",
+            "type": "String(32)"
+        }
+    ],
+    
     "datasources": {
         "testdb": {
             "tables": {
@@ -7,10 +29,10 @@
                     "autocolumns": true,
                     "columns": {
                         "id": {
-                            "fieldname": "partner_id"
+                            "fields": ["partner_id"]
                         },
                         "name": {
-                            "fieldname": "partner_name"
+                            "fields": ["partner_name"]
                         }
                     }
                 },
@@ -21,13 +43,13 @@
                     "parent": "partners",
                     "columns": {
                         "id": {
-                            "fieldname": "campaign_id"
+                            "fields": ["campaign_id"]
                         },
                         "name": {
-                            "fieldname": "campaign_name"
+                            "fields": ["campaign_name"]
                         },
                         "partner_id": {
-                            "fieldname": "partner_id"
+                            "fields": ["partner_id"]
                         }
                     }
                 },
@@ -37,13 +59,13 @@
                     "autocolumns": true,
                     "columns": {
                         "id": {
-                            "fieldname": "lead_id"
+                            "fields": ["lead_id"]
                         },
                         "created_at": {
-                            "fieldname": "created_at"
+                            "fields": ["created_at"]
                         },
                         "campaign_id": {
-                            "fieldname": "campaign_id"
+                            "fields": ["campaign_id"]
                         }
                     }
                 },
@@ -54,13 +76,16 @@
                     "parent": "leads",
                     "columns": {
                         "id": {
-                            "fieldname": "sale_id"
+                            "fields": ["sale_id"]
                         },
                         "created_at": {
-                            "fieldname": "created_at"
+                            "fields": ["created_at"]
                         },
                         "lead_id": {
-                            "fieldname": "lead_id"
+                            "fields": ["lead_id"]
+                        },
+                        "revenue": {
+                            "fields": ["revenue", "revenue_avg"]
                         }
                     }
                 }
