@@ -1,14 +1,25 @@
 import sqlalchemy as sa
 
-TABLE_TYPES = [
-    'fact',
-    'dimension'
-]
+class TableTypes:
+    DIMENSION = 'dimension'
+    FACT = 'fact'
 
-COLUMN_TYPES = [
-    'auto',
-    'fact',
-    'dimension'
+class AggregationTypes:
+    AVG = 'avg'
+    COUNT = 'count'
+    MIN = 'min'
+    MAX = 'max'
+    SUM = 'sum'
+
+ROW_FILTER_OPS = [
+    '>',
+    '>=',
+    '<',
+    '<=',
+    '==',
+    '!=',
+    'in',
+    'not in',
 ]
 
 INTEGER_SA_TYPES = [

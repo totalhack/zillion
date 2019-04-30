@@ -46,6 +46,53 @@ class TestSQLAW(TestBase):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue', 'sales.quantity']
         dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = [('revenue', '>', 11)]
+        rollup = True
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria, row_filters=row_filters, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportNoDimensions(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue', 'sales.quantity']
+        dimensions = None
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        self.assertTrue(result)
+
+    def testReportNullCriteria(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue']
+        dimensions = ['partner_name']
+        criteria = [('campaign_name', '!=', None)]
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        self.assertTrue(result)
+
+    def testReportCountFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['leads']
+        dimensions = ['partner_name']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
+    def testReportAliasFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue_avg']
+        dimensions = ['partner_name']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
+    def testReportAliasDimension(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue']
+        dimensions = ['lead_id']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
+    def testReportMultipleQueries(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue', 'leads']
+        dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 

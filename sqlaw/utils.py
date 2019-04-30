@@ -15,6 +15,7 @@ import sys
 
 import climax
 from dateutil import parser as dateparser
+from orderedset import OrderedSet
 
 #-------- Command line utils
 
@@ -39,6 +40,9 @@ def prompt_user(msg, answers):
 
 def get_class_vars(cls):
     return [i for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))]
+
+def get_class_var_values(cls):
+    return [getattr(cls, i) for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))]
 
 def import_object(name):
     if '.' not in name:
@@ -168,7 +172,7 @@ def string_has_format_args(s):
         return True
     return False
 
-#-------- Dict & JSON utils
+#-------- Dict/JSON/Set utils
 
 # https://stackoverflow.com/questions/7204805/dictionaries-of-dictionaries-merge
 def dictmerge(x, y, path=None, overwrite=False):
@@ -218,6 +222,14 @@ class JSONMixin:
 
     def to_jsons(self):
         return json.dumps(self.__dict__)
+
+def orderedsetify(obj):
+    '''Take ordered iterable and turn it into OrderedSet'''
+    if isinstance(obj, OrderedSet):
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return OrderedSet(obj)
+    assert False, 'Not sure how to setify %s' % obj
 
 #-------- Date utils
 

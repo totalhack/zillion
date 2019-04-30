@@ -3,15 +3,17 @@ import re
 
 from marshmallow import Schema, fields as mfields, ValidationError
 
-from sqlaw.core import TABLE_TYPES, COLUMN_TYPES
+from sqlaw.core import TableTypes, AggregationTypes
+from sqlaw.sql_utils import (type_string_to_sa_type,
+                             InvalidSQLAlchemyTypeString)
 from sqlaw.utils import (dbg,
                          error,
                          json,
                          st,
+                         get_class_var_values,
                          initializer)
 
 FIELD_NAME_REGEX = '[0-9a-zA-Z_]+'
-AGGREGATION_TYPES = set(['sum', 'avg'])
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""
@@ -35,7 +37,7 @@ def load_config(filename, preserve_order=False):
     return config
 
 def is_valid_table_type(val):
-    if val in TABLE_TYPES:
+    if val in get_class_var_values(TableTypes):
         return
     raise ValidationError('Invalid table type: %s' % val)
 
@@ -75,15 +77,24 @@ def is_valid_field_name(val):
         return True
     raise ValidationError('Field name must satisfy regex "%s": %s' % (FIELD_NAME_REGEX, val))
 
+def is_valid_fact_type(val):
+    try:
+        sa_type = type_string_to_sa_type(val)
+    except InvalidSQLAlchemyTypeString:
+        raise ValidationError('Invalid table type: %s' % val)
+    return True
+
 def is_valid_aggregation(val):
-    if val in AGGREGATION_TYPES:
+    if val in get_class_var_values(AggregationTypes):
         return True
     raise ValidationError('Invalid aggregation: %s' % val)
 
 class FactConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(required=True) # TODO: validate this
-    aggregation = mfields.String(default='sum', missing='sum', validate=is_valid_aggregation)
+    type = mfields.String(required=True, validate=is_valid_fact_type)
+    aggregation = mfields.String(default=AggregationTypes.SUM,
+                                 missing=AggregationTypes.SUM,
+                                 validate=is_valid_aggregation)
     rounding = mfields.Integer(default=None, missing=None)
 
 class DimensionConfigSchema(BaseSchema):

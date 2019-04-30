@@ -1,26 +1,46 @@
-import ast
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import random
+from sqlite3 import connect, Row
+import time
 
+import pandas as pd
 import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
 
-from sqlaw.configs import ColumnInfoSchema, TableInfoSchema
-from sqlaw.core import NUMERIC_SA_TYPES, INTEGER_SA_TYPES, FLOAT_SA_TYPES
+from sqlaw.configs import (ColumnInfoSchema,
+                           TableInfoSchema,
+                           FactConfigSchema,
+                           DimensionConfigSchema)
+from sqlaw.core import (NUMERIC_SA_TYPES,
+                        INTEGER_SA_TYPES,
+                        FLOAT_SA_TYPES,
+                        ROW_FILTER_OPS,
+                        AggregationTypes,
+                        TableTypes)
+from sqlaw.sql_utils import (get_aggregation_and_rounding,
+                             type_string_to_sa_type,
+                             is_probably_fact,
+                             sqla_compile,
+                             printexpr,
+                             column_fullname,
+                             get_sqla_clause,
+                             to_sqlite_type,
+                             sqlite_safe_name)
 from sqlaw.utils import (dbg,
                          warn,
                          st,
                          initializer,
+                         orderedsetify,
                          PrintMixin,
                          MappingMixin)
 
-DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
+DEFAULT_IFNULL_VALUE = '--'
+ROLLUP_INDEX_LABEL = 'totals:'
 
-# Aggregation Types
-# TODO: make class for this, put it in core, add support for "count"?
-SUM = 'sum'
-AVG = 'avg'
+PANDAS_AGGR_TRANSLATION = {
+    AggregationTypes.AVG: 'mean'
+}
 
 class DataSourceMap(dict):
     pass
@@ -57,7 +77,7 @@ class TableSet(PrintMixin):
         pass
 
     def get_covered_facts(self, warehouse):
-        covered_facts = get_table_facts(warehouse, fact_table)
+        covered_facts = get_table_facts(warehouse, self.fact_table)
         return covered_facts
 
 class NeighborTable(PrintMixin):
@@ -94,29 +114,6 @@ class JoinList(PrintMixin):
     def __eq__(self, other):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
-def get_aggregation_and_rounding(column):
-    if type(column.type) in INTEGER_SA_TYPES:
-        return SUM, 0
-    if type(column.type) in FLOAT_SA_TYPES:
-        rounding = column.type.scale
-        precision = column.type.precision
-        whole_digits = precision - rounding
-        if whole_digits <= DIGIT_THRESHOLD_FOR_AVG_AGGR:
-            aggregation = AVG
-        else:
-            aggregation = SUM
-        return aggregation, rounding
-    assert False, 'Column %s is not a numeric type' % column
-
-def is_probably_fact(column):
-    if type(column.type) not in NUMERIC_SA_TYPES:
-        return False
-    if column.primary_key:
-        return False
-    if column.name.endswith('_id') or column.name.endswith('Id') or column.name == 'id':
-        return False
-    return True
-
 def joins_from_path(graph, path, field_map=None):
     joins = []
     for i, node in enumerate(path):
@@ -127,24 +124,6 @@ def joins_from_path(graph, path, field_map=None):
         join_info = JoinInfo([start, end], edge['join_fields'])
         joins.append(join_info)
     return JoinList(joins, field_map=field_map)
-
-def get_sqla_condition(criteria_row):
-    st()
-    pass
-
-def add_where(select, criteria):
-    # TODO: should this be module-level method?
-    sqla_conditions = []
-    for row in criteria:
-        sqla_conditions.append(get_sqla_condition(row))
-    for condition in sqla_conditions:
-        select = select.where(condition)
-    return select
-
-def add_group_by(select, dimensions):
-    for i, dim in enumerate(dimensions):
-        select = select.group_by(sa.text(str(i)))
-    return select
 
 def get_table_fields(table):
     fields = set()
@@ -169,18 +148,15 @@ def get_table_dimensions(warehouse, table):
                 dims.add(field)
     return dims
 
-def column_fullname(column):
-    return '%s.%s' % (column.table.fullname, column.name)
-
 class Field(PrintMixin):
     repr_attrs = ['name']
-    ifnull_value = '--'
+    ifnull_value = DEFAULT_IFNULL_VALUE
 
     @initializer
     def __init__(self, name, type, **kwargs):
         self.column_map = defaultdict(list)
         if isinstance(type, str):
-            self.type = Field.type_string_to_sa_type(type)
+            self.type = type_string_to_sa_type(type)
 
     def add_column(self, ds_name, column):
         current_cols = [column_fullname(col) for col in self.column_map[ds_name]]
@@ -194,20 +170,7 @@ class Field(PrintMixin):
         return self.column_map[ds_name]
 
     def get_expression(self, column):
-        # XXX: should we do ifnull here?
-        return sa.func.ifnull(column_fullname(column), self.ifnull_value).label(self.name)
-
-    @classmethod
-    def type_string_to_sa_type(cls, type_string):
-        parts = type_string.split('(')
-        type_args = []
-        if len(parts) > 1:
-            assert len(parts) == 2, 'Unable to parse type string: %s' % type_string
-            type_args = ast.literal_eval(parts[1].rstrip(')') + ',')
-        type_name = parts[0]
-        type_cls = getattr(sa, type_name, None)
-        assert type_cls, 'Could not find matching type for %s' % type_name
-        return type_cls(*type_args)
+        return sa.func.ifnull(column, self.ifnull_value).label(self.name)
 
     # https://stackoverflow.com/questions/2909106/whats-a-correct-and-good-way-to-implement-hash
     def __key(self):
@@ -219,9 +182,8 @@ class Field(PrintMixin):
     def __eq__(self, other):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
-
 class Fact(Field):
-    def __init__(self, name, type, aggregation=SUM, rounding=None):
+    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None):
         super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding)
 
     def get_expression(self, column):
@@ -230,14 +192,13 @@ class Fact(Field):
         aggr = sa.func.sum
         if self.aggregation == 'avg':
             aggr = sa.func.avg
-        # XXX: should we do ifnull here?
-        return aggr(sa.func.round(sa.func.ifnull(column_fullname(column), self.ifnull_value), rounding)).label(self.name)
+        return aggr(sa.func.round(sa.func.ifnull(column, self.ifnull_value), rounding)).label(self.name)
 
 class CombinedFact(PrintMixin):
     repr_atts = ['name', 'formula']
 
     @initializer
-    def __init__(self, name, formula, aggregation=SUM, rounding=None):
+    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None):
         pass
 
 class Dimension(Field):
@@ -339,7 +300,7 @@ class Warehouse:
         neighbor_tables = []
         fields = get_table_fields(table)
 
-        if table.sqlaw.type == 'fact':
+        if table.sqlaw.type == TableTypes.FACT:
             # Find dimension tables whose primary key is contained in the fact table
             dim_tables = self.dimension_tables.get(ds_name, [])
             for dim_table in self.dimension_tables[ds_name].values():
@@ -379,9 +340,9 @@ class Warehouse:
         if not table.sqlaw:
             return
         self.tables[ds_name][table.fullname] = table
-        if table.sqlaw.type == 'fact':
+        if table.sqlaw.type == TableTypes.FACT:
             self.add_fact_table(ds_name, table)
-        elif table.sqlaw.type == 'dimension':
+        elif table.sqlaw.type == TableTypes.DIMENSION:
             self.add_dimension_table(ds_name, table)
         else:
             assert False, 'Invalid table type: %s' % table_info.type
@@ -584,6 +545,8 @@ class Warehouse:
 
         for fact_def in config.get('facts', []):
             if isinstance(fact_def, dict):
+                schema = FactConfigSchema()
+                fact_def = schema.load(fact_def)
                 fact = Fact(fact_def['name'], fact_def['type'],
                             aggregation=fact_def['aggregation'],
                             rounding=fact_def['rounding'])
@@ -595,6 +558,8 @@ class Warehouse:
 
         for dim_def in config.get('dimensions', []):
             if isinstance(dim_def, dict):
+                schema = DimensionConfigSchema()
+                dim_def = schema.load(dim_def)
                 dim = Dimension(dim_def['name'], dim_def['type'])
             else:
                 assert isinstance(dim_def, Dimension),\
@@ -651,48 +616,63 @@ class Warehouse:
         result = report.execute()
         return result
 
-class Query:
+class DataSourceQuery(PrintMixin):
+    repr_attrs = ['facts', 'dimensions', 'criteria']
+
     @initializer
-    def __init__(self, warehouse, table_set, facts, dimensions, criteria):
+    def __init__(self, warehouse, facts, dimensions, criteria, table_set):
+        self.field_map = {}
+        self.facts = orderedsetify(facts)
+        self.dimensions = orderedsetify(dimensions)
         self.select = self.build_select()
+
+    def get_conn(self):
+        datasource = self.warehouse.ds_map[self.table_set.ds_name]
+        assert datasource.bind, 'Datasource "%s" does not have metadata.bind set' % self.table_set.ds_name
+        conn = datasource.bind.connect()
+        return conn
 
     def build_select(self):
         # https://docs.sqlalchemy.org/en/latest/core/selectable.html
         select = sa.select()
 
+        join = self.get_join()
+        select = select.select_from(join)
+
         for dimension in self.dimensions:
-            select.column(self.get_field_expression(dimension))
+            select = select.column(self.get_field_expression(dimension))
 
         for fact in self.facts:
-            select.column(self.get_field_expression(fact))
+            select = select.column(self.get_field_expression(fact))
 
-        join = self.get_join(select)
-        select = add_where(select, self.criteria)
-        select = add_group_by(select, self.dimensions)
-        select = select.select_from(join)
+        select = self.add_where(select)
+        select = self.add_group_by(select)
         return select
 
-    def column_from_field(self, table, field):
+    def column_for_field(self, field, table=None):
         ts = self.table_set
-        columns = self.warehouse.table_field_map[ts.ds_name][table.fullname][field]
-        # TODO: add check for this earlier?
-        assert len(columns) == 1, 'Multiple columns for same field in single table not supported yet'
-        column = columns[0]
+        if table is not None:
+            columns = self.warehouse.table_field_map[ts.ds_name][table.fullname][field]
+            # TODO: add check for this in warehouse formation? Make it not a list?
+            assert len(columns) == 1, 'Multiple columns for same field in single table not supported yet'
+            column = columns[0]
+        else:
+            if field in ts.join_list.field_map:
+                column = ts.join_list.field_map[field]
+            elif field in self.warehouse.table_field_map[ts.ds_name][ts.fact_table.fullname]:
+                column = self.column_for_field(field, table=ts.fact_table)
+            else:
+                assert False, 'Could not determine column for field %s' % field
+        self.field_map[field] = column
         return column
 
     def get_field_expression(self, field):
         ts = self.table_set
-        if field in ts.join_list.field_map:
-            column = ts.join_list.field_map[field]
-        elif field in self.warehouse.table_field_map[ts.ds_name][ts.fact_table.fullname]:
-            column = self.column_from_field(ts.fact_table, field)
-        else:
-            assert False, 'Could not determine column for field %s' % field
-
+        column = self.column_for_field(field)
         field_obj = self.warehouse.get_field(field)
         return field_obj.get_expression(column)
 
-    def get_join(self, select):
+    def get_join(self):
         ts = self.table_set
         sqla_join = None
         last_table = None
@@ -710,52 +690,252 @@ class Query:
 
                 conditions = []
                 for field in join.join_fields:
-                    last_column = self.column_from_field(last_table, field)
-                    column = self.column_from_field(table, field)
+                    last_column = self.column_for_field(field, table=last_table)
+                    column = self.column_for_field(field, table=table)
                     conditions.append(column==last_column)
                 sqla_join = sqla_join.outerjoin(table, *tuple(conditions))
                 last_table = table
 
         return sqla_join
 
+    def add_where(self, select):
+        if not self.criteria:
+            return select
+        for row in self.criteria:
+            field = row[0]
+            column = self.column_for_field(field)
+            clause = sa.and_(get_sqla_clause(column, row))
+            select = select.where(clause)
+        return select
+
+    def add_group_by(self, select):
+        if not self.dimensions:
+            return select
+        return select.group_by(*[sa.text(x) for x in self.dimensions])
+
+    def add_order_by(self, select, asc=True):
+        if not self.dimensions:
+            return select
+        order_func = sa.asc
+        if not asc:
+            order_func = sa.desc
+        return select.order_by(*[order_func(sa.text(x)) for x in self.dimensions])
+
     def covers_fact(self, fact):
-        if fact in self.table_set.get_covered_facts(warehouse):
+        if fact in self.table_set.get_covered_facts(self.warehouse):
             return True
         return False
 
     def add_fact(self, fact):
         assert self.covers_fact(fact), 'Fact %s can not be covered by query' % fact
-        st()
+        # TODO: improve the way we maintain targeted facts/dims
         self.table_set.target_facts.add(fact)
-        #self.select = self.select(self.get_select_column(fact))
+        self.facts.add(fact)
+        self.select = self.select.column(self.get_field_expression(fact))
 
-class CombinedQuery:
-    pass
+class DataSourceQueryResult(PrintMixin):
+    repr_attrs = ['rowcount']
+
+    @initializer
+    def __init__(self, query, data):
+        self.rowcount = len(data)
+
+class BaseCombinedResult:
+    @initializer
+    def __init__(self, warehouse, ds_query_results, primary_dimensions):
+        self.conn = self.get_conn()
+        self.cursor = self.get_cursor(self.conn)
+        self.table_name = 'sqlaw_%s_%s' % (str(time.time()).replace('.','_'), random.randint(0,1E6))
+        self.primary_dimensions = orderedsetify(primary_dimensions)
+        self.dimensions, self.facts = self.get_fields()
+        self.create_table()
+        self.load_table()
+
+    def get_conn(self):
+        raise NotImplementedError
+
+    def get_cursor(self, conn):
+        raise NotImplementedError
+
+    def create_table(self):
+        raise NotImplementedError
+
+    def load_table(self):
+        raise NotImplementedError
+
+    def clean_up(self):
+        raise NotImplementedError
+
+    def get_final_result(self, facts, dimensions, row_filters, rollup):
+        raise NotImplementedError
+
+    def get_row_hash(self, row):
+        # XXX: should we limit length of particular primary dims if they are long strings?
+        hash_bytes = str([row[k] for k in row.keys() if k in self.primary_dimensions]).encode('utf8')
+        return hash(hash_bytes)
+
+    def get_fields(self):
+        dimensions = OrderedDict()
+        facts = OrderedDict()
+
+        for qr in self.ds_query_results:
+            for dim_name in qr.query.dimensions:
+                if dim_name in dimensions:
+                    continue
+                dim = self.warehouse.dimensions[dim_name]
+                dimensions[dim_name] = dim
+
+            for fact_name in qr.query.facts:
+                if fact_name in facts:
+                    continue
+                fact = self.warehouse.facts[fact_name]
+                facts[fact_name] = fact
+
+        return dimensions, facts
+
+class SQLiteMemoryCombinedResult(BaseCombinedResult):
+    def get_conn(self):
+        return connect(":memory:")
+
+    def get_cursor(self, conn):
+        conn.row_factory = Row
+        return conn.cursor()
+
+    def create_table(self):
+        create_sql = 'CREATE TEMP TABLE %s (\n' % self.table_name
+        column_clauses = ['hash BIGINT not null PRIMARY KEY']
+
+        for field_name, field in self.dimensions.items():
+            type_str = str(to_sqlite_type(field.type))
+            clause = '%s %s not null' % (sqlite_safe_name(field_name), type_str)
+            column_clauses.append(clause)
+
+        for field_name, field in self.facts.items():
+            type_str = str(to_sqlite_type(field.type))
+            clause = '%s %s default null' % (sqlite_safe_name(field_name), type_str)
+            column_clauses.append(clause)
+
+        create_sql += ',\n'.join(column_clauses)
+        create_sql += '\n) WITHOUT ROWID'
+        dbg(create_sql)
+        self.cursor.execute(create_sql)
+        self.conn.commit()
+
+    def get_row_insert_sql(self, row):
+        # TODO: switch to bulk insert
+        values_clause = ', '.join(['?'] * (1 + len(row)))
+        # TODO: dont allow unsafe chars in fields names in the first place?
+        columns = [sqlite_safe_name(k) for k in row.keys()]
+        columns_clause = 'hash, ' + ', '.join(columns)
+        update_clauses = []
+        for k in columns:
+            if k in self.primary_dimensions:
+                continue
+            update_clauses.append('%s=excluded.%s' % (k, k))
+        update_clause = ', '.join(update_clauses)
+
+        sql = ('INSERT INTO %s (%s) VALUES (%s) '
+               'ON CONFLICT(hash) DO UPDATE SET %s' %
+               (self.table_name, columns_clause, values_clause, update_clause))
+        hash_value = self.get_row_hash(row)
+        values = [hash_value]
+        values.extend(row.values())
+        return sql, values
+
+    def load_table(self):
+        for qr in self.ds_query_results:
+            for row in qr.data:
+                insert_sql, values = self.get_row_insert_sql(row)
+                self.cursor.execute(insert_sql, values)
+            self.conn.commit()
+
+    def select_all(self):
+        qr = self.cursor.execute('select * from %s' % self.table_name)
+        return [OrderedDict(row) for row in qr.fetchall()]
+
+    def get_final_result(self, facts, dimensions, row_filters, rollup):
+        # TODO: support query facts
+        # TODO: support multi-rollup
+        # TODO: support weighted average
+        # - this would require keeping that column in the result
+
+        fields = dimensions + facts
+        columns = ', '.join([sqlite_safe_name(x) for x in fields])
+        sql = 'select %s from %s' % (columns, self.table_name)
+        df = pd.read_sql(sql, self.conn, index_col=dimensions)
+
+        if row_filters:
+            filter_parts = []
+            for row_filter in row_filters:
+                field, op, value = row_filter
+                assert (field in facts) or (field in dimensions),\
+                    'Row filter field "%s" is not in result table' % field
+                assert op in ROW_FILTER_OPS, 'Invalid row filter operation: %s' % op
+                filter_parts.append('(%s %s %s)' % (field, op, value))
+            df = df.query(' and '.join(filter_parts))
+
+        if rollup:
+            aggrs = {}
+            for fact_name in facts:
+                fact = self.warehouse.facts[fact_name]
+                aggr_type = PANDAS_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
+                fact_name = sqlite_safe_name(fact_name)
+                aggrs[fact_name] = aggr_type
+
+            aggr = df.agg(aggrs)
+            rollup_index = (ROLLUP_INDEX_LABEL,) * len(dimensions)
+            with pd.option_context('mode.chained_assignment', None):
+                df.loc[rollup_index, :] = aggr
+
+        return df
+
+    def clean_up(self):
+        drop_sql = 'DROP TABLE IF EXISTS %s ' % self.table_name
+        self.cursor.execute(drop_sql)
+        self.conn.commit()
+        self.conn.close()
 
 class Report:
     @initializer
     def __init__(self, warehouse, facts, dimensions=None, criteria=None, row_filters=None, rollup=None):
-        self.queries = self.build_queries()
+        self.queries = self.build_ds_queries()
         self.combined_query = None
 
-    def execute_query(self, query):
-        return []
+    def execute_ds_query(self, query):
+        # TODOs:
+        # Add straight joins? Optimize indexes?
+        # Explain query?
+        # MySQL: SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+        #  finally: SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
 
-    def execute_queries(self, queries):
-        # TODO: execute queries in parallel threads
+        start = time.time()
+        conn = query.get_conn()
+        try:
+            result = conn.execute(query.select)
+            data = result.fetchall()
+        finally:
+            conn.close()
+        end = time.time()
+        dbg('Got %d rows in %.3fs' % (len(data), end - start))
+        return DataSourceQueryResult(query, data)
+
+    def execute_ds_queries(self, queries):
+        # TODO: execute datasource queries in parallel threads
         results = []
         for query in queries:
-            results.append(self.execute_query(query))
+            result = self.execute_ds_query(query)
+            results.append(result)
         return results
 
     def execute(self):
-        query_results = self.execute_queries(self.queries)
-        query_result_table = self.create_query_result_table(query_results)
-        self.combined_query = self.build_combined_query(query_result_table)
-        combined_results = self.execute_query(self.combined_query)
-        # TODO: do we need to apply row filters in additional step?
-        self.result = ReportResult(combined_results)
-        return self.result
+        ds_query_results = self.execute_ds_queries(self.queries)
+        cr = self.create_combined_result(ds_query_results)
+        try:
+            final_result = cr.get_final_result(self.facts, self.dimensions, self.row_filters, self.rollup)
+            self.result = ReportResult(final_result)
+            return self.result
+        finally:
+            cr.clean_up()
 
     def get_grain(self):
         # TODO: may need to adjust this to support partition dimensions
@@ -766,7 +946,7 @@ class Report:
             grain = grain | set([x[0] for x in self.criteria])
         return grain
 
-    def build_queries(self):
+    def build_ds_queries(self):
         grain = self.get_grain()
         queries = []
 
@@ -785,18 +965,16 @@ class Report:
                 continue
 
             table_set = self.warehouse.get_fact_table_set(fact, grain)
-            query = Query(self.warehouse, table_set, [fact], self.dimensions, self.criteria)
+            query = DataSourceQuery(self.warehouse, [fact], self.dimensions, self.criteria, table_set)
+            printexpr(query.select)
+            dbg(sqla_compile(query.select))
             queries.append(query)
         return queries
 
-    def create_query_table(self, query_results):
-        # TODO: create a reference to a temporary result table
-        pass
-
-    def build_combined_query(self, query_table):
-        pass
+    def create_combined_result(self, ds_query_results):
+        return SQLiteMemoryCombinedResult(self.warehouse, ds_query_results, self.dimensions)
 
 class ReportResult:
     @initializer
-    def __init__(self, rows):
-        return rows
+    def __init__(self, df):
+        return df

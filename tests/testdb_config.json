@@ -11,12 +11,17 @@
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2
+        },
+        {
+            "name": "leads",
+            "type": "Integer",
+            "aggregation": "count"
         }
     ],
 
     "dimensions": [
         {
-            "name": "partner_id",
+            "name": "partner_name",
             "type": "String(32)"
         }
     ],
@@ -59,7 +64,7 @@
                     "autocolumns": true,
                     "columns": {
                         "id": {
-                            "fields": ["lead_id"]
+                            "fields": ["lead_id", "leads"]
                         },
                         "created_at": {
                             "fields": ["created_at"]
