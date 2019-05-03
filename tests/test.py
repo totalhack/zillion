@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, MetaData
 
 from sqlaw.configs import load_config
 from sqlaw.utils import dbg, st, testcli
-from sqlaw.warehouse import DataSourceMap, Warehouse
+from sqlaw.warehouse import DataSourceMap, Warehouse, ROLLUP_INDEX_LABEL
 from test_utils import TestBase, run_tests
 
 TESTDB_CONFIG = load_config('testdb_config.json')
@@ -55,9 +55,8 @@ class TestSQLAW(TestBase):
     def testReportNoDimensions(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue', 'sales.quantity']
-        dimensions = None
-        criteria = [('campaign_name', '!=', 'Campaign 2B')]
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        criteria = [('campaign_name', '=', 'Campaign 2B')]
+        result = wh.report(facts, criteria=criteria)
         self.assertTrue(result)
 
     def testReportNullCriteria(self):
@@ -71,7 +70,7 @@ class TestSQLAW(TestBase):
     def testReportCountFact(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['leads']
-        dimensions = ['partner_name']
+        dimensions = ['campaign_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
@@ -95,6 +94,17 @@ class TestSQLAW(TestBase):
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
+
+    def testRollup(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue']
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        rollup = True
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
+        revenue = result.rollup_rows().iloc[-1]['revenue']
+        revenue_sum = result.non_rollup_rows().sum()['revenue']
+        self.assertEqual(revenue, revenue_sum)
 
 @climax.command(parents=[testcli])
 @climax.argument('testnames', type=str, nargs='*', help='Names of tests to run')

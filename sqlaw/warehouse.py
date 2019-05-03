@@ -18,7 +18,8 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         ROW_FILTER_OPS,
                         AggregationTypes,
                         TableTypes)
-from sqlaw.sql_utils import (get_aggregation_and_rounding,
+from sqlaw.sql_utils import (infer_aggregation_and_rounding,
+                             aggregation_to_sqla_func,
                              type_string_to_sa_type,
                              is_probably_fact,
                              sqla_compile,
@@ -36,7 +37,7 @@ from sqlaw.utils import (dbg,
                          MappingMixin)
 
 DEFAULT_IFNULL_VALUE = '--'
-ROLLUP_INDEX_LABEL = 'totals:'
+ROLLUP_INDEX_LABEL = '::'
 
 PANDAS_AGGR_TRANSLATION = {
     AggregationTypes.AVG: 'mean'
@@ -189,10 +190,14 @@ class Fact(Field):
     def get_expression(self, column):
         # TODO: support weighted averages
         rounding = self.rounding or 0
-        aggr = sa.func.sum
-        if self.aggregation == 'avg':
-            aggr = sa.func.avg
-        return aggr(sa.func.round(sa.func.ifnull(column, self.ifnull_value), rounding)).label(self.name)
+        aggr = aggregation_to_sqla_func(self.aggregation)
+
+        if self.aggregation in [AggregationTypes.COUNT, AggregationTypes.COUNT_DISTINCT]:
+            if rounding:
+                warn('Ignoring rounding for count field: %s' % self.name)
+            return aggr(sa.func.ifnull(column, self.ifnull_value)).label(self.name)
+
+        return sa.func.round(aggr(sa.func.ifnull(column, self.ifnull_value)), rounding).label(self.name)
 
 class CombinedFact(PrintMixin):
     repr_atts = ['name', 'formula']
@@ -396,7 +401,7 @@ class Warehouse:
     def add_fact_column(self, ds_name, column, field):
         if field not in self.facts:
             dbg('Adding fact %s from column %s.%s' % (field, ds_name, column_fullname(column)))
-            aggregation, rounding = get_aggregation_and_rounding(column)
+            aggregation, rounding = infer_aggregation_and_rounding(column)
             fact = Fact(field, column.type, aggregation=aggregation, rounding=rounding)
             self.add_fact(fact)
         self.facts[field].add_column(ds_name, column)
@@ -439,6 +444,10 @@ class Warehouse:
         assert fact_table.fullname in self.fact_tables[ds_name],\
             'Could not find fact table %s in datasource %s' % (fact_table.fullname, ds_name)
 
+        if not grain:
+            dbg('No grain specified, ignoring joins')
+            return None
+
         possible_dim_joins = {}
         for dimension in grain:
             dim_joins = self.find_joins_to_dimension(ds_name, fact_table, dimension)
@@ -456,6 +465,11 @@ class Warehouse:
     def find_possible_table_sets(self, ds_name, ds_tables_with_fact, fact, grain):
         table_sets = []
         for fact_table in ds_tables_with_fact:
+            if not grain:
+                table_set = TableSet(ds_name, fact_table, None, grain, set([fact]))
+                table_sets.append(table_set)
+                continue
+
             joins = self.get_possible_joins(ds_name, fact_table, grain)
             if not joins:
                 dbg('table %s can not join at grain %s' % (fact_table.fullname, grain))
@@ -623,7 +637,7 @@ class DataSourceQuery(PrintMixin):
     def __init__(self, warehouse, facts, dimensions, criteria, table_set):
         self.field_map = {}
         self.facts = orderedsetify(facts)
-        self.dimensions = orderedsetify(dimensions)
+        self.dimensions = orderedsetify(dimensions) if dimensions else []
         self.select = self.build_select()
 
     def get_conn(self):
@@ -657,7 +671,7 @@ class DataSourceQuery(PrintMixin):
             assert len(columns) == 1, 'Multiple columns for same field in single table not supported yet'
             column = columns[0]
         else:
-            if field in ts.join_list.field_map:
+            if ts.join_list and field in ts.join_list.field_map:
                 column = ts.join_list.field_map[field]
             elif field in self.warehouse.table_field_map[ts.ds_name][ts.fact_table.fullname]:
                 column = self.column_for_field(field, table=ts.fact_table)
@@ -676,6 +690,9 @@ class DataSourceQuery(PrintMixin):
         ts = self.table_set
         sqla_join = None
         last_table = None
+
+        if not ts.join_list:
+            return ts.fact_table
 
         for join in ts.join_list.joins:
             for table_name in join.table_names:
@@ -746,7 +763,7 @@ class BaseCombinedResult:
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
         self.table_name = 'sqlaw_%s_%s' % (str(time.time()).replace('.','_'), random.randint(0,1E6))
-        self.primary_dimensions = orderedsetify(primary_dimensions)
+        self.primary_dimensions = orderedsetify(primary_dimensions) if primary_dimensions else []
         self.dimensions, self.facts = self.get_fields()
         self.create_table()
         self.load_table()
@@ -803,22 +820,26 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def create_table(self):
         create_sql = 'CREATE TEMP TABLE %s (\n' % self.table_name
-        column_clauses = ['hash BIGINT not null PRIMARY KEY']
+        column_clauses = ['hash BIGINT NOT NULL PRIMARY KEY']
 
         for field_name, field in self.dimensions.items():
             type_str = str(to_sqlite_type(field.type))
-            clause = '%s %s not null' % (sqlite_safe_name(field_name), type_str)
+            clause = '%s %s NOT NULL' % (sqlite_safe_name(field_name), type_str)
             column_clauses.append(clause)
 
         for field_name, field in self.facts.items():
             type_str = str(to_sqlite_type(field.type))
-            clause = '%s %s default null' % (sqlite_safe_name(field_name), type_str)
+            clause = '%s %s DEFAULT NULL' % (sqlite_safe_name(field_name), type_str)
             column_clauses.append(clause)
 
         create_sql += ',\n'.join(column_clauses)
         create_sql += '\n) WITHOUT ROWID'
         dbg(create_sql)
         self.cursor.execute(create_sql)
+        if self.primary_dimensions:
+            index_sql = 'CREATE INDEX idx_dims ON %s (%s)' % (self.table_name, ', '.join(self.primary_dimensions))
+            dbg(index_sql)
+            self.cursor.execute(index_sql)
         self.conn.commit()
 
     def get_row_insert_sql(self, row):
@@ -850,7 +871,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             self.conn.commit()
 
     def select_all(self):
-        qr = self.cursor.execute('select * from %s' % self.table_name)
+        qr = self.cursor.execute('SELECT * FROM %s' % self.table_name)
         return [OrderedDict(row) for row in qr.fetchall()]
 
     def get_final_result(self, facts, dimensions, row_filters, rollup):
@@ -861,8 +882,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         fields = dimensions + facts
         columns = ', '.join([sqlite_safe_name(x) for x in fields])
-        sql = 'select %s from %s' % (columns, self.table_name)
-        df = pd.read_sql(sql, self.conn, index_col=dimensions)
+        order_clause = '1'
+        if self.primary_dimensions:
+            order_clause = ', '.join(['%s ASC' % d for d in self.primary_dimensions])
+        sql = 'SELECT %s FROM %s ORDER BY %s' % (columns, self.table_name, order_clause)
+        index_col = dimensions or None
+        df = pd.read_sql(sql, self.conn, index_col=index_col)
 
         if row_filters:
             filter_parts = []
@@ -898,6 +923,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 class Report:
     @initializer
     def __init__(self, warehouse, facts, dimensions=None, criteria=None, row_filters=None, rollup=None):
+        self.dimensions = self.dimensions or []
+        self.criteria = self.criteria or []
+        self.row_filters = self.row_filters or []
+        if rollup:
+            assert dimensions, 'Must specify dimensions in order to use rollup'
         self.queries = self.build_ds_queries()
         self.combined_query = None
 
@@ -932,6 +962,7 @@ class Report:
         cr = self.create_combined_result(ds_query_results)
         try:
             final_result = cr.get_final_result(self.facts, self.dimensions, self.row_filters, self.rollup)
+            dbg(final_result)
             self.result = ReportResult(final_result)
             return self.result
         finally:
@@ -941,7 +972,9 @@ class Report:
         # TODO: may need to adjust this to support partition dimensions
         if not (self.dimensions or self.criteria):
             return None
-        grain = set(self.dimensions)
+        grain = set()
+        if self.dimensions:
+            grain = grain | set(self.dimensions)
         if self.criteria:
             grain = grain | set([x[0] for x in self.criteria])
         return grain
@@ -978,3 +1011,19 @@ class ReportResult:
     @initializer
     def __init__(self, df):
         return df
+
+    def get_rollup_mask(self):
+        # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.Index.isin.html
+        mask = None
+        for i, level in enumerate(self.df.index.levels):
+            if mask is None:
+                mask = self.df.index.isin([ROLLUP_INDEX_LABEL], i)
+            else:
+                mask = (mask | self.df.index.isin([ROLLUP_INDEX_LABEL], i))
+        return mask
+
+    def rollup_rows(self):
+        return self.df.loc[self.get_rollup_mask()]
+
+    def non_rollup_rows(self):
+        return self.df.loc[~self.get_rollup_mask()]

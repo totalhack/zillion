@@ -10,6 +10,15 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 
+AGGREGATION_SQLA_FUNC_MAP = {
+    AggregationTypes.AVG: sa.func.avg,
+    AggregationTypes.COUNT: sa.func.count,
+    AggregationTypes.COUNT_DISTINCT: lambda x: sa.func.count(sa.distinct(x)),
+    AggregationTypes.MIN: sa.func.min,
+    AggregationTypes.MAX: sa.func.max,
+    AggregationTypes.SUM: sa.func.sum,
+}
+
 class InvalidSQLAlchemyTypeString(Exception):
     pass
 
@@ -25,7 +34,7 @@ def type_string_to_sa_type(type_string):
         raise InvalidSQLAlchemyTypeString('Could not find matching type for %s' % type_name)
     return type_cls(*type_args)
 
-def get_aggregation_and_rounding(column):
+def infer_aggregation_and_rounding(column):
     if type(column.type) in INTEGER_SA_TYPES:
         return AggregationTypes.SUM, 0
     if type(column.type) in FLOAT_SA_TYPES:
@@ -38,6 +47,9 @@ def get_aggregation_and_rounding(column):
             aggregation = AggregationTypes.SUM
         return aggregation, rounding
     assert False, 'Column %s is not a numeric type' % column
+
+def aggregation_to_sqla_func(aggregation):
+    return AGGREGATION_SQLA_FUNC_MAP[aggregation]
 
 def is_probably_fact(column):
     if type(column.type) not in NUMERIC_SA_TYPES:

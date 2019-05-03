@@ -117,6 +117,8 @@ class FontEffects:
 def log(msg, label='parent', indent=0, color=None, autocolor=False, format_func=pformat):
     if not isinstance(msg, str):
         msg = pformat(msg)
+        if label:
+            msg = '\n' + msg
 
     if indent is not None and int(indent):
         msg = msg + (' ' * int(indent))

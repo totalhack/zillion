@@ -15,7 +15,7 @@
         {
             "name": "leads",
             "type": "Integer",
-            "aggregation": "count"
+            "aggregation": "count_distinct"
         }
     ],
 
