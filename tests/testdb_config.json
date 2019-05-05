@@ -1,6 +1,24 @@
 {
     "facts": [
         {
+            "name": "rpl",
+            "aggregation": "avg",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}"
+        },
+        {
+            "name": "rpl_squared",
+            "aggregation": "avg",
+            "rounding": 2,
+            "formula": "{rpl}*{rpl}"
+        },
+        {
+            "name": "rpl_unsquared",
+            "aggregation": "avg",
+            "rounding": 2,
+            "formula": "{rpl_squared}/{rpl}"
+        },
+        {
             "name": "revenue",
             "type": "Numeric(10,2)",
             "aggregation": "sum",

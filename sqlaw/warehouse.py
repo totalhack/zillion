@@ -33,15 +33,20 @@ from sqlaw.utils import (dbg,
                          st,
                          initializer,
                          orderedsetify,
+                         get_string_format_args,
                          PrintMixin,
                          MappingMixin)
 
 DEFAULT_IFNULL_VALUE = '--'
 ROLLUP_INDEX_LABEL = '::'
+MAX_FORMULA_DEPTH = 3
 
 PANDAS_AGGR_TRANSLATION = {
     AggregationTypes.AVG: 'mean'
 }
+
+class MaxFormulaDepthException(Exception):
+    pass
 
 class DataSourceMap(dict):
     pass
@@ -170,8 +175,14 @@ class Field(PrintMixin):
     def get_columns(self, ds_name):
         return self.column_map[ds_name]
 
-    def get_expression(self, column):
+    def get_formula_fields(self, warehouse, depth=0):
+        return []
+
+    def get_ds_expression(self, column):
         return sa.func.ifnull(column, self.ifnull_value).label(self.name)
+
+    def get_final_select_clause(self, *args, **kwargs):
+        return self.name
 
     # https://stackoverflow.com/questions/2909106/whats-a-correct-and-good-way-to-implement-hash
     def __key(self):
@@ -184,10 +195,10 @@ class Field(PrintMixin):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
 class Fact(Field):
-    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None):
-        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding)
+    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None, **kwargs):
+        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding, **kwargs)
 
-    def get_expression(self, column):
+    def get_ds_expression(self, column):
         # TODO: support weighted averages
         rounding = self.rounding or 0
         aggr = aggregation_to_sqla_func(self.aggregation)
@@ -199,15 +210,75 @@ class Fact(Field):
 
         return sa.func.round(aggr(sa.func.ifnull(column, self.ifnull_value)), rounding).label(self.name)
 
-class CombinedFact(PrintMixin):
+class FormulaFact(Fact):
     repr_atts = ['name', 'formula']
 
-    @initializer
     def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None):
-        pass
+        super(FormulaFact, self).__init__(name, None, aggregation=aggregation, rounding=rounding, formula=formula)
+        # TODO: ensure the params are valid fields as objects are formed
+
+    def get_formula_fields(self, warehouse, depth=0):
+        if depth > MAX_FORMULA_DEPTH:
+            raise MaxFormulaDepthException()
+
+        raw_formula = self.formula
+        raw_fields = set()
+        formula_fields = get_string_format_args(self.formula)
+        field_formula_map = {}
+
+        for field_name in formula_fields:
+            field = warehouse.get_field(field_name)
+            if isinstance(field, FormulaFact):
+                try:
+                    sub_fields, sub_formula = field.get_formula_fields(warehouse, depth=depth+1)
+                except MaxFormulaDepthException as e:
+                    if depth != 0:
+                        raise
+                    raise MaxFormulaDepthException('Maximum formula recursion depth exceeded for %s: %s' %
+                                                   (self.name, self.formula))
+                for sub_field in sub_fields:
+                    raw_fields.add(sub_field)
+                field_formula_map[field_name] = '(' + sub_formula + ')'
+            else:
+                field_formula_map[field_name] = '{' + field_name + '}'
+                raw_fields.add(field_name)
+
+        raw_formula = self.formula.format(**field_formula_map)
+        return raw_fields, raw_formula
+
+    def get_ds_expression(self, column):
+        assert False, 'Formula-based Fields do not support get_ds_expression'
+
+    def get_final_select_clause(self, warehouse):
+        formula_fields, raw_formula = self.get_formula_fields(warehouse)
+        if self.rounding:
+            # XXX: needs a better home? This doesnt know what dialect to compile for.
+            # TODO: The 1.0 is a hack specific to sqlite. Also needs a new home.
+            format_args = {k:('(1.0*%s)' % k) for k in formula_fields}
+            clause = sqla_compile(sa.func.round(sa.text(raw_formula.format(**format_args)), self.rounding))
+        else:
+            format_args = {k:k for k in formula_fields}
+            clause = raw_formula.format(**format_args)
+
+        return clause
+
+def create_fact(fact_def):
+    if fact_def['formula']:
+        fact = FormulaFact(fact_def['name'], fact_def['formula'],
+                           aggregation=fact_def['aggregation'],
+                           rounding=fact_def['rounding'])
+    else:
+        fact = Fact(fact_def['name'], fact_def['type'],
+                    aggregation=fact_def['aggregation'],
+                    rounding=fact_def['rounding'])
+    return fact
 
 class Dimension(Field):
     pass
+
+def create_dimension(dim_def):
+    dim = Dimension(dim_def['name'], dim_def['type'])
+    return dim
 
 class Warehouse:
     @initializer
@@ -502,6 +573,7 @@ class Warehouse:
         #  A) Its historically been faster
         #  B) All of the requested data can be pulled from one datasource
         warn('No datasource priorities established, picking random option')
+        assert ds_names, 'No datasource names provided'
         return random.choice(ds_names)
 
     def choose_best_table_set(self, ds_table_sets):
@@ -561,9 +633,7 @@ class Warehouse:
             if isinstance(fact_def, dict):
                 schema = FactConfigSchema()
                 fact_def = schema.load(fact_def)
-                fact = Fact(fact_def['name'], fact_def['type'],
-                            aggregation=fact_def['aggregation'],
-                            rounding=fact_def['rounding'])
+                fact = create_fact(fact_def)
             else:
                 assert isinstance(fact_def, Fact),\
                     'Fact definition must be a dict-like object or a Fact object'
@@ -574,7 +644,7 @@ class Warehouse:
             if isinstance(dim_def, dict):
                 schema = DimensionConfigSchema()
                 dim_def = schema.load(dim_def)
-                dim = Dimension(dim_def['name'], dim_def['type'])
+                dim = create_dimension(dim_def)
             else:
                 assert isinstance(dim_def, Dimension),\
                     'Dimension definition must be a dict-like object or a Dimension object'
@@ -684,7 +754,7 @@ class DataSourceQuery(PrintMixin):
         ts = self.table_set
         column = self.column_for_field(field)
         field_obj = self.warehouse.get_field(field)
-        return field_obj.get_expression(column)
+        return field_obj.get_ds_expression(column)
 
     def get_join(self):
         ts = self.table_set
@@ -759,12 +829,12 @@ class DataSourceQueryResult(PrintMixin):
 
 class BaseCombinedResult:
     @initializer
-    def __init__(self, warehouse, ds_query_results, primary_dimensions):
+    def __init__(self, warehouse, ds_query_results, primary_ds_dimensions):
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
         self.table_name = 'sqlaw_%s_%s' % (str(time.time()).replace('.','_'), random.randint(0,1E6))
-        self.primary_dimensions = orderedsetify(primary_dimensions) if primary_dimensions else []
-        self.dimensions, self.facts = self.get_fields()
+        self.primary_ds_dimensions = orderedsetify(primary_ds_dimensions) if primary_ds_dimensions else []
+        self.ds_dimensions, self.ds_facts = self.get_fields()
         self.create_table()
         self.load_table()
 
@@ -788,7 +858,7 @@ class BaseCombinedResult:
 
     def get_row_hash(self, row):
         # XXX: should we limit length of particular primary dims if they are long strings?
-        hash_bytes = str([row[k] for k in row.keys() if k in self.primary_dimensions]).encode('utf8')
+        hash_bytes = str([row[k] for k in row.keys() if k in self.primary_ds_dimensions]).encode('utf8')
         return hash(hash_bytes)
 
     def get_fields(self):
@@ -822,12 +892,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         create_sql = 'CREATE TEMP TABLE %s (\n' % self.table_name
         column_clauses = ['hash BIGINT NOT NULL PRIMARY KEY']
 
-        for field_name, field in self.dimensions.items():
+        for field_name, field in self.ds_dimensions.items():
             type_str = str(to_sqlite_type(field.type))
             clause = '%s %s NOT NULL' % (sqlite_safe_name(field_name), type_str)
             column_clauses.append(clause)
 
-        for field_name, field in self.facts.items():
+        for field_name, field in self.ds_facts.items():
             type_str = str(to_sqlite_type(field.type))
             clause = '%s %s DEFAULT NULL' % (sqlite_safe_name(field_name), type_str)
             column_clauses.append(clause)
@@ -836,8 +906,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         create_sql += '\n) WITHOUT ROWID'
         dbg(create_sql)
         self.cursor.execute(create_sql)
-        if self.primary_dimensions:
-            index_sql = 'CREATE INDEX idx_dims ON %s (%s)' % (self.table_name, ', '.join(self.primary_dimensions))
+        if self.primary_ds_dimensions:
+            index_sql = 'CREATE INDEX idx_dims ON %s (%s)' % (self.table_name, ', '.join(self.primary_ds_dimensions))
             dbg(index_sql)
             self.cursor.execute(index_sql)
         self.conn.commit()
@@ -850,7 +920,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         columns_clause = 'hash, ' + ', '.join(columns)
         update_clauses = []
         for k in columns:
-            if k in self.primary_dimensions:
+            if k in self.primary_ds_dimensions:
                 continue
             update_clauses.append('%s=excluded.%s' % (k, k))
         update_clause = ', '.join(update_clauses)
@@ -875,17 +945,26 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         return [OrderedDict(row) for row in qr.fetchall()]
 
     def get_final_result(self, facts, dimensions, row_filters, rollup):
-        # TODO: support query facts
         # TODO: support multi-rollup
         # TODO: support weighted average
         # - this would require keeping that column in the result
 
         fields = dimensions + facts
-        columns = ', '.join([sqlite_safe_name(x) for x in fields])
+        columns = []
+
+        for dim_name in dimensions:
+            dim_def = self.warehouse.dimensions[dim_name]
+            columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), dim_def.name))
+
+        for fact_name in facts:
+            fact_def = self.warehouse.facts[fact_name]
+            columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), fact_def.name))
+
+        columns_clause = ', '.join(columns)
         order_clause = '1'
-        if self.primary_dimensions:
-            order_clause = ', '.join(['%s ASC' % d for d in self.primary_dimensions])
-        sql = 'SELECT %s FROM %s ORDER BY %s' % (columns, self.table_name, order_clause)
+        if self.primary_ds_dimensions:
+            order_clause = ', '.join(['%s ASC' % d for d in self.primary_ds_dimensions])
+        sql = 'SELECT %s FROM %s ORDER BY %s' % (columns_clause, self.table_name, order_clause)
         index_col = dimensions or None
         df = pd.read_sql(sql, self.conn, index_col=index_col)
 
@@ -928,6 +1007,35 @@ class Report:
         self.row_filters = self.row_filters or []
         if rollup:
             assert dimensions, 'Must specify dimensions in order to use rollup'
+
+        self.ds_facts = OrderedSet()
+        self.ds_dimensions = OrderedSet()
+
+        for fact_name in self.facts:
+            fact = warehouse.facts[fact_name]
+            formula_fields, _ = fact.get_formula_fields(self.warehouse) or ([fact_name], None)
+            for field in formula_fields:
+                if field in warehouse.facts:
+                    self.ds_facts.add(field)
+                elif field in warehouse.dimensions:
+                    self.ds_dimensions.add(field)
+                else:
+                    assert False, 'Could not find field %s in warehouse' % field
+
+        for dim in dimensions:
+            self.ds_dimensions.add(dim)
+        # for dim_name in self.dimensions:
+        #     dim = warehouse.dimensions[dim_name]
+        #     formula_fields, _ = dim.get_formula_fields(self.warehouse) or ([dim_name], None)
+        #     for field in formula_fields:
+        #         if field in warehouse.facts:
+        #             self.ds_facts.add(field)
+        #             #assert False, 'Dimension %s is trying to use fact %s in its formula' % (dim_name, field)
+        #         elif field in warehouse.dimensions:
+        #             self.ds_dimensions.add(field)
+        #         else:
+        #             assert False, 'Could not find field %s in warehouse' % field
+
         self.queries = self.build_ds_queries()
         self.combined_query = None
 
@@ -970,11 +1078,11 @@ class Report:
 
     def get_grain(self):
         # TODO: may need to adjust this to support partition dimensions
-        if not (self.dimensions or self.criteria):
+        if not (self.ds_dimensions or self.criteria):
             return None
         grain = set()
-        if self.dimensions:
-            grain = grain | set(self.dimensions)
+        if self.ds_dimensions:
+            grain = grain | set(self.ds_dimensions)
         if self.criteria:
             grain = grain | set([x[0] for x in self.criteria])
         return grain
@@ -990,7 +1098,7 @@ class Report:
                     return True
             return False
 
-        for fact in self.facts:
+        for fact in self.ds_facts:
             if fact_covered_in_queries(fact):
                 # TODO: we could do a single consolidation at the end instead
                 # and that might get more optimal results
@@ -998,14 +1106,14 @@ class Report:
                 continue
 
             table_set = self.warehouse.get_fact_table_set(fact, grain)
-            query = DataSourceQuery(self.warehouse, [fact], self.dimensions, self.criteria, table_set)
+            query = DataSourceQuery(self.warehouse, [fact], self.ds_dimensions, self.criteria, table_set)
             printexpr(query.select)
             dbg(sqla_compile(query.select))
             queries.append(query)
         return queries
 
     def create_combined_result(self, ds_query_results):
-        return SQLiteMemoryCombinedResult(self.warehouse, ds_query_results, self.dimensions)
+        return SQLiteMemoryCombinedResult(self.warehouse, ds_query_results, self.ds_dimensions)
 
 class ReportResult:
     @initializer

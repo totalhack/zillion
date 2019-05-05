@@ -95,6 +95,20 @@ class TestSQLAW(TestBase):
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
+    def testReportFormulaFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['rpl', 'revenue', 'leads']
+        dimensions = ['partner_name']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
+    def testReportNestedFormulaFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['rpl_squared', 'rpl_unsquared', 'rpl', 'leads']
+        dimensions = ['partner_name']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
     def testRollup(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue']

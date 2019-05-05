@@ -78,10 +78,11 @@ def is_valid_field_name(val):
     raise ValidationError('Field name must satisfy regex "%s": %s' % (FIELD_NAME_REGEX, val))
 
 def is_valid_fact_type(val):
-    try:
-        sa_type = type_string_to_sa_type(val)
-    except InvalidSQLAlchemyTypeString:
-        raise ValidationError('Invalid table type: %s' % val)
+    if val is not None:
+        try:
+            sa_type = type_string_to_sa_type(val)
+        except InvalidSQLAlchemyTypeString:
+            raise ValidationError('Invalid table type: %s' % val)
     return True
 
 def is_valid_aggregation(val):
@@ -89,17 +90,20 @@ def is_valid_aggregation(val):
         return True
     raise ValidationError('Invalid aggregation: %s' % val)
 
+# TODO: if type is missing, formula must be supplied and vice-versa
 class FactConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(required=True, validate=is_valid_fact_type)
+    type = mfields.String(default=None, missing=None, validate=is_valid_fact_type)
     aggregation = mfields.String(default=AggregationTypes.SUM,
                                  missing=AggregationTypes.SUM,
                                  validate=is_valid_aggregation)
     rounding = mfields.Integer(default=None, missing=None)
+    formula = mfields.String(default=None, missing=None)
 
 class DimensionConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(required=True)
+    type = mfields.String(default=None, missing=None)
+    formula = mfields.String(default=None, missing=None)
 
 class SQLAWConfigSchema(BaseSchema):
     facts = mfields.List(mfields.Nested(FactConfigSchema))
