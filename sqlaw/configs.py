@@ -38,25 +38,68 @@ def load_config(filename, preserve_order=False):
 
 def is_valid_table_type(val):
     if val in get_class_var_values(TableTypes):
-        return
+        return True
     raise ValidationError('Invalid table type: %s' % val)
 
-class TableTypeField(mfields.Field):
-    def _validate(self, value):
-        is_valid_table_type(value)
-        super(TableTypeField, self)._validate(value)
+def is_valid_field_name(val):
+    if val is None:
+        raise ValidationError('Field name can not be null')
+    if re.match(FIELD_NAME_REGEX, val):
+        return True
+    raise ValidationError('Field name must satisfy regex "%s": %s' % (FIELD_NAME_REGEX, val))
+
+def is_valid_sqlalchemy_type(val):
+    if val is not None:
+        try:
+            sa_type = type_string_to_sa_type(val)
+        except InvalidSQLAlchemyTypeString:
+            raise ValidationError('Invalid table type: %s' % val)
+    return True
+
+def is_valid_aggregation(val):
+    if val in get_class_var_values(AggregationTypes):
+        return True
+    raise ValidationError('Invalid aggregation: %s' % val)
+
+def is_valid_column_field_config(val):
+    if isinstance(val, str):
+        return True
+    if isinstance(val, (list, tuple)):
+        if not len(val) == 2:
+            raise ValidationError('Invalid column field config length: %s' % val)
+        name, config = val
+        schema = ColumnFieldConfigSchema()
+        schema.load(config)
+        return True
+    raise ValidationError('Invalid column field config: %s' % val)
 
 class BaseSchema(Schema):
     class Meta:
         # Use the json module as imported from utils
         json_module = json
 
+class ColumnFieldConfigSchema(BaseSchema):
+    # TODO: Allow type and aggregation overrides?
+    formula = mfields.Str(required=True)
+
+class ColumnFieldConfigField(mfields.Field):
+    def _validate(self, value):
+        is_valid_column_field_config(value)
+        super(ColumnFieldConfigField, self)._validate(value)
+
 class ColumnInfoSchema(BaseSchema):
-    fields = mfields.List(mfields.Str())
+    # TODO: this needs separate validation?
+    fields = mfields.Dict(keys=mfields.Str(), values=mfields.Field(allow_none=True))
     active = mfields.Boolean(default=True, missing=True)
 
-class ColumnConfigSchema(ColumnInfoSchema):
-    pass
+class ColumnConfigSchema(BaseSchema):
+    fields = mfields.List(ColumnFieldConfigField())
+    active = mfields.Boolean(default=True, missing=True)
+
+class TableTypeField(mfields.Field):
+    def _validate(self, value):
+        is_valid_table_type(value)
+        super(TableTypeField, self)._validate(value)
 
 class TableInfoSchema(BaseSchema):
     type = TableTypeField(required=True)
@@ -70,30 +113,10 @@ class TableConfigSchema(TableInfoSchema):
 class DataSourceConfigSchema(BaseSchema):
     tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
 
-def is_valid_field_name(val):
-    if val is None:
-        raise ValidationError('Field name can not be null')
-    if re.match(FIELD_NAME_REGEX, val):
-        return True
-    raise ValidationError('Field name must satisfy regex "%s": %s' % (FIELD_NAME_REGEX, val))
-
-def is_valid_fact_type(val):
-    if val is not None:
-        try:
-            sa_type = type_string_to_sa_type(val)
-        except InvalidSQLAlchemyTypeString:
-            raise ValidationError('Invalid table type: %s' % val)
-    return True
-
-def is_valid_aggregation(val):
-    if val in get_class_var_values(AggregationTypes):
-        return True
-    raise ValidationError('Invalid aggregation: %s' % val)
-
 # TODO: if type is missing, formula must be supplied and vice-versa
 class FactConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(default=None, missing=None, validate=is_valid_fact_type)
+    type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
     aggregation = mfields.String(default=AggregationTypes.SUM,
                                  missing=AggregationTypes.SUM,
                                  validate=is_valid_aggregation)
@@ -102,7 +125,7 @@ class FactConfigSchema(BaseSchema):
 
 class DimensionConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(default=None, missing=None)
+    type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
     formula = mfields.String(default=None, missing=None)
 
 class SQLAWConfigSchema(BaseSchema):

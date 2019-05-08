@@ -23,7 +23,6 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              type_string_to_sa_type,
                              is_probably_fact,
                              sqla_compile,
-                             printexpr,
                              column_fullname,
                              get_sqla_clause,
                              to_sqlite_type,
@@ -74,6 +73,33 @@ class TableInfo(SQLAWInfo, PrintMixin):
 class ColumnInfo(SQLAWInfo, PrintMixin):
     repr_attrs = ['fields', 'active']
     schema = ColumnInfoSchema
+
+    @classmethod
+    def create(cls, sqlaw_info):
+        if isinstance(sqlaw_info, cls):
+            return sqlaw_info
+        assert isinstance(sqlaw_info, dict), 'Raw info must be a dict: %s' % sqlaw_info
+
+        # Need to reformat the fields from config format to ColumnInfo format
+        fields_dict = {}
+        for field_row in sqlaw_info.get('fields', []):
+            if isinstance(field_row, str):
+                fields_dict[field_row] = None
+                continue
+            if isinstance(field_row, (tuple, list)):
+                name = field_row[0]
+                config = field_row[1]
+                # TODO: column formulas should probably be verified to be using fully
+                # qualified column names. We could use something like sqlparse to
+                # help analyze this for SQL-based datasources, but not everything
+                # will be sql.
+                fields_dict[name] = config
+                continue
+            assert False, 'Invalid field row format: %s' % sqlaw_info
+
+        sqlaw_info['fields'] = fields_dict
+        sqlaw_info = cls.schema().load(sqlaw_info)
+        return cls(**sqlaw_info)
 
 class TableSet(PrintMixin):
     repr_attrs = ['ds_name', 'join_list', 'grain', 'target_facts']
@@ -179,7 +205,10 @@ class Field(PrintMixin):
         return []
 
     def get_ds_expression(self, column):
-        return sa.func.ifnull(column, self.ifnull_value).label(self.name)
+        formula = column.sqlaw.fields[self.name].get('formula', None) if column.sqlaw.fields[self.name] else None
+        if not formula:
+            return sa.func.ifnull(column, self.ifnull_value).label(self.name)
+        return sa.func.ifnull(sa.text(formula), self.ifnull_value).label(self.name)
 
     def get_final_select_clause(self, *args, **kwargs):
         return self.name
@@ -200,15 +229,21 @@ class Fact(Field):
 
     def get_ds_expression(self, column):
         # TODO: support weighted averages
+        formula = column.sqlaw.fields[self.name].get('formula', None) if column.sqlaw.fields[self.name] else None
+        use_column = column
+        if formula:
+            # TODO: detect if rounding or aggregation is already applied?
+            use_column = sa.text(formula)
+
         rounding = self.rounding or 0
         aggr = aggregation_to_sqla_func(self.aggregation)
 
         if self.aggregation in [AggregationTypes.COUNT, AggregationTypes.COUNT_DISTINCT]:
             if rounding:
                 warn('Ignoring rounding for count field: %s' % self.name)
-            return aggr(sa.func.ifnull(column, self.ifnull_value)).label(self.name)
+            return aggr(sa.func.ifnull(use_column, self.ifnull_value)).label(self.name)
 
-        return sa.func.round(aggr(sa.func.ifnull(column, self.ifnull_value)), rounding).label(self.name)
+        return sa.func.round(aggr(sa.func.ifnull(use_column, self.ifnull_value)), rounding).label(self.name)
 
 class FormulaFact(Fact):
     repr_atts = ['name', 'formula']
@@ -328,7 +363,7 @@ class Warehouse:
                         continue
                     else:
                         sqlaw_info = {}
-                sqlaw_info['fields'] = sqlaw_info.get('fields', [column_fullname(column)])
+                sqlaw_info['fields'] = sqlaw_info.get('fields', {column_fullname(column): None})
 
                 if column.primary_key:
                     dim_count = 0
@@ -536,7 +571,7 @@ class Warehouse:
     def find_possible_table_sets(self, ds_name, ds_tables_with_fact, fact, grain):
         table_sets = []
         for fact_table in ds_tables_with_fact:
-            if not grain:
+            if (not grain) or grain.issubset(get_table_fields(fact_table)):
                 table_set = TableSet(ds_name, fact_table, None, grain, set([fact]))
                 table_sets.append(table_set)
                 continue
@@ -586,6 +621,7 @@ class Warehouse:
         dbg('fact:%s grain:%s' % (fact, grain))
         ds_fact_tables = self.get_ds_tables_with_fact(fact)
         ds_table_sets = self.get_ds_table_sets(ds_fact_tables, fact, grain)
+        assert ds_table_sets, 'No table set found for fact %s at grain %s' % (fact, grain)
         table_set = self.choose_best_table_set(ds_table_sets)
         return table_set
 
@@ -656,6 +692,7 @@ class Warehouse:
                 continue
 
             ds_config = config['datasources'][ds_name]
+
             for table in metadata.tables.values():
                 if table.fullname not in ds_config['tables']:
                     continue
@@ -1024,17 +1061,6 @@ class Report:
 
         for dim in dimensions:
             self.ds_dimensions.add(dim)
-        # for dim_name in self.dimensions:
-        #     dim = warehouse.dimensions[dim_name]
-        #     formula_fields, _ = dim.get_formula_fields(self.warehouse) or ([dim_name], None)
-        #     for field in formula_fields:
-        #         if field in warehouse.facts:
-        #             self.ds_facts.add(field)
-        #             #assert False, 'Dimension %s is trying to use fact %s in its formula' % (dim_name, field)
-        #         elif field in warehouse.dimensions:
-        #             self.ds_dimensions.add(field)
-        #         else:
-        #             assert False, 'Could not find field %s in warehouse' % field
 
         self.queries = self.build_ds_queries()
         self.combined_query = None
@@ -1107,7 +1133,6 @@ class Report:
 
             table_set = self.warehouse.get_fact_table_set(fact, grain)
             query = DataSourceQuery(self.warehouse, [fact], self.ds_dimensions, self.criteria, table_set)
-            printexpr(query.select)
             dbg(sqla_compile(query.select))
             queries.append(query)
         return queries

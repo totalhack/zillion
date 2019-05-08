@@ -109,6 +109,13 @@ class TestSQLAW(TestBase):
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
+    def testReportDSDimensionFormula(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['sales']
+        dimensions = ['revenue_decile']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
     def testRollup(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue']

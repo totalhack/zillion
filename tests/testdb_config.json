@@ -34,6 +34,11 @@
             "name": "leads",
             "type": "Integer",
             "aggregation": "count_distinct"
+        },
+        {
+            "name": "sales",
+            "type": "Integer",
+            "aggregation": "count_distinct"
         }
     ],
 
@@ -41,6 +46,10 @@
         {
             "name": "partner_name",
             "type": "String(32)"
+        },
+        {
+            "name": "revenue_decile",
+            "type": "Integer"
         }
     ],
     
@@ -99,7 +108,7 @@
                     "parent": "leads",
                     "columns": {
                         "id": {
-                            "fields": ["sale_id"]
+                            "fields": ["sale_id", "sales"]
                         },
                         "created_at": {
                             "fields": ["created_at"]
@@ -108,7 +117,11 @@
                             "fields": ["lead_id"]
                         },
                         "revenue": {
-                            "fields": ["revenue", "revenue_avg"]
+                            "fields": [
+                                "revenue",
+                                "revenue_avg",
+                                ["revenue_decile", {"formula": "10*ROUND(sales.revenue/10.0, 0)"}]
+                            ]
                         }
                     }
                 }
