@@ -86,6 +86,7 @@ class ColumnInfo(SQLAWInfo, PrintMixin):
             if isinstance(field_row, str):
                 fields_dict[field_row] = None
                 continue
+
             if isinstance(field_row, (tuple, list)):
                 name = field_row[0]
                 config = field_row[1]
@@ -95,6 +96,7 @@ class ColumnInfo(SQLAWInfo, PrintMixin):
                 # will be sql.
                 fields_dict[name] = config
                 continue
+
             assert False, 'Invalid field row format: %s' % sqlaw_info
 
         sqlaw_info['fields'] = fields_dict
@@ -397,6 +399,14 @@ class Warehouse:
         if field in self.dimensions:
             return self.dimensions[field]
         assert False, 'Field %s does not exist' % field
+
+    def get_fact(self, name):
+        assert name in self.facts, 'Invalid fact name: %s' % name
+        return self.facts[name]
+
+    def get_dimension(self, name):
+        assert name in self.dimensions, 'Invalid dimensions name: %s' % name
+        return self.dimensions[name]
 
     def get_primary_key_fields(self, primary_key):
         pk_fields = set()
@@ -906,13 +916,13 @@ class BaseCombinedResult:
             for dim_name in qr.query.dimensions:
                 if dim_name in dimensions:
                     continue
-                dim = self.warehouse.dimensions[dim_name]
+                dim = self.warehouse.get_dimension(dim_name)
                 dimensions[dim_name] = dim
 
             for fact_name in qr.query.facts:
                 if fact_name in facts:
                     continue
-                fact = self.warehouse.facts[fact_name]
+                fact = self.warehouse.get_fact(fact_name)
                 facts[fact_name] = fact
 
         return dimensions, facts
@@ -990,11 +1000,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         columns = []
 
         for dim_name in dimensions:
-            dim_def = self.warehouse.dimensions[dim_name]
+            dim_def = self.warehouse.get_dimension(dim_name)
             columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), dim_def.name))
 
         for fact_name in facts:
-            fact_def = self.warehouse.facts[fact_name]
+            fact_def = self.warehouse.get_fact(fact_name)
             columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), fact_def.name))
 
         columns_clause = ', '.join(columns)
@@ -1018,7 +1028,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         if rollup:
             aggrs = {}
             for fact_name in facts:
-                fact = self.warehouse.facts[fact_name]
+                fact = self.warehouse.get_fact(fact_name)
                 aggr_type = PANDAS_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
                 fact_name = sqlite_safe_name(fact_name)
                 aggrs[fact_name] = aggr_type
@@ -1049,7 +1059,7 @@ class Report:
         self.ds_dimensions = OrderedSet()
 
         for fact_name in self.facts:
-            fact = warehouse.facts[fact_name]
+            fact = warehouse.get_fact(fact_name)
             formula_fields, _ = fact.get_formula_fields(self.warehouse) or ([fact_name], None)
             for field in formula_fields:
                 if field in warehouse.facts:

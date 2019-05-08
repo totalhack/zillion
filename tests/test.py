@@ -116,6 +116,13 @@ class TestSQLAW(TestBase):
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
+    def testReportNonExistentFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['sales1234']
+        dimensions = ['campaign_id']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
     def testRollup(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue']
