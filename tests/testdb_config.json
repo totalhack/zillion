@@ -7,6 +7,13 @@
             "formula": "{revenue}/{leads}"
         },
         {
+            "name": "rpl_weighted",
+            "aggregation": "avg",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}",
+            "weighting_fact": "sales.quantity"
+        },
+        {
             "name": "rpl_squared",
             "aggregation": "avg",
             "rounding": 2,
@@ -25,10 +32,24 @@
             "rounding": 2
         },
         {
+            "name": "revenue_ds",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2
+        },
+        {
             "name": "revenue_avg",
             "type": "Numeric(10,2)",
             "aggregation": "avg",
-            "rounding": 2
+            "rounding": 2,
+            "weighting_fact": "sales.quantity"
+        },
+        {
+            "name": "revenue_avg_ds_weighted",
+            "type": "Numeric(10,2)",
+            "aggregation": "avg",
+            "rounding": 2,
+            "weighting_fact": "sales.quantity"
         },
         {
             "name": "leads",
@@ -119,8 +140,10 @@
                         "revenue": {
                             "fields": [
                                 "revenue",
+                                ["revenue_ds", {"ds_formula": "IFNULL(sales.revenue, 0)"}],
                                 "revenue_avg",
-                                ["revenue_decile", {"formula": "10*ROUND(sales.revenue/10.0, 0)"}]
+                                ["revenue_avg_ds_weighted", {"ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"}],
+                                ["revenue_decile", {"ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}]
                             ]
                         }
                     }

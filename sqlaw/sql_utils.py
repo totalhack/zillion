@@ -2,11 +2,13 @@ import ast
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
+import sqlparse as sp
 
 from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
                         AggregationTypes)
+from sqlaw.utils import dbg, st, get_class_var_values
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 
@@ -21,6 +23,26 @@ AGGREGATION_SQLA_FUNC_MAP = {
 
 class InvalidSQLAlchemyTypeString(Exception):
     pass
+
+def contains_aggregation(sql):
+    # TODO: this function needs more testing
+    if isinstance(sql, str):
+        sql = sp.parse(sql)
+
+    aggr_types = get_class_var_values(AggregationTypes)
+
+    for token in sql:
+        if isinstance(token, sp.sql.Function):
+            name = token.get_name()
+            # TODO: should we use a hardcoded list here?
+            # If case changes or aggregation naming is changed, this could fail
+            if name.lower() in aggr_types:
+                return True
+        if isinstance(token, sp.sql.TokenList):
+            token_result = contains_aggregation(token)
+            if token_result:
+                return True
+    return False
 
 def type_string_to_sa_type(type_string):
     parts = type_string.split('(')

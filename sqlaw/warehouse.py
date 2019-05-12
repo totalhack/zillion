@@ -3,9 +3,10 @@ import random
 from sqlite3 import connect, Row
 import time
 
-import pandas as pd
 import networkx as nx
+import numpy as np
 from orderedset import OrderedSet
+import pandas as pd
 import sqlalchemy as sa
 
 from sqlaw.configs import (ColumnInfoSchema,
@@ -20,6 +21,7 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         TableTypes)
 from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              aggregation_to_sqla_func,
+                             contains_aggregation,
                              type_string_to_sa_type,
                              is_probably_fact,
                              sqla_compile,
@@ -28,6 +30,7 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              to_sqlite_type,
                              sqlite_safe_name)
 from sqlaw.utils import (dbg,
+                         dbgsql,
                          warn,
                          st,
                          initializer,
@@ -40,9 +43,14 @@ DEFAULT_IFNULL_VALUE = '--'
 ROLLUP_INDEX_LABEL = '::'
 MAX_FORMULA_DEPTH = 3
 
-PANDAS_AGGR_TRANSLATION = {
-    AggregationTypes.AVG: 'mean'
+PANDAS_ROLLUP_AGGR_TRANSLATION = {
+    AggregationTypes.AVG: 'mean',
+    AggregationTypes.COUNT: 'sum',
+    AggregationTypes.COUNT_DISTINCT: 'sum',
 }
+
+class InvalidFieldException(Exception):
+    pass
 
 class MaxFormulaDepthException(Exception):
     pass
@@ -150,13 +158,18 @@ class JoinList(PrintMixin):
 
 def joins_from_path(graph, path, field_map=None):
     joins = []
-    for i, node in enumerate(path):
-        if i == (len(path) - 1):
-            break
-        start, end = path[i], path[i+1]
-        edge = graph.edges[start, end]
-        join_info = JoinInfo([start, end], edge['join_fields'])
+    if len(path) == 1:
+        # A placeholder join that is really just a single table
+        join_info = JoinInfo(path, None)
         joins.append(join_info)
+    else:
+        for i, node in enumerate(path):
+            if i == (len(path) - 1):
+                break
+            start, end = path[i], path[i+1]
+            edge = graph.edges[start, end]
+            join_info = JoinInfo([start, end], edge['join_fields'])
+            joins.append(join_info)
     return JoinList(joins, field_map=field_map)
 
 def get_table_fields(table):
@@ -207,13 +220,13 @@ class Field(PrintMixin):
         return []
 
     def get_ds_expression(self, column):
-        formula = column.sqlaw.fields[self.name].get('formula', None) if column.sqlaw.fields[self.name] else None
-        if not formula:
+        ds_formula = column.sqlaw.fields[self.name].get('ds_formula', None) if column.sqlaw.fields[self.name] else None
+        if not ds_formula:
             return sa.func.ifnull(column, self.ifnull_value).label(self.name)
-        return sa.func.ifnull(sa.text(formula), self.ifnull_value).label(self.name)
+        return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
 
     def get_final_select_clause(self, *args, **kwargs):
-        return self.name
+        return sqlite_safe_name(self.name)
 
     # https://stackoverflow.com/questions/2909106/whats-a-correct-and-good-way-to-implement-hash
     def __key(self):
@@ -226,32 +239,56 @@ class Field(PrintMixin):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
 class Fact(Field):
-    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None, **kwargs):
-        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding, **kwargs)
+    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None, **kwargs):
+        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding,
+                                   weighting_fact=weighting_fact, **kwargs)
+        if weighting_fact:
+            # TODO: enforce this in config instead?
+            assert aggregation == AggregationTypes.AVG,\
+                'Weighting facts are only supported for aggregation type: %s' % AggregationTypes.AVG
 
     def get_ds_expression(self, column):
-        # TODO: support weighted averages
-        formula = column.sqlaw.fields[self.name].get('formula', None) if column.sqlaw.fields[self.name] else None
-        use_column = column
-        if formula:
-            # TODO: detect if rounding or aggregation is already applied?
-            use_column = sa.text(formula)
-
-        rounding = self.rounding or 0
+        expr = column
         aggr = aggregation_to_sqla_func(self.aggregation)
+        skip_aggr = False
 
-        if self.aggregation in [AggregationTypes.COUNT, AggregationTypes.COUNT_DISTINCT]:
-            if rounding:
-                warn('Ignoring rounding for count field: %s' % self.name)
-            return aggr(sa.func.ifnull(use_column, self.ifnull_value)).label(self.name)
+        ds_formula = column.sqlaw.fields[self.name].get('ds_formula', None) if column.sqlaw.fields[self.name] else None
+        if ds_formula:
+            if contains_aggregation(ds_formula):
+                warn('Datasource formula contains aggregation, skipping default logic!')
+                skip_aggr = True
+                # TODO: is literal_column() appropriate vs text()?
+            expr = sa.literal_column(ds_formula)
 
-        return sa.func.round(aggr(sa.func.ifnull(use_column, self.ifnull_value)), rounding).label(self.name)
+        if not skip_aggr:
+            if self.aggregation in [AggregationTypes.COUNT, AggregationTypes.COUNT_DISTINCT]:
+                if self.rounding:
+                    warn('Ignoring rounding for count field: %s' % self.name)
+                return aggr(expr).label(self.name)
+
+            if self.weighting_fact:
+                # TODO: check this when reading config
+                assert self.weighting_fact in get_table_fields(column.table),\
+                    'Weighting fact "%s" is not present in table "%s"' % (self.weighting_fact, column.table.fullname)
+                # TODO: The 1.0 hack is specific to sqlite
+                expr = sa.func.sum(sa.text('1.0') * expr * sa.text(self.weighting_fact)) / sa.func.sum(sa.text(self.weighting_fact))
+            else:
+                expr = aggr(expr)
+
+        if self.rounding:
+            expr = sa.func.round(expr, self.rounding)
+
+        return expr.label(self.name)
+
+    def get_final_select_clause(self, *args, **kwargs):
+        return sqlite_safe_name(self.name)
 
 class FormulaFact(Fact):
     repr_atts = ['name', 'formula']
 
-    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None):
-        super(FormulaFact, self).__init__(name, None, aggregation=aggregation, rounding=rounding, formula=formula)
+    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None, **kwargs):
+        super(FormulaFact, self).__init__(name, None, aggregation=aggregation, rounding=rounding, formula=formula,
+                                          weighting_fact=weighting_fact, **kwargs)
         # TODO: ensure the params are valid fields as objects are formed
 
     def get_formula_fields(self, warehouse, depth=0):
@@ -289,25 +326,34 @@ class FormulaFact(Fact):
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
         if self.rounding:
-            # XXX: needs a better home? This doesnt know what dialect to compile for.
+            # TODO: needs a better home? This doesnt know what dialect to compile for.
             # TODO: The 1.0 is a hack specific to sqlite. Also needs a new home.
             format_args = {k:('(1.0*%s)' % k) for k in formula_fields}
-            clause = sqla_compile(sa.func.round(sa.text(raw_formula.format(**format_args)), self.rounding))
+            raw = sa.text(raw_formula.format(**format_args))
+            clause = sa.func.round(raw, self.rounding)
         else:
             format_args = {k:k for k in formula_fields}
-            clause = raw_formula.format(**format_args)
+            clause = sa.text(raw_formula.format(**format_args))
 
-        return clause
+        return sqla_compile(clause)
 
 def create_fact(fact_def):
     if fact_def['formula']:
-        fact = FormulaFact(fact_def['name'], fact_def['formula'],
-                           aggregation=fact_def['aggregation'],
-                           rounding=fact_def['rounding'])
+        fact = FormulaFact(
+            fact_def['name'],
+            fact_def['formula'],
+            aggregation=fact_def['aggregation'],
+            rounding=fact_def['rounding'],
+            weighting_fact=fact_def['weighting_fact']
+        )
     else:
-        fact = Fact(fact_def['name'], fact_def['type'],
-                    aggregation=fact_def['aggregation'],
-                    rounding=fact_def['rounding'])
+        fact = Fact(
+            fact_def['name'],
+            fact_def['type'],
+            aggregation=fact_def['aggregation'],
+            rounding=fact_def['rounding'],
+            weighting_fact=fact_def['weighting_fact']
+        )
     return fact
 
 class Dimension(Field):
@@ -401,11 +447,13 @@ class Warehouse:
         assert False, 'Field %s does not exist' % field
 
     def get_fact(self, name):
-        assert name in self.facts, 'Invalid fact name: %s' % name
+        if name not in self.facts:
+            raise InvalidFieldException('Invalid fact name: %s' % name)
         return self.facts[name]
 
     def get_dimension(self, name):
-        assert name in self.dimensions, 'Invalid dimensions name: %s' % name
+        if name not in self.dimensions:
+            raise InvalidFieldException('Invalid dimensions name: %s' % name)
         return self.dimensions[name]
 
     def get_primary_key_fields(self, primary_key):
@@ -491,7 +539,7 @@ class Warehouse:
         for ds_name, columns in ds_fact_columns.items():
             for column in columns:
                 ds_tables[ds_name].append(column.table)
-        dbg('found %d datasource tables with fact' % len(ds_tables))
+        dbg('found %d datasource tables with fact %s' % (len(ds_tables), fact))
         return ds_tables
 
     def add_dimension_table(self, ds_name, table):
@@ -544,9 +592,14 @@ class Warehouse:
 
         for column in self.dimensions[dimension].get_columns(ds_name):
             table = column.table
-            paths = nx.all_simple_paths(ds_graph, fact_table.fullname, table.fullname)
+            if table == fact_table:
+                paths = [[fact_table.fullname]]
+            else:
+                paths = nx.all_simple_paths(ds_graph, fact_table.fullname, table.fullname)
+
             if not paths:
                 continue
+
             for path in paths:
                 field_map = {dimension:column}
                 join_list = joins_from_path(ds_graph, path, field_map=field_map)
@@ -904,7 +957,7 @@ class BaseCombinedResult:
         raise NotImplementedError
 
     def get_row_hash(self, row):
-        # XXX: should we limit length of particular primary dims if they are long strings?
+        # TODO: should we limit length of particular primary dims if they are long strings?
         hash_bytes = str([row[k] for k in row.keys() if k in self.primary_ds_dimensions]).encode('utf8')
         return hash(hash_bytes)
 
@@ -936,7 +989,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         return conn.cursor()
 
     def create_table(self):
-        create_sql = 'CREATE TEMP TABLE %s (\n' % self.table_name
+        create_sql = 'CREATE TEMP TABLE %s (' % self.table_name
         column_clauses = ['hash BIGINT NOT NULL PRIMARY KEY']
 
         for field_name, field in self.ds_dimensions.items():
@@ -949,13 +1002,13 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             clause = '%s %s DEFAULT NULL' % (sqlite_safe_name(field_name), type_str)
             column_clauses.append(clause)
 
-        create_sql += ',\n'.join(column_clauses)
-        create_sql += '\n) WITHOUT ROWID'
-        dbg(create_sql)
+        create_sql += ', '.join(column_clauses)
+        create_sql += ') WITHOUT ROWID'
+        dbg(create_sql) # Creates don't pretty print well with dbgsql?
         self.cursor.execute(create_sql)
         if self.primary_ds_dimensions:
             index_sql = 'CREATE INDEX idx_dims ON %s (%s)' % (self.table_name, ', '.join(self.primary_ds_dimensions))
-            dbg(index_sql)
+            dbgsql(index_sql)
             self.cursor.execute(index_sql)
         self.conn.commit()
 
@@ -991,52 +1044,81 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         qr = self.cursor.execute('SELECT * FROM %s' % self.table_name)
         return [OrderedDict(row) for row in qr.fetchall()]
 
+    def get_final_select_sql(self, columns):
+        columns_clause = ', '.join(columns)
+        order_clause = '1'
+        if self.primary_ds_dimensions:
+            order_clause = ', '.join(['%s ASC' % d for d in self.primary_ds_dimensions])
+        sql = 'SELECT %s FROM %s GROUP BY hash ORDER BY %s' % (columns_clause, self.table_name, order_clause)
+        dbgsql(sql)
+        return sql
+
+    def apply_row_filters_to_df(self, df, row_filters, facts, dimensions):
+        filter_parts = []
+        for row_filter in row_filters:
+            field, op, value = row_filter
+            assert (field in facts) or (field in dimensions),\
+                'Row filter field "%s" is not in result table' % field
+            assert op in ROW_FILTER_OPS, 'Invalid row filter operation: %s' % op
+            filter_parts.append('(%s %s %s)' % (field, op, value))
+        return df.query(' and '.join(filter_parts))
+
+    def apply_rollup_to_df(self, df, facts, dimensions):
+        aggrs = {}
+        wavgs = []
+
+        if not dimensions:
+            warn('Ignoring rollup, no dimensions')
+            return df
+
+        def wavg(avg_name, weight_name):
+            d = df[avg_name]
+            w = df[weight_name]
+            try:
+                return (d * w).sum() / w.sum()
+            except ZeroDivisionError:
+                return d.mean() # Return mean if there are no weights
+
+        for fact_name in facts:
+            fact = self.warehouse.get_fact(fact_name)
+            if fact.weighting_fact:
+                wavgs.append((sqlite_safe_name(fact_name), sqlite_safe_name(fact.weighting_fact)))
+                continue
+            else:
+                aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
+            fact_name = sqlite_safe_name(fact_name)
+            aggrs[fact_name] = aggr_func
+
+        aggr = df.agg(aggrs)
+        # TODO: this doesnt scale
+        for fact_name, weighting_fact in wavgs:
+            aggr[fact_name] = wavg(fact_name, weighting_fact)
+        rollup_index = (ROLLUP_INDEX_LABEL,) * len(dimensions) if len(dimensions) > 1 else ROLLUP_INDEX_LABEL
+        with pd.option_context('mode.chained_assignment', None):
+            df.loc[rollup_index, :] = aggr
+        return df
+
     def get_final_result(self, facts, dimensions, row_filters, rollup):
         # TODO: support multi-rollup
-        # TODO: support weighted average
-        # - this would require keeping that column in the result
-
         fields = dimensions + facts
         columns = []
 
         for dim_name in dimensions:
             dim_def = self.warehouse.get_dimension(dim_name)
-            columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), dim_def.name))
+            columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), sqlite_safe_name(dim_def.name)))
 
         for fact_name in facts:
             fact_def = self.warehouse.get_fact(fact_name)
-            columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), fact_def.name))
+            columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), sqlite_safe_name(fact_def.name)))
 
-        columns_clause = ', '.join(columns)
-        order_clause = '1'
-        if self.primary_ds_dimensions:
-            order_clause = ', '.join(['%s ASC' % d for d in self.primary_ds_dimensions])
-        sql = 'SELECT %s FROM %s ORDER BY %s' % (columns_clause, self.table_name, order_clause)
-        index_col = dimensions or None
-        df = pd.read_sql(sql, self.conn, index_col=index_col)
+        sql = self.get_final_select_sql(columns)
+        df = pd.read_sql(sql, self.conn, index_col=dimensions or None)
 
         if row_filters:
-            filter_parts = []
-            for row_filter in row_filters:
-                field, op, value = row_filter
-                assert (field in facts) or (field in dimensions),\
-                    'Row filter field "%s" is not in result table' % field
-                assert op in ROW_FILTER_OPS, 'Invalid row filter operation: %s' % op
-                filter_parts.append('(%s %s %s)' % (field, op, value))
-            df = df.query(' and '.join(filter_parts))
+            df = self.apply_row_filters_to_df(df, row_filters, facts, dimensions)
 
         if rollup:
-            aggrs = {}
-            for fact_name in facts:
-                fact = self.warehouse.get_fact(fact_name)
-                aggr_type = PANDAS_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
-                fact_name = sqlite_safe_name(fact_name)
-                aggrs[fact_name] = aggr_type
-
-            aggr = df.agg(aggrs)
-            rollup_index = (ROLLUP_INDEX_LABEL,) * len(dimensions)
-            with pd.option_context('mode.chained_assignment', None):
-                df.loc[rollup_index, :] = aggr
+            df = self.apply_rollup_to_df(df, facts, dimensions)
 
         return df
 
@@ -1061,6 +1143,12 @@ class Report:
         for fact_name in self.facts:
             fact = warehouse.get_fact(fact_name)
             formula_fields, _ = fact.get_formula_fields(self.warehouse) or ([fact_name], None)
+
+            if fact.weighting_fact:
+                assert fact.weighting_fact in warehouse.facts, \
+                    'Could not find weighting fact %s in warehouse' % fact.weighting_fact
+                self.ds_facts.add(fact.weighting_fact)
+
             for field in formula_fields:
                 if field in warehouse.facts:
                     self.ds_facts.add(field)
@@ -1069,7 +1157,7 @@ class Report:
                 else:
                     assert False, 'Could not find field %s in warehouse' % field
 
-        for dim in dimensions:
+        for dim in self.dimensions:
             self.ds_dimensions.add(dim)
 
         self.queries = self.build_ds_queries()
@@ -1131,11 +1219,12 @@ class Report:
             for query in queries:
                 if query.covers_fact(fact):
                     query.add_fact(fact)
-                    return True
+                    return query
             return False
 
         for fact in self.ds_facts:
-            if fact_covered_in_queries(fact):
+            existing_query = fact_covered_in_queries(fact)
+            if existing_query:
                 # TODO: we could do a single consolidation at the end instead
                 # and that might get more optimal results
                 dbg('Fact %s is covered by existing query' % fact)
@@ -1143,8 +1232,11 @@ class Report:
 
             table_set = self.warehouse.get_fact_table_set(fact, grain)
             query = DataSourceQuery(self.warehouse, [fact], self.ds_dimensions, self.criteria, table_set)
-            dbg(sqla_compile(query.select))
             queries.append(query)
+
+        for query in queries:
+            dbgsql(sqla_compile(query.select))
+
         return queries
 
     def create_combined_result(self, ds_query_results):

@@ -80,7 +80,7 @@ class BaseSchema(Schema):
 
 class ColumnFieldConfigSchema(BaseSchema):
     # TODO: Allow type and aggregation overrides?
-    formula = mfields.Str(required=True)
+    ds_formula = mfields.Str(required=True)
 
 class ColumnFieldConfigField(mfields.Field):
     def _validate(self, value):
@@ -121,6 +121,7 @@ class FactConfigSchema(BaseSchema):
                                  missing=AggregationTypes.SUM,
                                  validate=is_valid_aggregation)
     rounding = mfields.Integer(default=None, missing=None)
+    weighting_fact = mfields.Str(default=None, missing=None)
     formula = mfields.String(default=None, missing=None)
 
 class DimensionConfigSchema(BaseSchema):

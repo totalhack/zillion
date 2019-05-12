@@ -7,4 +7,5 @@ pandas
 pylint
 simplejson
 sqlalchemy
+sqlparse
 

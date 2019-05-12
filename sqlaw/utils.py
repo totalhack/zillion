@@ -16,6 +16,7 @@ import sys
 import climax
 from dateutil import parser as dateparser
 from orderedset import OrderedSet
+import sqlparse as sp
 
 #-------- Command line utils
 
@@ -39,10 +40,10 @@ def prompt_user(msg, answers):
 #-------- Object utils
 
 def get_class_vars(cls):
-    return [i for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))]
+    return set([i for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))])
 
 def get_class_var_values(cls):
-    return [getattr(cls, i) for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))]
+    return set([getattr(cls, i) for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))])
 
 def import_object(name):
     if '.' not in name:
@@ -114,19 +115,29 @@ class FontEffects:
     UNDERLINE = '\033[4m'
     INVERTED = '\033[7m'
 
+def sqlformat(sql):
+    return sp.format(sql, reindent=True, keyword_case='upper')
+
 def log(msg, label='parent', indent=0, color=None, autocolor=False, format_func=pformat):
-    if not isinstance(msg, str):
+    if isinstance(format_func, str):
+        format_func = globals()[format_func]
+
+    if format_func and format_func != pformat:
+        msg = format_func(msg)
+        if label:
+            msg = '\n' + msg
+    elif not isinstance(msg, str):
         msg = pformat(msg)
         if label:
             msg = '\n' + msg
 
     if indent is not None and int(indent):
-        msg = msg + (' ' * int(indent))
+        msg = (' ' * int(indent)) + msg
 
     if label:
         if label == 'parent':
             label = sys._getframe().f_back.f_code.co_name
-        msg = label.strip() + ':' + msg
+        msg = label.strip() + ': ' + msg
 
     if (not color) and autocolor:
         assert label, 'No label provided, can not use autocolor'
@@ -145,6 +156,12 @@ def dbg(msg, label='parent', config=None, **kwargs):
     if label == 'parent':
         label = sys._getframe().f_back.f_code.co_name
     log(msg, label=label, autocolor=True, **kwargs)
+
+def dbgsql(sql, label='parent', config=None):
+    if label == 'parent':
+        label = sys._getframe().f_back.f_code.co_name
+
+    dbg(sql, label=label, config=config, format_func=sqlformat)
 
 def warn(msg, label='WARNING'):
     log(msg, label=label, color='yellow')
