@@ -277,9 +277,10 @@ class Fact(Field):
 
             if self.weighting_fact:
                 # TODO: check weighting fact is present in this table when reading config
-                # TODO: The 1.0 hack is specific to sqlite
                 w_column = get_table_field_column(column.table, self.weighting_fact)
                 w_column_name = column_fullname(w_column)
+                # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
+                # to integer values improperly by some database dialects such as sqlite
                 expr = sa.func.sum(sa.text('1.0') * expr * sa.text(w_column_name)) / sa.func.sum(sa.text(w_column_name))
             else:
                 expr = aggr(expr)
@@ -335,8 +336,8 @@ class FormulaFact(Fact):
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
         if self.rounding:
-            # TODO: needs a better home? This doesnt know what dialect to compile for.
-            # TODO: The 1.0 is a hack specific to sqlite. Also needs a new home.
+            # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
+            # to integer values improperly by some database dialects such as sqlite
             format_args = {k:('(1.0*%s)' % k) for k in formula_fields}
             raw = sa.text(raw_formula.format(**format_args))
             clause = sa.func.round(raw, self.rounding)
