@@ -12,13 +12,15 @@ import sqlalchemy as sa
 from sqlaw.configs import (ColumnInfoSchema,
                            TableInfoSchema,
                            FactConfigSchema,
-                           DimensionConfigSchema)
+                           DimensionConfigSchema,
+                           is_valid_field_name)
 from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
                         ROW_FILTER_OPS,
                         AggregationTypes,
-                        TableTypes)
+                        TableTypes,
+                        field_safe_name)
 from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              aggregation_to_sqla_func,
                              contains_aggregation,
@@ -27,8 +29,7 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              sqla_compile,
                              column_fullname,
                              get_sqla_clause,
-                             to_sqlite_type,
-                             sqlite_safe_name)
+                             to_sqlite_type)
 from sqlaw.utils import (dbg,
                          dbgsql,
                          warn,
@@ -179,6 +180,13 @@ def get_table_fields(table):
             fields.add(field)
     return fields
 
+def get_table_field_column(table, field_name):
+    for col in table.c:
+        for field in col.sqlaw.fields:
+            if field == field_name:
+                return col
+    assert False, 'Field %s is not present in table %s' % (field_name, table.fullname)
+
 def get_table_facts(warehouse, table):
     facts = set()
     for col in table.c:
@@ -201,6 +209,7 @@ class Field(PrintMixin):
 
     @initializer
     def __init__(self, name, type, **kwargs):
+        is_valid_field_name(name)
         self.column_map = defaultdict(list)
         if isinstance(type, str):
             self.type = type_string_to_sa_type(type)
@@ -226,7 +235,7 @@ class Field(PrintMixin):
         return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
 
     def get_final_select_clause(self, *args, **kwargs):
-        return sqlite_safe_name(self.name)
+        return self.name
 
     # https://stackoverflow.com/questions/2909106/whats-a-correct-and-good-way-to-implement-hash
     def __key(self):
@@ -257,7 +266,7 @@ class Fact(Field):
             if contains_aggregation(ds_formula):
                 warn('Datasource formula contains aggregation, skipping default logic!')
                 skip_aggr = True
-                # TODO: is literal_column() appropriate vs text()?
+            # TODO: is literal_column() appropriate vs text()?
             expr = sa.literal_column(ds_formula)
 
         if not skip_aggr:
@@ -267,11 +276,11 @@ class Fact(Field):
                 return aggr(expr).label(self.name)
 
             if self.weighting_fact:
-                # TODO: check this when reading config
-                assert self.weighting_fact in get_table_fields(column.table),\
-                    'Weighting fact "%s" is not present in table "%s"' % (self.weighting_fact, column.table.fullname)
+                # TODO: check weighting fact is present in this table when reading config
                 # TODO: The 1.0 hack is specific to sqlite
-                expr = sa.func.sum(sa.text('1.0') * expr * sa.text(self.weighting_fact)) / sa.func.sum(sa.text(self.weighting_fact))
+                w_column = get_table_field_column(column.table, self.weighting_fact)
+                w_column_name = column_fullname(w_column)
+                expr = sa.func.sum(sa.text('1.0') * expr * sa.text(w_column_name)) / sa.func.sum(sa.text(w_column_name))
             else:
                 expr = aggr(expr)
 
@@ -281,7 +290,7 @@ class Fact(Field):
         return expr.label(self.name)
 
     def get_final_select_clause(self, *args, **kwargs):
-        return sqlite_safe_name(self.name)
+        return self.name
 
 class FormulaFact(Fact):
     repr_atts = ['name', 'formula']
@@ -411,7 +420,7 @@ class Warehouse:
                         continue
                     else:
                         sqlaw_info = {}
-                sqlaw_info['fields'] = sqlaw_info.get('fields', {column_fullname(column): None})
+                sqlaw_info['fields'] = sqlaw_info.get('fields', {field_safe_name(column_fullname(column)): None})
 
                 if column.primary_key:
                     dim_count = 0
@@ -785,7 +794,7 @@ class Warehouse:
                     sqlaw_info = column.info.get('sqlaw', {})
                     # Config takes precendence over values on column objects
                     sqlaw_info.update(column_config)
-                    sqlaw_info['fields'] = sqlaw_info.get('fields', [column_fullname(column)])
+                    sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
                     column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
 
     def build_report(self, facts, dimensions=None, criteria=None, row_filters=None, rollup=None):
@@ -994,12 +1003,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         for field_name, field in self.ds_dimensions.items():
             type_str = str(to_sqlite_type(field.type))
-            clause = '%s %s NOT NULL' % (sqlite_safe_name(field_name), type_str)
+            clause = '%s %s NOT NULL' % (field_name, type_str)
             column_clauses.append(clause)
 
         for field_name, field in self.ds_facts.items():
             type_str = str(to_sqlite_type(field.type))
-            clause = '%s %s DEFAULT NULL' % (sqlite_safe_name(field_name), type_str)
+            clause = '%s %s DEFAULT NULL' % (field_name, type_str)
             column_clauses.append(clause)
 
         create_sql += ', '.join(column_clauses)
@@ -1016,7 +1025,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         # TODO: switch to bulk insert
         values_clause = ', '.join(['?'] * (1 + len(row)))
         # TODO: dont allow unsafe chars in fields names in the first place?
-        columns = [sqlite_safe_name(k) for k in row.keys()]
+        columns = [k for k in row.keys()]
         columns_clause = 'hash, ' + ', '.join(columns)
         update_clauses = []
         for k in columns:
@@ -1082,11 +1091,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         for fact_name in facts:
             fact = self.warehouse.get_fact(fact_name)
             if fact.weighting_fact:
-                wavgs.append((sqlite_safe_name(fact_name), sqlite_safe_name(fact.weighting_fact)))
+                wavgs.append((fact_name, fact.weighting_fact))
                 continue
             else:
                 aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
-            fact_name = sqlite_safe_name(fact_name)
+            fact_name = fact_name
             aggrs[fact_name] = aggr_func
 
         aggr = df.agg(aggrs)
@@ -1105,11 +1114,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         for dim_name in dimensions:
             dim_def = self.warehouse.get_dimension(dim_name)
-            columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), sqlite_safe_name(dim_def.name)))
+            columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), dim_def.name))
 
         for fact_name in facts:
             fact_def = self.warehouse.get_fact(fact_name)
-            columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), sqlite_safe_name(fact_def.name)))
+            columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), fact_def.name))
 
         sql = self.get_final_select_sql(columns)
         df = pd.read_sql(sql, self.conn, index_col=dimensions or None)

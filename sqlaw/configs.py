@@ -3,7 +3,10 @@ import re
 
 from marshmallow import Schema, fields as mfields, ValidationError
 
-from sqlaw.core import TableTypes, AggregationTypes
+from sqlaw.core import (TableTypes,
+                        AggregationTypes,
+                        FIELD_ALLOWABLE_CHARS,
+                        FIELD_ALLOWABLE_CHARS_STR)
 from sqlaw.sql_utils import (type_string_to_sa_type,
                              InvalidSQLAlchemyTypeString)
 from sqlaw.utils import (dbg,
@@ -12,8 +15,6 @@ from sqlaw.utils import (dbg,
                          st,
                          get_class_var_values,
                          initializer)
-
-FIELD_NAME_REGEX = '[0-9a-zA-Z_]+'
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""
@@ -44,9 +45,9 @@ def is_valid_table_type(val):
 def is_valid_field_name(val):
     if val is None:
         raise ValidationError('Field name can not be null')
-    if re.match(FIELD_NAME_REGEX, val):
+    if set(val) <= FIELD_ALLOWABLE_CHARS:
         return True
-    raise ValidationError('Field name must satisfy regex "%s": %s' % (FIELD_NAME_REGEX, val))
+    raise ValidationError('Field name "%s" has invalid characters. Allowed: %s' % (val, FIELD_ALLOWABLE_CHARS_STR))
 
 def is_valid_sqlalchemy_type(val):
     if val is not None:

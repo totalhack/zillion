@@ -50,7 +50,7 @@ class TestSQLAW(TestBase):
 
     def testReport(self):
         wh = Warehouse(self.ds_map, config=self.config)
-        facts = ['revenue', 'sales.quantity']
+        facts = ['revenue', 'sales_quantity']
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 11)]
@@ -60,7 +60,7 @@ class TestSQLAW(TestBase):
 
     def testReportNoDimensions(self):
         wh = Warehouse(self.ds_map, config=self.config)
-        facts = ['revenue', 'sales.quantity']
+        facts = ['revenue', 'sales_quantity']
         criteria = [('campaign_name', '=', 'Campaign 2B')]
         result = wh.report(facts, criteria=criteria)
         self.assertTrue(result)
@@ -142,7 +142,7 @@ class TestSQLAW(TestBase):
 
     def testReportWeightedFormulaFact(self):
         wh = Warehouse(self.ds_map, config=self.config)
-        facts = ['rpl_weighted', 'rpl', 'sales.quantity', 'revenue', 'leads']
+        facts = ['rpl_weighted', 'rpl', 'sales_quantity', 'revenue', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
@@ -156,14 +156,14 @@ class TestSQLAW(TestBase):
 
     def testReportWeightedFact(self):
         wh = Warehouse(self.ds_map, config=self.config)
-        facts = ['sales.quantity', 'revenue_avg', 'revenue', 'leads']
+        facts = ['sales_quantity', 'revenue_avg', 'revenue', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedFactWithRollup(self):
         wh = Warehouse(self.ds_map, config=self.config)
-        facts = ['sales.quantity', 'revenue_avg', 'leads']
+        facts = ['sales_quantity', 'revenue_avg', 'leads']
         dimensions = ['partner_name']
         rollup = True
         result = wh.report(facts, dimensions=dimensions, rollup=True)

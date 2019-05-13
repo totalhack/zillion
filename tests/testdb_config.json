@@ -11,7 +11,7 @@
             "aggregation": "avg",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_fact": "sales.quantity"
+            "weighting_fact": "sales_quantity"
         },
         {
             "name": "rpl_squared",
@@ -42,14 +42,14 @@
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2,
-            "weighting_fact": "sales.quantity"
+            "weighting_fact": "sales_quantity"
         },
         {
             "name": "revenue_avg_ds_weighted",
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2,
-            "weighting_fact": "sales.quantity"
+            "weighting_fact": "sales_quantity"
         },
         {
             "name": "leads",

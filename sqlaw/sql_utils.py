@@ -152,9 +152,3 @@ def get_sqla_clause(column, criterion, negate=False):
 
 def to_sqlite_type(type):
     return type.compile(dialect=sqlite_dialect())
-
-def sqlite_safe_name(name):
-    # TODO: find better home and make more complete list
-    for char in ['.', '_', ' ']:
-        name = name.replace(char, '_')
-    return name
