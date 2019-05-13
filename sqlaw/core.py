@@ -2,11 +2,13 @@ import string
 
 import sqlalchemy as sa
 
-class TableTypes:
+from sqlaw.utils import ClassValueContainsMeta
+
+class TableTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = 'dimension'
     FACT = 'fact'
 
-class AggregationTypes:
+class AggregationTypes(metaclass=ClassValueContainsMeta):
     AVG = 'avg'
     COUNT = 'count'
     COUNT_DISTINCT = 'count_distinct'

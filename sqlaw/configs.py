@@ -13,7 +13,6 @@ from sqlaw.utils import (dbg,
                          error,
                          json,
                          st,
-                         get_class_var_values,
                          initializer)
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
@@ -38,7 +37,7 @@ def load_config(filename, preserve_order=False):
     return config
 
 def is_valid_table_type(val):
-    if val in get_class_var_values(TableTypes):
+    if val in TableTypes:
         return True
     raise ValidationError('Invalid table type: %s' % val)
 
@@ -58,7 +57,7 @@ def is_valid_sqlalchemy_type(val):
     return True
 
 def is_valid_aggregation(val):
-    if val in get_class_var_values(AggregationTypes):
+    if val in AggregationTypes:
         return True
     raise ValidationError('Invalid aggregation: %s' % val)
 

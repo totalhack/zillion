@@ -45,6 +45,14 @@ def get_class_vars(cls):
 def get_class_var_values(cls):
     return set([getattr(cls, i) for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))])
 
+class ClassVarContainsMeta(type):
+    def __contains__(cls, key):
+        return key in get_class_vars(cls)
+
+class ClassValueContainsMeta(type):
+    def __contains__(cls, key):
+        return key in get_class_var_values(cls)
+
 def import_object(name):
     if '.' not in name:
         frame = sys._getframe(1)
