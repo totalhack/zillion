@@ -9,7 +9,8 @@ from orderedset import OrderedSet
 import pandas as pd
 import sqlalchemy as sa
 
-from sqlaw.configs import (ColumnInfoSchema,
+from sqlaw.configs import (AdHocFieldSchema,
+                           ColumnInfoSchema,
                            TableInfoSchema,
                            FactConfigSchema,
                            DimensionConfigSchema,
@@ -20,6 +21,7 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         ROW_FILTER_OPS,
                         AggregationTypes,
                         TableTypes,
+                        FieldTypes,
                         field_safe_name)
 from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              aggregation_to_sqla_func,
@@ -293,13 +295,12 @@ class Fact(Field):
     def get_final_select_clause(self, *args, **kwargs):
         return self.name
 
-class FormulaFact(Fact):
-    repr_atts = ['name', 'formula']
+class Dimension(Field):
+    pass
 
-    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None, **kwargs):
-        super(FormulaFact, self).__init__(name, None, aggregation=aggregation, rounding=rounding, formula=formula,
-                                          weighting_fact=weighting_fact, **kwargs)
-        # TODO: ensure the params are valid fields as objects are formed
+class FormulaField(Field):
+    def __init__(self, name, formula, **kwargs):
+        super(FormulaField, self).__init__(name, None, formula=formula, **kwargs)
 
     def get_formula_fields(self, warehouse, depth=0):
         if depth > MAX_FORMULA_DEPTH:
@@ -335,6 +336,20 @@ class FormulaFact(Fact):
 
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
+        format_args = {k:k for k in formula_fields}
+        clause = sa.text(raw_formula.format(**format_args))
+        return sqla_compile(clause)
+
+class FormulaFact(FormulaField):
+    repr_atts = ['name', 'formula']
+
+    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None, **kwargs):
+        super(FormulaFact, self).__init__(name, formula, aggregation=aggregation, rounding=rounding,
+                                          weighting_fact=weighting_fact, **kwargs)
+        # TODO: ensure the params are valid fields as objects are formed
+
+    def get_final_select_clause(self, warehouse):
+        formula_fields, raw_formula = self.get_formula_fields(warehouse)
         if self.rounding:
             # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
             # to integer values improperly by some database dialects such as sqlite
@@ -346,6 +361,21 @@ class FormulaFact(Fact):
             clause = sa.text(raw_formula.format(**format_args))
 
         return sqla_compile(clause)
+
+class AdHocField(FormulaField):
+    @classmethod
+    def create(cls, obj):
+        schema = AdHocFieldSchema()
+        dim_def = schema.load(obj)
+        return cls(obj['name'], obj['formula'])
+
+class AdHocFact(AdHocField):
+    def __init__(self, name, formula):
+        super(AdHocFact, self).__init__(name, formula, aggregation=None, rounding=None,
+                                        weighting_fact=None)
+
+class AdHocDimension(AdHocField):
+    pass
 
 def create_fact(fact_def):
     if fact_def['formula']:
@@ -365,9 +395,6 @@ def create_fact(fact_def):
             weighting_fact=fact_def['weighting_fact']
         )
     return fact
-
-class Dimension(Field):
-    pass
 
 def create_dimension(dim_def):
     dim = Dimension(dim_def['name'], dim_def['type'])
@@ -449,22 +476,41 @@ class Warehouse:
             return True
         return False
 
-    def get_field(self, field):
-        if field in self.facts:
-            return self.facts[field]
-        if field in self.dimensions:
-            return self.dimensions[field]
-        assert False, 'Field %s does not exist' % field
+    def get_field(self, obj):
+        if isinstance(obj, str):
+            if obj in self.facts:
+                return self.facts[obj]
+            if obj in self.dimensions:
+                return self.dimensions[obj]
+            assert False, 'Field %s does not exist' % obj
+        elif isinstance(obj, dict):
+            return AdHocField.create(obj)
+        else:
+            raise InvalidFieldException('Invalid field object: %s' % obj)
 
-    def get_fact(self, name):
-        if name not in self.facts:
-            raise InvalidFieldException('Invalid fact name: %s' % name)
-        return self.facts[name]
+    def get_fact(self, obj):
+        if isinstance(obj, str):
+            if obj not in self.facts:
+                raise InvalidFieldException('Invalid fact name: %s' % obj)
+            return self.facts[obj]
+        elif isinstance(obj, dict):
+            fact = AdHocFact.create(obj)
+            assert fact.name not in self.facts, 'AdHocFact can not use name of an existing fact: %s' % fact.name
+            return fact
+        else:
+            raise InvalidFieldException('Invalid fact object: %s' % obj)
 
-    def get_dimension(self, name):
-        if name not in self.dimensions:
-            raise InvalidFieldException('Invalid dimensions name: %s' % name)
-        return self.dimensions[name]
+    def get_dimension(self, obj):
+        if isinstance(obj, str):
+            if obj not in self.dimensions:
+                raise InvalidFieldException('Invalid dimensions name: %s' % obj)
+            return self.dimensions[obj]
+        elif isinstance(obj, dict):
+            dim = AdHocDimension.create(obj)
+            assert dim.name not in self.dimensions, 'AdHocDimension can not use name of an existing dimension: %s' % dim.name
+            return dim
+        else:
+            raise InvalidFieldException('Invalid fact object: %s' % obj)
 
     def get_primary_key_fields(self, primary_key):
         pk_fields = set()
@@ -1054,11 +1100,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         qr = self.cursor.execute('SELECT * FROM %s' % self.table_name)
         return [OrderedDict(row) for row in qr.fetchall()]
 
-    def get_final_select_sql(self, columns):
+    def get_final_select_sql(self, columns, dimension_aliases):
         columns_clause = ', '.join(columns)
         order_clause = '1'
-        if self.primary_ds_dimensions:
-            order_clause = ', '.join(['%s ASC' % d for d in self.primary_ds_dimensions])
+        if dimension_aliases:
+            order_clause = ', '.join(['%s ASC' % d for d in dimension_aliases])
         sql = 'SELECT %s FROM %s GROUP BY hash ORDER BY %s' % (columns_clause, self.table_name, order_clause)
         dbgsql(sql)
         return sql
@@ -1110,19 +1156,21 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def get_final_result(self, facts, dimensions, row_filters, rollup):
         # TODO: support multi-rollup
-        fields = dimensions + facts
         columns = []
+        dimension_aliases = []
 
         for dim_name in dimensions:
             dim_def = self.warehouse.get_dimension(dim_name)
             columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), dim_def.name))
+            dimension_aliases.append(dim_def.name)
 
         for fact_name in facts:
             fact_def = self.warehouse.get_fact(fact_name)
             columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), fact_def.name))
 
-        sql = self.get_final_select_sql(columns)
-        df = pd.read_sql(sql, self.conn, index_col=dimensions or None)
+        sql = self.get_final_select_sql(columns, dimension_aliases)
+
+        df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
         if row_filters:
             df = self.apply_row_filters_to_df(df, row_filters, facts, dimensions)
@@ -1151,27 +1199,36 @@ class Report:
         self.ds_dimensions = OrderedSet()
 
         for fact_name in self.facts:
-            fact = warehouse.get_fact(fact_name)
-            formula_fields, _ = fact.get_formula_fields(self.warehouse) or ([fact_name], None)
+            self.add_ds_fields(fact_name, FieldTypes.FACT)
 
-            if fact.weighting_fact:
-                assert fact.weighting_fact in warehouse.facts, \
-                    'Could not find weighting fact %s in warehouse' % fact.weighting_fact
-                self.ds_facts.add(fact.weighting_fact)
-
-            for field in formula_fields:
-                if field in warehouse.facts:
-                    self.ds_facts.add(field)
-                elif field in warehouse.dimensions:
-                    self.ds_dimensions.add(field)
-                else:
-                    assert False, 'Could not find field %s in warehouse' % field
-
-        for dim in self.dimensions:
-            self.ds_dimensions.add(dim)
+        for dim_name in self.dimensions:
+            self.add_ds_fields(dim_name, FieldTypes.DIMENSION)
 
         self.queries = self.build_ds_queries()
         self.combined_query = None
+
+    def add_ds_fields(self, field_name, field_type):
+        if field_type == FieldTypes.FACT:
+            field = self.warehouse.get_fact(field_name)
+        elif field_type == FieldTypes.DIMENSION:
+            field = self.warehouse.get_dimension(field_name)
+        else:
+            assert False, 'Invalid field_type: %s' % field_type
+
+        formula_fields, _ = field.get_formula_fields(self.warehouse) or ([field_name], None)
+
+        if field_type == FieldTypes.FACT and field.weighting_fact:
+            assert field.weighting_fact in self.warehouse.facts, \
+                'Could not find weighting fact %s in warehouse' % field.weighting_fact
+            self.ds_facts.add(field.weighting_fact)
+
+        for formula_field in formula_fields:
+            if formula_field in self.warehouse.facts:
+                self.ds_facts.add(formula_field)
+            elif formula_field in self.warehouse.dimensions:
+                self.ds_dimensions.add(formula_field)
+            else:
+                assert False, 'Could not find field %s in warehouse' % formula_field
 
     def execute_ds_query(self, query):
         # TODOs:

@@ -187,6 +187,20 @@ class TestSQLAW(TestBase):
         revenue_sum = result.non_rollup_rows().sum()['revenue']
         self.assertEqual(revenue, revenue_sum)
 
+    def testReportAdHocDimension(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['leads', 'sales']
+        dimensions = ['partner_name', 'lead_id', {'formula':'{lead_id} > 3', 'name':'testdim'}]
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
+    def testReportAdHocFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue', {'formula': '{revenue} > 3*{lead_id}', 'name': 'testfact'}]
+        dimensions = ['partner_name', 'lead_id']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
 @climax.command(parents=[testcli])
 @climax.argument('testnames', type=str, nargs='*', help='Names of tests to run')
 def main(testnames, debug):

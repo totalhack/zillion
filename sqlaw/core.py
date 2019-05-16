@@ -4,6 +4,10 @@ import sqlalchemy as sa
 
 from sqlaw.utils import ClassValueContainsMeta
 
+class FieldTypes(metaclass=ClassValueContainsMeta):
+    DIMENSION = 'dimension'
+    FACT = 'fact'
+
 class TableTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = 'dimension'
     FACT = 'fact'

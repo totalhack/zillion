@@ -78,6 +78,10 @@ class BaseSchema(Schema):
         # Use the json module as imported from utils
         json_module = json
 
+class AdHocFieldSchema(BaseSchema):
+    name = mfields.String(required=True, validate=is_valid_field_name)
+    formula = mfields.String(required=True)
+
 class ColumnFieldConfigSchema(BaseSchema):
     # TODO: Allow type and aggregation overrides?
     ds_formula = mfields.Str(required=True)
