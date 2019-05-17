@@ -65,6 +65,13 @@ class TestSQLAW(TestBase):
         result = wh.report(facts, criteria=criteria)
         self.assertTrue(result)
 
+    def testReportNoFacts(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = []
+        dimensions = ['partner_name', 'campaign_name']
+        result = wh.report(facts, dimensions=dimensions)
+        self.assertTrue(result)
+
     def testReportNullCriteria(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue']

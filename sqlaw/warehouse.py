@@ -35,6 +35,7 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
 from sqlaw.utils import (dbg,
                          dbgsql,
                          warn,
+                         error,
                          st,
                          initializer,
                          orderedsetify,
@@ -115,15 +116,19 @@ class ColumnInfo(SQLAWInfo, PrintMixin):
         return cls(**sqlaw_info)
 
 class TableSet(PrintMixin):
-    repr_attrs = ['ds_name', 'join_list', 'grain', 'target_facts']
+    repr_attrs = ['ds_name', 'join_list', 'grain', 'target_fields']
 
     @initializer
-    def __init__(self, ds_name, fact_table, join_list, grain, target_facts):
+    def __init__(self, ds_name, ds_table, join_list, grain, target_fields):
         pass
 
     def get_covered_facts(self, warehouse):
-        covered_facts = get_table_facts(warehouse, self.fact_table)
+        covered_facts = get_table_facts(warehouse, self.ds_table)
         return covered_facts
+
+    def get_covered_fields(self, warehouse):
+        covered_fields = get_table_fields(warehouse, self.ds_table)
+        return covered_fields
 
 class NeighborTable(PrintMixin):
     repr_attrs = ['table_name', 'join_fields']
@@ -598,6 +603,17 @@ class Warehouse:
         dbg('found %d datasource tables with fact %s' % (len(ds_tables), fact))
         return ds_tables
 
+    def get_ds_dim_tables_with_dim(self, dim):
+        ds_tables = defaultdict(list)
+        ds_dim_columns = self.dimensions[dim].column_map
+        for ds_name, columns in ds_dim_columns.items():
+            for column in columns:
+                if column.table.sqlaw.type != TableTypes.DIMENSION:
+                    continue
+                ds_tables[ds_name].append(column.table)
+        dbg('found %d datasource tables with dim %s' % (len(ds_tables), dim))
+        return ds_tables
+
     def add_dimension_table(self, ds_name, table):
         self.dimension_tables[ds_name][table.fullname] = table
         for column in table.c:
@@ -642,16 +658,16 @@ class Warehouse:
     def get_tables_with_dimension(self, ds_name, dimension):
         return [x.table for x in self.dimensions[dimension][ds_name]]
 
-    def find_joins_to_dimension(self, ds_name, fact_table, dimension):
+    def find_joins_to_dimension(self, ds_name, table, dimension):
         ds_graph = self.ds_graphs[ds_name]
         joins = []
 
         for column in self.dimensions[dimension].get_columns(ds_name):
-            table = column.table
-            if table == fact_table:
-                paths = [[fact_table.fullname]]
+            if column.table == table:
+                paths = [[table.fullname]]
             else:
-                paths = nx.all_simple_paths(ds_graph, fact_table.fullname, table.fullname)
+                # TODO: use shortest_simple_paths instead?
+                paths = nx.all_simple_paths(ds_graph, table.fullname, column.table.fullname)
 
             if not paths:
                 continue
@@ -661,13 +677,13 @@ class Warehouse:
                 join_list = joins_from_path(ds_graph, path, field_map=field_map)
                 joins.append(join_list)
 
-        dbg('Found joins to dim %s for table %s:' % (dimension, fact_table.fullname))
+        dbg('Found joins to dim %s for table %s:' % (dimension, table.fullname))
         dbg(joins)
         return joins
 
-    def get_possible_joins(self, ds_name, fact_table, grain):
-        assert fact_table.fullname in self.fact_tables[ds_name],\
-            'Could not find fact table %s in datasource %s' % (fact_table.fullname, ds_name)
+    def get_possible_joins(self, ds_name, table, grain):
+        assert table.fullname in self.tables[ds_name],\
+            'Could not find table %s in datasource %s' % (table.fullname, ds_name)
 
         if not grain:
             dbg('No grain specified, ignoring joins')
@@ -675,9 +691,9 @@ class Warehouse:
 
         possible_dim_joins = {}
         for dimension in grain:
-            dim_joins = self.find_joins_to_dimension(ds_name, fact_table, dimension)
+            dim_joins = self.find_joins_to_dimension(ds_name, table, dimension)
             if not dim_joins:
-                dbg('table %s can not satisfy dimension %s' % (fact_table.fullname, dimension))
+                dbg('table %s can not satisfy dimension %s' % (table.fullname, dimension))
                 return None
 
             possible_dim_joins[dimension] = dim_joins
@@ -687,30 +703,32 @@ class Warehouse:
         dbg(possible_joins)
         return possible_joins
 
-    def find_possible_table_sets(self, ds_name, ds_tables_with_fact, fact, grain):
+    def find_possible_table_sets(self, ds_name, ds_tables_with_field, field, grain):
         table_sets = []
-        for fact_table in ds_tables_with_fact:
-            if (not grain) or grain.issubset(get_table_fields(fact_table)):
-                table_set = TableSet(ds_name, fact_table, None, grain, set([fact]))
+        for field_table in ds_tables_with_field:
+            if (not grain) or grain.issubset(get_table_fields(field_table)):
+                table_set = TableSet(ds_name, field_table, None, grain, set([field]))
                 table_sets.append(table_set)
                 continue
 
-            joins = self.get_possible_joins(ds_name, fact_table, grain)
+            joins = self.get_possible_joins(ds_name, field_table, grain)
             if not joins:
-                dbg('table %s can not join at grain %s' % (fact_table.fullname, grain))
+                dbg('table %s can not join at grain %s' % (field_table.fullname, grain))
                 continue
-            dbg('adding %d possible join(s) to table %s' % (len(joins), fact_table.fullname))
+
+            dbg('adding %d possible join(s) to table %s' % (len(joins), field_table.fullname))
             for join_list, covered_dims in joins.items():
-                table_set = TableSet(ds_name, fact_table, join_list, grain, set([fact]))
+                table_set = TableSet(ds_name, field_table, join_list, grain, set([field]))
                 table_sets.append(table_set)
+
         dbg(table_sets)
         return table_sets
 
-    def get_ds_table_sets(self, ds_fact_tables, fact, grain):
+    def get_ds_table_sets(self, ds_tables, field, grain):
         '''Returns all table sets that can satisfy grain in each datasource'''
         ds_table_sets = {}
-        for ds_name, ds_tables_with_fact in ds_fact_tables.items():
-            possible_table_sets = self.find_possible_table_sets(ds_name, ds_tables_with_fact, fact, grain)
+        for ds_name, ds_tables_with_field in ds_tables.items():
+            possible_table_sets = self.find_possible_table_sets(ds_name, ds_tables_with_field, field, grain)
             if not possible_table_sets:
                 continue
             ds_table_sets[ds_name] = possible_table_sets
@@ -742,6 +760,21 @@ class Warehouse:
         ds_table_sets = self.get_ds_table_sets(ds_fact_tables, fact, grain)
         assert ds_table_sets, 'No table set found for fact %s at grain %s' % (fact, grain)
         table_set = self.choose_best_table_set(ds_table_sets)
+        return table_set
+
+    def get_dimension_table_set(self, grain):
+        # TODO: this needs more thorough review/testing
+        dbg('grain:%s' % grain)
+
+        table_set = None
+        for dim_name in grain:
+            ds_dim_tables = self.get_ds_dim_tables_with_dim(dim_name)
+            ds_table_sets = self.get_ds_table_sets(ds_dim_tables, dim_name, grain)
+            if not ds_table_sets:
+                continue
+            table_set = self.choose_best_table_set(ds_table_sets)
+
+        assert table_set, 'No dimension table set found to meet grain: %s' % grain
         return table_set
 
     @classmethod
@@ -844,11 +877,11 @@ class Warehouse:
                     sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
                     column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
 
-    def build_report(self, facts, dimensions=None, criteria=None, row_filters=None, rollup=None):
-        return Report(self, facts, dimensions=dimensions, criteria=criteria, row_filters=row_filters, rollup=rollup)
+    def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
+        return Report(self, facts=facts, dimensions=dimensions, criteria=criteria, row_filters=row_filters, rollup=rollup)
 
-    def report(self, facts, dimensions=None, criteria=None, row_filters=None, rollup=None):
-        report = self.build_report(facts,
+    def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
+        report = self.build_report(facts=facts,
                                    dimensions=dimensions,
                                    criteria=criteria,
                                    row_filters=row_filters,
@@ -862,7 +895,7 @@ class DataSourceQuery(PrintMixin):
     @initializer
     def __init__(self, warehouse, facts, dimensions, criteria, table_set):
         self.field_map = {}
-        self.facts = orderedsetify(facts)
+        self.facts = orderedsetify(facts) if facts else []
         self.dimensions = orderedsetify(dimensions) if dimensions else []
         self.select = self.build_select()
 
@@ -899,8 +932,8 @@ class DataSourceQuery(PrintMixin):
         else:
             if ts.join_list and field in ts.join_list.field_map:
                 column = ts.join_list.field_map[field]
-            elif field in self.warehouse.table_field_map[ts.ds_name][ts.fact_table.fullname]:
-                column = self.column_for_field(field, table=ts.fact_table)
+            elif field in self.warehouse.table_field_map[ts.ds_name][ts.ds_table.fullname]:
+                column = self.column_for_field(field, table=ts.ds_table)
             else:
                 assert False, 'Could not determine column for field %s' % field
         self.field_map[field] = column
@@ -918,7 +951,7 @@ class DataSourceQuery(PrintMixin):
         last_table = None
 
         if not ts.join_list:
-            return ts.fact_table
+            return ts.ds_table
 
         for join in ts.join_list.joins:
             for table_name in join.table_names:
@@ -969,10 +1002,15 @@ class DataSourceQuery(PrintMixin):
             return True
         return False
 
+    def covers_field(self, field):
+        if field in self.table_set.get_covered_fields(self.warehouse):
+            return True
+        return False
+
     def add_fact(self, fact):
         assert self.covers_fact(fact), 'Fact %s can not be covered by query' % fact
         # TODO: improve the way we maintain targeted facts/dims
-        self.table_set.target_facts.add(fact)
+        self.table_set.target_fields.add(fact)
         self.facts.add(fact)
         self.select = self.select.column(self.get_field_expression(fact))
 
@@ -1071,19 +1109,20 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
     def get_row_insert_sql(self, row):
         # TODO: switch to bulk insert
         values_clause = ', '.join(['?'] * (1 + len(row)))
-        # TODO: dont allow unsafe chars in fields names in the first place?
         columns = [k for k in row.keys()]
         columns_clause = 'hash, ' + ', '.join(columns)
+
+        sql = 'INSERT INTO %s (%s) VALUES (%s)' % (self.table_name, columns_clause, values_clause)
+
         update_clauses = []
         for k in columns:
             if k in self.primary_ds_dimensions:
                 continue
             update_clauses.append('%s=excluded.%s' % (k, k))
-        update_clause = ', '.join(update_clauses)
+        if update_clauses:
+            update_clause = ' ON CONFLICT(hash) DO UPDATE SET ' + ', '.join(update_clauses)
+            sql = sql + update_clause
 
-        sql = ('INSERT INTO %s (%s) VALUES (%s) '
-               'ON CONFLICT(hash) DO UPDATE SET %s' %
-               (self.table_name, columns_clause, values_clause, update_clause))
         hash_value = self.get_row_hash(row)
         values = [hash_value]
         values.extend(row.values())
@@ -1188,7 +1227,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
 class Report:
     @initializer
-    def __init__(self, warehouse, facts, dimensions=None, criteria=None, row_filters=None, rollup=None):
+    def __init__(self, warehouse, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
+        self.facts = self.facts or []
         self.dimensions = self.dimensions or []
         self.criteria = self.criteria or []
         self.row_filters = self.row_filters or []
@@ -1242,6 +1282,10 @@ class Report:
         try:
             result = conn.execute(query.select)
             data = result.fetchall()
+        except:
+            error('Exception during query:')
+            dbgsql(query.select)
+            raise
         finally:
             conn.close()
         end = time.time()
@@ -1299,6 +1343,12 @@ class Report:
 
             table_set = self.warehouse.get_fact_table_set(fact, grain)
             query = DataSourceQuery(self.warehouse, [fact], self.ds_dimensions, self.criteria, table_set)
+            queries.append(query)
+
+        if not self.ds_facts:
+            dbg('No facts requested, getting dimension table sets')
+            table_set = self.warehouse.get_dimension_table_set(grain)
+            query = DataSourceQuery(self.warehouse, None, self.ds_dimensions, self.criteria, table_set)
             queries.append(query)
 
         for query in queries:
