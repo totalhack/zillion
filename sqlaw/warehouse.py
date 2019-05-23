@@ -38,14 +38,19 @@ from sqlaw.utils import (dbg,
                          error,
                          st,
                          initializer,
+                         is_int,
                          orderedsetify,
                          get_string_format_args,
                          PrintMixin,
                          MappingMixin)
 
 DEFAULT_IFNULL_VALUE = '--'
-ROLLUP_INDEX_LABEL = '::'
 MAX_FORMULA_DEPTH = 3
+# Last unicode char - this helps get the rollup rows to sort last, but may
+# need to be replaced for presentation
+ROLLUP_INDEX_LABEL = chr(1114111)
+ROLLUP_INDEX_PRETTY_LABEL = '::'
+ROLLUP_TOTALS = 'totals'
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.AVG: 'mean',
@@ -807,7 +812,8 @@ class Warehouse:
                     join_fields[other_join] = join_fields[other_join].union(fields)
 
         for join in joins_to_delete:
-            del join_fields[join]
+            if join in join_fields:
+                del join_fields[join]
 
         return join_fields
 
@@ -1158,13 +1164,115 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             filter_parts.append('(%s %s %s)' % (field, op, value))
         return df.query(' and '.join(filter_parts))
 
-    def apply_rollup_to_df(self, df, facts, dimensions):
+    def get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavg, wavgs):
+        # TODO: signature of this is a bit odd
+        # TODO: test weighted averages
+        # https://stackoverflow.com/questions/36489576/why-does-concatenation-of-dataframes-get-exponentially-slower
+        level_aggrs = [df]
+
+        for level in range(rollup):
+            if (level+1) == len(dimensions):
+                # Unnecessary to rollup at the most granular level
+                break
+
+            grouped = df.groupby(level=list(range(0,level+1)))
+            level_aggr = grouped.agg(aggrs)
+            for fact_name, weighting_fact in wavgs:
+                level_aggr[fact_name] = wavg(fact_name, weighting_fact)
+
+            # for the remaining levels, set index cols to ROLLUP_INDEX_LABEL
+            if level != (len(dimensions) - 1):
+                new_index_dims = []
+                for dim in dimensions[level+1:]:
+                    level_aggr[dim] = ROLLUP_INDEX_LABEL
+                    new_index_dims.append(dim)
+                level_aggr = level_aggr.set_index(new_index_dims, append=True)
+
+            level_aggrs.append(level_aggr)
+
+        df = pd.concat(level_aggrs, sort=False, copy=False)
+        df.sort_index(inplace=True)
+        return df
+
+    def get_multi_rollup_df_alternate(self, df, rollup, dimensions, aggrs, wavg, wavgs):
+        # Keeping this function around until I have time to test both further and see which
+        # scales better.
+        # TODO: signature of this is a bit odd
+        # TODO: test weighted averages
+
+        level_aggrs = []
+        for level in range(rollup):
+            grouped = df.groupby(level=list(range(0,level+1)))
+            level_aggr = grouped.agg(aggrs)
+            for fact_name, weighting_fact in wavgs:
+                level_aggr[fact_name] = wavg(fact_name, weighting_fact)
+            level_aggrs.append(level_aggr)
+
+        last_index = None
+        rows = []
+
+        def to_dict(tuple_row):
+            row = dict()
+            for i, name in enumerate(df.index.names):
+                row[name] = tuple_row.Index[i]
+            for col in df.columns:
+                row[col] = getattr(tuple_row, col)
+            return row
+
+        def get_rollup_row(last_index, level):
+            rollup_rows = []
+            rollup_row_key = last_index[:level+1]
+
+            if len(rollup_row_key) > 1:
+                # Hack necessary to get a dataframe back
+                rollup_df = level_aggrs[level].loc[[rollup_row_key], :]
+            else:
+                rollup_df = level_aggrs[level].loc[rollup_row_key, :]
+            assert isinstance(rollup_df, pd.DataFrame), 'Rollup row type expected DataFrame, got %s' % type(rollup_df)
+            new_index_dims = []
+            for dim in dimensions[level+1:]:
+                rollup_df[dim] = ROLLUP_INDEX_LABEL
+                new_index_dims.append(dim)
+            rollup_df = rollup_df.set_index(new_index_dims, append=True)
+            for rollup_row in rollup_df.itertuples():
+                rollup_rows.append(to_dict(rollup_row))
+            assert len(rollup_rows) == 1, 'Unexpected number of rollup rows:\n%s' % rollup_rows
+            return rollup_rows[0]
+
+        # Note: to_records is faster but not a generator
+        for row in df.itertuples():
+            index = row.Index
+            row = to_dict(row)
+
+            if not last_index:
+                last_index = index
+                rows.append(row)
+                continue
+
+            rollup_rows = []
+            for level in range(rollup):
+                if index[level] != last_index[level]:
+                    rollup_row = get_rollup_row(last_index, level)
+                    rollup_rows.append(rollup_row)
+
+            for rollup_row in reversed(rollup_rows):
+                rows.append(rollup_row)
+
+            last_index = index
+            rows.append(row)
+
+        # Add in rollup for last row
+        for level in range(rollup):
+            rows.append(get_rollup_row(last_index, level))
+
+        df = pd.DataFrame.from_records(rows, index=df.index.names)
+        return df
+
+    def apply_rollup_to_df(self, df, rollup, facts, dimensions):
         aggrs = {}
         wavgs = []
 
-        if not dimensions:
-            warn('Ignoring rollup, no dimensions')
-            return df
+        assert dimensions, 'Can not rollup without dimensions'
 
         def wavg(avg_name, weight_name):
             d = df[avg_name]
@@ -1185,12 +1293,19 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             aggrs[fact_name] = aggr_func
 
         aggr = df.agg(aggrs)
-        # TODO: this doesnt scale
         for fact_name, weighting_fact in wavgs:
             aggr[fact_name] = wavg(fact_name, weighting_fact)
-        rollup_index = (ROLLUP_INDEX_LABEL,) * len(dimensions) if len(dimensions) > 1 else ROLLUP_INDEX_LABEL
-        with pd.option_context('mode.chained_assignment', None):
-            df.loc[rollup_index, :] = aggr
+
+        apply_totals = True
+        if rollup != ROLLUP_TOTALS:
+            df = self.get_multi_rollup_df(df, rollup, dimensions, aggrs, wavg, wavgs)
+            if rollup != len(dimensions):
+                apply_totals = False
+
+        if apply_totals:
+            totals_rollup_index = (ROLLUP_INDEX_LABEL,) * len(dimensions) if len(dimensions) > 1 else ROLLUP_INDEX_LABEL
+            with pd.option_context('mode.chained_assignment', None):
+                df.at[totals_rollup_index, :] = aggr
         return df
 
     def get_final_result(self, facts, dimensions, row_filters, rollup):
@@ -1215,7 +1330,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             df = self.apply_row_filters_to_df(df, row_filters, facts, dimensions)
 
         if rollup:
-            df = self.apply_rollup_to_df(df, facts, dimensions)
+            df = self.apply_rollup_to_df(df, rollup, facts, dimensions)
 
         return df
 
@@ -1230,10 +1345,14 @@ class Report:
     def __init__(self, warehouse, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
         self.facts = self.facts or []
         self.dimensions = self.dimensions or []
+        assert self.facts or self.dimensions, 'One of facts or dimensions must be specified for Report'
         self.criteria = self.criteria or []
         self.row_filters = self.row_filters or []
-        if rollup:
+        if rollup is not None:
             assert dimensions, 'Must specify dimensions in order to use rollup'
+            if rollup != ROLLUP_TOTALS:
+                assert is_int(rollup) and (0 < int(rollup) <= len(dimensions)), 'Invalid rollup value: %s' % rollup
+                self.rollup = int(rollup)
 
         self.ds_facts = OrderedSet()
         self.ds_dimensions = OrderedSet()

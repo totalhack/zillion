@@ -7,6 +7,7 @@ from sqlaw.utils import dbg, st, testcli
 from sqlaw.warehouse import (DataSourceMap,
                              Warehouse,
                              ROLLUP_INDEX_LABEL,
+                             ROLLUP_TOTALS,
                              InvalidFieldException)
 from test_utils import TestBase, run_tests
 
@@ -54,7 +55,7 @@ class TestSQLAW(TestBase):
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 11)]
-        rollup = True
+        rollup = ROLLUP_TOTALS
         result = wh.report(facts, dimensions=dimensions, criteria=criteria, row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
@@ -172,8 +173,16 @@ class TestSQLAW(TestBase):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['sales_quantity', 'revenue_avg', 'leads']
         dimensions = ['partner_name']
-        rollup = True
-        result = wh.report(facts, dimensions=dimensions, rollup=True)
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportWeightedFactWithMultiRollup(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['sales_quantity', 'revenue_avg', 'leads']
+        dimensions = ['partner_name', 'campaign_name', 'lead_id']
+        rollup = 2
+        result = wh.report(facts, dimensions=dimensions, rollup=rollup)
         self.assertTrue(result)
 
     def testReportMultiDimension(self):
@@ -188,7 +197,18 @@ class TestSQLAW(TestBase):
         facts = ['revenue']
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
-        rollup = True
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
+        revenue = result.rollup_rows().iloc[-1]['revenue']
+        revenue_sum = result.non_rollup_rows().sum()['revenue']
+        self.assertEqual(revenue, revenue_sum)
+
+    def testRollup2(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue']
+        dimensions = ['partner_name', 'campaign_name', 'lead_id']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        rollup = 3
         result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
         revenue = result.rollup_rows().iloc[-1]['revenue']
         revenue_sum = result.non_rollup_rows().sum()['revenue']
