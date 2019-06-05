@@ -56,7 +56,90 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 11)]
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria, row_filters=row_filters, rollup=rollup)
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportMovingAverageFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = [
+            'revenue',
+            'revenue_ma_5',
+            #{'formula': '{revenue}', 'technical': 'MA-5', 'name': 'revenue_ma_5'},
+        ]
+        # TODO: it doesnt make sense to use these dimensions, but no date/time
+        # dims have been added as of the time of creating this test.
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = [('revenue', '>', 8)]
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportMovingAverageAdHocFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = [
+            'revenue',
+            {'formula': '{revenue}', 'technical': 'MA-5', 'name': 'my_revenue_ma_5'},
+        ]
+        # TODO: it doesnt make sense to use these dimensions, but no date/time
+        # dims have been added as of the time of creating this test.
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = [('revenue', '>', 8)]
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportMovingAverageFormulaFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = [
+            'revenue',
+            'rpl',
+            'rpl_ma_5',
+        ]
+        # TODO: it doesnt make sense to use these dimensions, but no date/time
+        # dims have been added as of the time of creating this test.
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = [('revenue', '>', 8)]
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportCumSumFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = [
+            'revenue',
+            'revenue_sum_5',
+        ]
+        # TODO: it doesnt make sense to use these dimensions, but no date/time
+        # dims have been added as of the time of creating this test.
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = None
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup)
+        self.assertTrue(result)
+
+    def testReportBollingerFact(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = [
+            'revenue',
+            'revenue_boll_5',
+        ]
+        # TODO: it doesnt make sense to use these dimensions, but no date/time
+        # dims have been added as of the time of creating this test.
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = None
+        rollup = ROLLUP_TOTALS
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
     def testReportNoDimensions(self):
@@ -192,7 +275,7 @@ class TestSQLAW(TestBase):
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
-    def testRollup(self):
+    def testReportRollup(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue']
         dimensions = ['partner_name', 'campaign_name']
@@ -203,7 +286,7 @@ class TestSQLAW(TestBase):
         revenue_sum = result.non_rollup_rows().sum()['revenue']
         self.assertEqual(revenue, revenue_sum)
 
-    def testRollup2(self):
+    def testReportMultiRollup(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['revenue']
         dimensions = ['partner_name', 'campaign_name', 'lead_id']
@@ -217,7 +300,9 @@ class TestSQLAW(TestBase):
     def testReportAdHocDimension(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = ['leads', 'sales']
-        dimensions = ['partner_name', 'lead_id', {'formula':'{lead_id} > 3', 'name':'testdim'}]
+        dimensions = ['partner_name',
+                      'lead_id',
+                      {'formula':'{lead_id} > 3', 'name':'testdim'}]
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 

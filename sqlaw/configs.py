@@ -5,6 +5,8 @@ from marshmallow import Schema, fields as mfields, ValidationError
 
 from sqlaw.core import (TableTypes,
                         AggregationTypes,
+                        TechnicalTypes,
+                        parse_technical_string,
                         FIELD_ALLOWABLE_CHARS,
                         FIELD_ALLOWABLE_CHARS_STR)
 from sqlaw.sql_utils import (type_string_to_sa_type,
@@ -13,6 +15,7 @@ from sqlaw.utils import (dbg,
                          error,
                          json,
                          st,
+                         is_int,
                          initializer)
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
@@ -73,14 +76,43 @@ def is_valid_column_field_config(val):
         return True
     raise ValidationError('Invalid column field config: %s' % val)
 
+def is_valid_technical_type(val):
+    if val in TechnicalTypes:
+        return True
+    raise ValidationError('Invalid technical type: %s' % val)
+
+def is_valid_technical(val):
+    if isinstance(val, str):
+        val = parse_technical_string(val)
+    elif not isinstance(val, dict):
+        raise ValidationError('Invalid technical: %s' % val)
+    schema = TechnicalInfoSchema()
+    val = schema.load(val)
+    return True
+
 class BaseSchema(Schema):
     class Meta:
         # Use the json module as imported from utils
         json_module = json
 
+class TechnicalInfoSchema(BaseSchema):
+    type = mfields.String(required=True, validate=is_valid_technical_type)
+    window = mfields.Integer(required=True)
+    min_periods = mfields.Integer(default=1, missing=1)
+    center = mfields.Boolean(default=False, missing=False)
+
+class TechnicalField(mfields.Field):
+    def _validate(self, value):
+        is_valid_technical(value)
+        super(TechnicalField, self)._validate(value)
+
 class AdHocFieldSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
     formula = mfields.String(required=True)
+
+class AdHocFactSchema(AdHocFieldSchema):
+    technical = TechnicalField(default=None, missing=None)
+    rounding = mfields.Integer(default=None, missing=None)
 
 class ColumnFieldConfigSchema(BaseSchema):
     # TODO: Allow type and aggregation overrides?
@@ -127,6 +159,7 @@ class FactConfigSchema(BaseSchema):
     rounding = mfields.Integer(default=None, missing=None)
     weighting_fact = mfields.Str(default=None, missing=None)
     formula = mfields.String(default=None, missing=None)
+    technical = TechnicalField(default=None, missing=None)
 
 class DimensionConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)

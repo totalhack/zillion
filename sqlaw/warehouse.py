@@ -1,4 +1,5 @@
 from collections import defaultdict, OrderedDict
+import decimal
 import random
 from sqlite3 import connect, Row
 import time
@@ -10,9 +11,11 @@ import pandas as pd
 import sqlalchemy as sa
 
 from sqlaw.configs import (AdHocFieldSchema,
+                           AdHocFactSchema,
                            ColumnInfoSchema,
                            TableInfoSchema,
                            FactConfigSchema,
+                           TechnicalInfoSchema,
                            DimensionConfigSchema,
                            is_valid_field_name)
 from sqlaw.core import (NUMERIC_SA_TYPES,
@@ -22,6 +25,8 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         AggregationTypes,
                         TableTypes,
                         FieldTypes,
+                        TechnicalTypes,
+                        parse_technical_string,
                         field_safe_name)
 from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              aggregation_to_sqla_func,
@@ -215,6 +220,23 @@ def get_table_dimensions(warehouse, table):
                 dims.add(field)
     return dims
 
+class Technical(MappingMixin, PrintMixin):
+    repr_attrs = ['type', 'window', 'min_periods']
+
+    @initializer
+    def __init__(self, **kwargs):
+        pass
+
+    @classmethod
+    def create(cls, info):
+        if isinstance(info, cls):
+            return info
+        if isinstance(info, str):
+            info = parse_technical_string(info)
+        assert isinstance(info, dict), 'Raw info must be a dict: %s' % info
+        info = TechnicalInfoSchema().load(info)
+        return cls(**info)
+
 class Field(PrintMixin):
     repr_attrs = ['name']
     ifnull_value = DEFAULT_IFNULL_VALUE
@@ -260,13 +282,18 @@ class Field(PrintMixin):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
 class Fact(Field):
-    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None, **kwargs):
-        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding,
-                                   weighting_fact=weighting_fact, **kwargs)
+    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None,
+                 weighting_fact=None, technical=None, **kwargs):
+        # TODO: enforce this in config instead?
         if weighting_fact:
-            # TODO: enforce this in config instead?
             assert aggregation == AggregationTypes.AVG,\
                 'Weighting facts are only supported for aggregation type: %s' % AggregationTypes.AVG
+
+        if technical:
+            technical = Technical.create(technical)
+
+        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding,
+                                   weighting_fact=weighting_fact, technical=technical, **kwargs)
 
     def get_ds_expression(self, column):
         expr = column
@@ -297,8 +324,9 @@ class Fact(Field):
             else:
                 expr = aggr(expr)
 
-        if self.rounding:
-            expr = sa.func.round(expr, self.rounding)
+        # XXX Only applying rounding on final result DataFrame
+        # if self.rounding:
+        #    expr = sa.func.round(expr, self.rounding)
 
         return expr.label(self.name)
 
@@ -351,16 +379,22 @@ class FormulaField(Field):
         return sqla_compile(clause)
 
 class FormulaFact(FormulaField):
-    repr_atts = ['name', 'formula']
+    repr_atts = ['name', 'formula', 'technical']
 
-    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None, **kwargs):
+    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None,
+                 technical=None, **kwargs):
+        # TODO: ensure formula params are valid fields as objects are formed
+        # We'd need to defer formula facts until the end to achieve this.
+        if technical:
+            technical = Technical.create(technical)
+
         super(FormulaFact, self).__init__(name, formula, aggregation=aggregation, rounding=rounding,
-                                          weighting_fact=weighting_fact, **kwargs)
-        # TODO: ensure the params are valid fields as objects are formed
+                                          weighting_fact=weighting_fact, technical=technical, **kwargs)
 
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
-        if self.rounding:
+        # XXX Only applying rounding on final result DataFrame
+        if False and self.rounding:
             # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
             # to integer values improperly by some database dialects such as sqlite
             format_args = {k:('(1.0*%s)' % k) for k in formula_fields}
@@ -376,13 +410,19 @@ class AdHocField(FormulaField):
     @classmethod
     def create(cls, obj):
         schema = AdHocFieldSchema()
-        dim_def = schema.load(obj)
-        return cls(obj['name'], obj['formula'])
+        field_def = schema.load(obj)
+        return cls(field_def['name'], field_def['formula'])
 
-class AdHocFact(AdHocField):
-    def __init__(self, name, formula):
-        super(AdHocFact, self).__init__(name, formula, aggregation=None, rounding=None,
-                                        weighting_fact=None)
+class AdHocFact(FormulaFact):
+    def __init__(self, name, formula, technical=None, rounding=None):
+        super(AdHocFact, self).__init__(name, formula, technical=technical, rounding=rounding)
+
+    @classmethod
+    def create(cls, obj):
+        schema = AdHocFactSchema()
+        field_def = schema.load(obj)
+        return cls(field_def['name'], field_def['formula'], technical=field_def['technical'],
+                   rounding=field_def['rounding'])
 
 class AdHocDimension(AdHocField):
     pass
@@ -394,7 +434,8 @@ def create_fact(fact_def):
             fact_def['formula'],
             aggregation=fact_def['aggregation'],
             rounding=fact_def['rounding'],
-            weighting_fact=fact_def['weighting_fact']
+            weighting_fact=fact_def['weighting_fact'],
+            technical=fact_def['technical']
         )
     else:
         fact = Fact(
@@ -402,7 +443,8 @@ def create_fact(fact_def):
             fact_def['type'],
             aggregation=fact_def['aggregation'],
             rounding=fact_def['rounding'],
-            weighting_fact=fact_def['weighting_fact']
+            weighting_fact=fact_def['weighting_fact'],
+            technical=fact_def['technical']
         )
     return fact
 
@@ -1131,7 +1173,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         hash_value = self.get_row_hash(row)
         values = [hash_value]
-        values.extend(row.values())
+        for value in row.values():
+            # XXX Hack: sqlite cant handle Decimal values.
+            if isinstance(value, decimal.Decimal):
+                value = float(value)
+            values.append(value)
         return sql, values
 
     def load_table(self):
@@ -1285,12 +1331,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         for fact_name in facts:
             fact = self.warehouse.get_fact(fact_name)
             if fact.weighting_fact:
-                wavgs.append((fact_name, fact.weighting_fact))
+                wavgs.append((fact.name, fact.weighting_fact))
                 continue
             else:
                 aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
-            fact_name = fact_name
-            aggrs[fact_name] = aggr_func
+            aggrs[fact.name] = aggr_func
 
         aggr = df.agg(aggrs)
         for fact_name, weighting_fact in wavgs:
@@ -1306,10 +1351,34 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             totals_rollup_index = (ROLLUP_INDEX_LABEL,) * len(dimensions) if len(dimensions) > 1 else ROLLUP_INDEX_LABEL
             with pd.option_context('mode.chained_assignment', None):
                 df.at[totals_rollup_index, :] = aggr
+
+        return df
+
+    def apply_technicals(self, df, technicals, rounding):
+        for fact, tech in technicals.items():
+            rolling = df[fact].rolling(tech.window, min_periods=tech.min_periods, center=tech.center)
+            if tech.type == TechnicalTypes.MA:
+                df[fact] = rolling.mean()
+            elif tech.type == TechnicalTypes.SUM:
+                df[fact] = rolling.sum()
+            elif tech.type == TechnicalTypes.BOLL:
+                ma = rolling.mean()
+                std = rolling.std()
+                upper = fact + '_upper'
+                lower = fact + '_lower'
+                if fact in rounding:
+                    # This adds some extra columns for the bounds, so we use the same rounding
+                    # as the root fact if applicable.
+                    df[upper] = round(ma + 2*std, rounding[fact])
+                    df[lower] = round(ma - 2*std, rounding[fact])
+                else:
+                    df[upper] = ma + 2*std
+                    df[lower] = ma - 2*std
+            else:
+                assert False, 'Invalid technical type: %s' % tech.type
         return df
 
     def get_final_result(self, facts, dimensions, row_filters, rollup):
-        # TODO: support multi-rollup
         columns = []
         dimension_aliases = []
 
@@ -1318,8 +1387,14 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             columns.append('%s as %s' % (dim_def.get_final_select_clause(self.warehouse), dim_def.name))
             dimension_aliases.append(dim_def.name)
 
+        technicals = {}
+        rounding = {}
         for fact_name in facts:
             fact_def = self.warehouse.get_fact(fact_name)
+            if fact_def.technical:
+                technicals[fact_def.name] = fact_def.technical
+            if fact_def.rounding is not None:
+                rounding[fact_def.name] = fact_def.rounding
             columns.append('%s as %s' % (fact_def.get_final_select_clause(self.warehouse), fact_def.name))
 
         sql = self.get_final_select_sql(columns, dimension_aliases)
@@ -1329,8 +1404,14 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         if row_filters:
             df = self.apply_row_filters_to_df(df, row_filters, facts, dimensions)
 
+        if technicals:
+            df = self.apply_technicals(df, technicals, rounding)
+
         if rollup:
             df = self.apply_rollup_to_df(df, rollup, facts, dimensions)
+
+        if rounding:
+            df = df.round(rounding)
 
         return df
 

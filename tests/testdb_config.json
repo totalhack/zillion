@@ -26,10 +26,38 @@
             "formula": "{rpl_squared}/{rpl}"
         },
         {
+            "name": "rpl_ma_5",
+            "aggregation": "avg",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}",
+            "technical": "MA-5"
+        },
+        {
             "name": "revenue",
             "type": "Numeric(10,2)",
             "aggregation": "sum",
             "rounding": 2
+        },
+        {
+            "name": "revenue_ma_5",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "MA-5"
+        },
+        {
+            "name": "revenue_sum_5",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "SUM-5"
+        },
+        {
+            "name": "revenue_boll_5",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "BOLL-5"
         },
         {
             "name": "revenue_ds",
@@ -140,6 +168,9 @@
                         "revenue": {
                             "fields": [
                                 "revenue",
+                                "revenue_ma_5",
+                                "revenue_sum_5",
+                                "revenue_boll_5",
                                 ["revenue_ds", {"ds_formula": "IFNULL(sales.revenue, 0)"}],
                                 "revenue_avg",
                                 ["revenue_avg_ds_weighted", {"ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"}],
