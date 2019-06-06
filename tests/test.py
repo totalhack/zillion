@@ -60,12 +60,23 @@ class TestSQLAW(TestBase):
                            row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
+    def testReportPivot(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue', 'sales_quantity']
+        dimensions = ['partner_name', 'campaign_name']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        row_filters = [('revenue', '>', 11)]
+        rollup = ROLLUP_TOTALS
+        pivot = ['partner_name']
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
+                           row_filters=row_filters, rollup=rollup, pivot=pivot)
+        self.assertTrue(result)
+
     def testReportMovingAverageFact(self):
         wh = Warehouse(self.ds_map, config=self.config)
         facts = [
             'revenue',
             'revenue_ma_5',
-            #{'formula': '{revenue}', 'technical': 'MA-5', 'name': 'revenue_ma_5'},
         ]
         # TODO: it doesnt make sense to use these dimensions, but no date/time
         # dims have been added as of the time of creating this test.
@@ -296,6 +307,16 @@ class TestSQLAW(TestBase):
         revenue = result.rollup_rows().iloc[-1]['revenue']
         revenue_sum = result.non_rollup_rows().sum()['revenue']
         self.assertEqual(revenue, revenue_sum)
+
+    def testReportMultiRollupPivot(self):
+        wh = Warehouse(self.ds_map, config=self.config)
+        facts = ['revenue']
+        dimensions = ['partner_name', 'campaign_name', 'lead_id']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        rollup = 3
+        pivot = ['campaign_name']
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup, pivot=pivot)
+        self.assertTrue(result)
 
     def testReportAdHocDimension(self):
         wh = Warehouse(self.ds_map, config=self.config)

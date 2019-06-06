@@ -925,15 +925,22 @@ class Warehouse:
                     sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
                     column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
 
-    def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
-        return Report(self, facts=facts, dimensions=dimensions, criteria=criteria, row_filters=row_filters, rollup=rollup)
+    def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
+        return Report(self,
+                      facts=facts,
+                      dimensions=dimensions,
+                      criteria=criteria,
+                      row_filters=row_filters,
+                      rollup=rollup,
+                      pivot=pivot)
 
-    def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
+    def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
         report = self.build_report(facts=facts,
                                    dimensions=dimensions,
                                    criteria=criteria,
                                    row_filters=row_filters,
-                                   rollup=rollup)
+                                   rollup=rollup,
+                                   pivot=pivot)
         result = report.execute()
         return result
 
@@ -1095,7 +1102,7 @@ class BaseCombinedResult:
     def clean_up(self):
         raise NotImplementedError
 
-    def get_final_result(self, facts, dimensions, row_filters, rollup):
+    def get_final_result(self, facts, dimensions, row_filters, rollup, pivot):
         raise NotImplementedError
 
     def get_row_hash(self, row):
@@ -1200,7 +1207,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         dbgsql(sql)
         return sql
 
-    def apply_row_filters_to_df(self, df, row_filters, facts, dimensions):
+    def apply_row_filters(self, df, row_filters, facts, dimensions):
         filter_parts = []
         for row_filter in row_filters:
             field, op, value = row_filter
@@ -1222,7 +1229,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 break
 
             grouped = df.groupby(level=list(range(0,level+1)))
-            level_aggr = grouped.agg(aggrs)
+            level_aggr = grouped.agg(aggrs, skipna=True)
             for fact_name, weighting_fact in wavgs:
                 level_aggr[fact_name] = wavg(fact_name, weighting_fact)
 
@@ -1314,11 +1321,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         df = pd.DataFrame.from_records(rows, index=df.index.names)
         return df
 
-    def apply_rollup_to_df(self, df, rollup, facts, dimensions):
+    def apply_rollup(self, df, rollup, facts, dimensions):
+        assert dimensions, 'Can not rollup without dimensions'
+
         aggrs = {}
         wavgs = []
-
-        assert dimensions, 'Can not rollup without dimensions'
 
         def wavg(avg_name, weight_name):
             d = df[avg_name]
@@ -1337,7 +1344,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(fact.aggregation, fact.aggregation)
             aggrs[fact.name] = aggr_func
 
-        aggr = df.agg(aggrs)
+        aggr = df.agg(aggrs, skipna=True)
         for fact_name, weighting_fact in wavgs:
             aggr[fact_name] = wavg(fact_name, weighting_fact)
 
@@ -1378,7 +1385,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 assert False, 'Invalid technical type: %s' % tech.type
         return df
 
-    def get_final_result(self, facts, dimensions, row_filters, rollup):
+    def get_final_result(self, facts, dimensions, row_filters, rollup, pivot):
         columns = []
         dimension_aliases = []
 
@@ -1402,16 +1409,19 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
         if row_filters:
-            df = self.apply_row_filters_to_df(df, row_filters, facts, dimensions)
+            df = self.apply_row_filters(df, row_filters, facts, dimensions)
 
         if technicals:
             df = self.apply_technicals(df, technicals, rounding)
 
         if rollup:
-            df = self.apply_rollup_to_df(df, rollup, facts, dimensions)
+            df = self.apply_rollup(df, rollup, facts, dimensions)
 
         if rounding:
             df = df.round(rounding)
+
+        if pivot:
+            df = df.unstack(pivot)
 
         return df
 
@@ -1423,7 +1433,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
 class Report:
     @initializer
-    def __init__(self, warehouse, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None):
+    def __init__(self, warehouse, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
         self.facts = self.facts or []
         self.dimensions = self.dimensions or []
         assert self.facts or self.dimensions, 'One of facts or dimensions must be specified for Report'
@@ -1434,6 +1444,9 @@ class Report:
             if rollup != ROLLUP_TOTALS:
                 assert is_int(rollup) and (0 < int(rollup) <= len(dimensions)), 'Invalid rollup value: %s' % rollup
                 self.rollup = int(rollup)
+        self.pivot = self.pivot or []
+        if pivot:
+            assert set(self.pivot).issubset(set(self.dimensions)), 'Pivot columms must be a subset of dimensions'
 
         self.ds_facts = OrderedSet()
         self.ds_dimensions = OrderedSet()
@@ -1504,7 +1517,7 @@ class Report:
         ds_query_results = self.execute_ds_queries(self.queries)
         cr = self.create_combined_result(ds_query_results)
         try:
-            final_result = cr.get_final_result(self.facts, self.dimensions, self.row_filters, self.rollup)
+            final_result = cr.get_final_result(self.facts, self.dimensions, self.row_filters, self.rollup, self.pivot)
             dbg(final_result)
             self.result = ReportResult(final_result)
             return self.result
