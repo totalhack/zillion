@@ -76,6 +76,9 @@ NUMERIC_SA_TYPES = INTEGER_SA_TYPES + FLOAT_SA_TYPES
 FIELD_ALLOWABLE_CHARS_STR = string.ascii_uppercase + string.ascii_lowercase + string.digits + '_'
 FIELD_ALLOWABLE_CHARS = set(FIELD_ALLOWABLE_CHARS_STR)
 
+DATASOURCE_ALLOWABLE_CHARS_STR = string.ascii_uppercase + string.ascii_lowercase + string.digits + '_'
+DATASOURCE_ALLOWABLE_CHARS = set(DATASOURCE_ALLOWABLE_CHARS_STR)
+
 def field_safe_name(name):
     for char in name:
         if char not in FIELD_ALLOWABLE_CHARS:

@@ -1,4 +1,5 @@
 from collections import defaultdict, OrderedDict
+import datetime
 import decimal
 import random
 from sqlite3 import connect, Row
@@ -22,6 +23,7 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
                         ROW_FILTER_OPS,
+                        DATASOURCE_ALLOWABLE_CHARS,
                         AggregationTypes,
                         TableTypes,
                         FieldTypes,
@@ -42,6 +44,7 @@ from sqlaw.utils import (dbg,
                          warn,
                          error,
                          st,
+                         rmfile,
                          initializer,
                          is_int,
                          orderedsetify,
@@ -56,6 +59,8 @@ MAX_FORMULA_DEPTH = 3
 ROLLUP_INDEX_LABEL = chr(1114111)
 ROLLUP_INDEX_PRETTY_LABEL = '::'
 ROLLUP_TOTALS = 'totals'
+# TODO: make configurable
+ADHOC_DATASOURCE_DIRECTORY = '/tmp'
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.AVG: 'mean',
@@ -69,8 +74,67 @@ class InvalidFieldException(Exception):
 class MaxFormulaDepthException(Exception):
     pass
 
-class DataSourceMap(dict):
-    pass
+class DataSource(PrintMixin):
+    repr_attrs = ['name']
+
+    @initializer
+    def __init__(self, name, url_or_metadata, reflect=False):
+        self.name = DataSource.check_or_create_name(name)
+
+        if isinstance(url_or_metadata, str):
+            engine = sa.create_engine(url_or_metadata)
+            metadata = sa.MetaData()
+            metadata.bind = engine
+        else:
+            assert isinstance(url_or_metadata, sa.MetaData), 'Invalid URL or MetaData object: %s' % url_or_metadata
+            metadata = url_or_metadata
+
+        if reflect:
+            metadata.reflect()
+        self.metadata = metadata
+
+    @classmethod
+    def check_or_create_name(cls, name):
+        if not name:
+            datestr = datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')
+            name = 'sqlaw_ds_%s_%s' % (datestr, random.randint(0, 1E9))
+            return name
+        assert set(name) <= DATASOURCE_ALLOWABLE_CHARS,\
+            'DataSource name "%s" has invalid characters. Allowed: %s' % (name, DATASOURCE_ALLOWABLE_CHARS)
+        return name
+
+class AdHocDataTable(PrintMixin):
+    repr_attrs = ['name', 'type', 'primary_key']
+
+    @initializer
+    def __init__(self, name, type, primary_key, data, columns=None, parent=None, autocolumns=True):
+        self.columns = columns or {}
+        self.column_names = self.columns.keys() or None
+
+class AdHocDataSource(DataSource):
+    def __init__(self, datatables, name=None, coerce_float=True, if_exists='fail'):
+        self.table_configs = {}
+        ds_name = self.check_or_create_name(name)
+        conn_url = 'sqlite:///%s' % self.get_datasource_filename(ds_name)
+        engine = sa.create_engine(conn_url, echo=False)
+        for dt in datatables:
+            df = pd.DataFrame.from_records(dt.data, dt.primary_key, columns=dt.column_names, coerce_float=coerce_float)
+            df.to_sql(dt.name, engine, if_exists=if_exists, method='multi')
+            self.table_configs[dt.name] = dict(type=dt.type, parent=dt.parent, columns=dt.columns, autocolumns=dt.autocolumns)
+        super(AdHocDataSource, self).__init__(ds_name, conn_url, reflect=True)
+
+    def get_datasource_filename(self, ds_name):
+        return '%s/%s.db' % (ADHOC_DATASOURCE_DIRECTORY, ds_name)
+
+    def clean_up(self):
+        # TODO: should datasource retention be managed elsewhere?
+        filename = self.get_datasource_filename(self.name)
+        dbg('Removing %s' % filename)
+        rmfile(filename)
+
+# TODO:
+# CSVDataSource
+# URLDataSource
 
 class SQLAWInfo(MappingMixin):
     schema = None
@@ -248,16 +312,22 @@ class Field(PrintMixin):
         if isinstance(type, str):
             self.type = type_string_to_sa_type(type)
 
-    def add_column(self, ds_name, column):
-        current_cols = [column_fullname(col) for col in self.column_map[ds_name]]
+    def add_column(self, ds, column):
+        current_cols = [column_fullname(col) for col in self.column_map[ds.name]]
         fullname = column_fullname(column)
         if fullname in current_cols:
-            warn('Column %s.%s is already mapped to field %s' % (ds_name, fullname, self.name))
+            warn('Column %s.%s is already mapped to field %s' % (ds.name, fullname, self.name))
             return
-        self.column_map[ds_name].append(column)
+        self.column_map[ds.name].append(column)
+
+    def remove_column(self, ds, column):
+        self.column_map[ds.name].remove(column)
 
     def get_columns(self, ds_name):
         return self.column_map[ds_name]
+
+    def remove_datasource(self, ds):
+        del self.column_map[ds.name]
 
     def get_formula_fields(self, warehouse, depth=0):
         return []
@@ -453,13 +523,15 @@ def create_dimension(dim_def):
     return dim
 
 class Warehouse:
-    @initializer
-    def __init__(self, ds_map, config=None, ds_priority=None):
+    def __init__(self, datasources, config=None, ds_priority=None):
+        self.datasources = datasources
+        self.ds_priority = ds_priority
         if ds_priority:
+            ds_names = set([ds.name for ds in datasources])
             assert isinstance(ds_priority, list),\
                 'Invalid format for ds_priority, must be list of datesource names: %s' % ds_priority
             for ds_name in ds_priority:
-                assert ds_name in ds_map, 'Datasource %s is in ds_priority but not in datasource map' % ds_name
+                assert ds_name in ds_names, 'Datasource %s is in ds_priority but not in datasource map' % ds_name
         self.tables = defaultdict(dict)
         self.fact_tables = defaultdict(dict)
         self.dimension_tables = defaultdict(dict)
@@ -469,17 +541,61 @@ class Warehouse:
         self.ds_graphs = {}
 
         if config:
-            self.apply_config(self.config)
+            self.apply_config(config)
 
-        for ds_name, metadata in ds_map.items():
-            self.ensure_metadata_info(metadata)
-            self.populate_table_field_map(ds_name, metadata)
-            for table in metadata.tables.values():
-                self.add_table(ds_name, table)
-            self.add_ds_graph(ds_name)
+        for ds in datasources:
+            self.add_datasource(ds)
 
     def __repr__(self):
-        return 'Datasources: %s' % (self.ds_map.keys())
+        return 'Datasources: %s' % (self.ds_graphs.keys())
+
+    def get_datasource_names(self):
+        return self.ds_graphs.keys()
+
+    def get_datasource(self, name):
+        for ds in self.datasources:
+            if ds.name == name:
+                return ds
+        assert False, 'Could not find datasource with name "%s"' % name
+
+    def add_datasource_tables(self, ds):
+        for table in ds.metadata.tables.values():
+            self.add_table(ds, table)
+
+    def remove_datasource_tables(self, ds):
+        for table in ds.metadata.tables.values():
+            self.remove_table(ds, table)
+        del self.tables[ds.name]
+        if ds.name in self.fact_tables:
+            del self.fact_tables[ds.name]
+        if ds.name in self.dimension_tables:
+            del self.dimension_tables[ds.name]
+
+    def add_datasource(self, ds):
+        dbg('Adding datasource %s' % ds.name)
+        self.ensure_metadata_info(ds.metadata)
+        self.populate_table_field_map(ds)
+        self.add_datasource_tables(ds)
+        self.add_ds_graph(ds)
+
+    def remove_datasource(self, ds):
+        dbg('Removing datasource %s' % ds.name)
+        self.remove_table_field_map(ds)
+        self.remove_datasource_tables(ds)
+        self.remove_ds_graph(ds)
+
+    def add_adhoc_datasources(self, adhoc_datasources):
+        for adhoc_ds in adhoc_datasources:
+            self.apply_adhoc_config(adhoc_ds)
+            self.add_datasource(adhoc_ds)
+            self.datasources.append(adhoc_ds)
+
+    def remove_adhoc_datasources(self, adhoc_datasources):
+        for adhoc_ds in adhoc_datasources:
+            self.remove_adhoc_config(adhoc_ds)
+            self.remove_datasource(adhoc_ds)
+            self.datasources.remove(adhoc_ds)
+            adhoc_ds.clean_up()
 
     def ensure_metadata_info(self, metadata):
         '''Ensure that all sqlaw info are of proper type'''
@@ -512,8 +628,86 @@ class Warehouse:
                 column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
                 setattr(column, 'sqlaw', column.info['sqlaw'])
 
-    def populate_table_field_map(self, ds_name, metadata):
-        for table in metadata.tables.values():
+    def apply_global_config(self, config):
+        for fact_def in config.get('facts', []):
+            if isinstance(fact_def, dict):
+                schema = FactConfigSchema()
+                fact_def = schema.load(fact_def)
+                fact = create_fact(fact_def)
+            else:
+                assert isinstance(fact_def, Fact),\
+                    'Fact definition must be a dict-like object or a Fact object'
+                fact = fact_def
+            self.add_fact(fact)
+
+        for dim_def in config.get('dimensions', []):
+            if isinstance(dim_def, dict):
+                schema = DimensionConfigSchema()
+                dim_def = schema.load(dim_def)
+                dim = create_dimension(dim_def)
+            else:
+                assert isinstance(dim_def, Dimension),\
+                    'Dimension definition must be a dict-like object or a Dimension object'
+                dim = dim_def
+            self.add_dimension(dim)
+
+    def apply_datasource_config(self, ds_config, ds):
+        for table in ds.metadata.tables.values():
+            if table.fullname not in ds_config['tables']:
+                continue
+
+            table_config = ds_config['tables'][table.fullname]
+            column_configs = table_config.get('columns', None)
+            if 'columns' in table_config:
+                # TODO: operate on a copy of config instead?
+                del table_config['columns']
+
+            sqlaw_info = table.info.get('sqlaw', {})
+            # Config takes precendence over values on table objects
+            sqlaw_info.update(table_config)
+            table.info['sqlaw'] = TableInfo.create(sqlaw_info)
+
+            autocolumns = table.info['sqlaw'].autocolumns
+            if not autocolumns:
+                assert column_configs, ('Table %s.%s has autocolumns=False and no column configs' %
+                                        (ds.name, table.fullname))
+            if not column_configs:
+                continue
+
+            for column in table.columns:
+                if column.name not in column_configs:
+                    continue
+
+                column_config = column_configs[column.name]
+                sqlaw_info = column.info.get('sqlaw', {})
+                # Config takes precendence over values on column objects
+                sqlaw_info.update(column_config)
+                sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
+                column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
+
+    def apply_config(self, config):
+        '''
+        This will update or add sqlaw info to the schema item info dict if it
+        appears in the datasource config
+        '''
+        self.apply_global_config(config)
+
+        for ds_name in config.get('datasources', {}):
+            ds = self.get_datasource(ds_name)
+            ds_config = config['datasources'][ds.name]
+            self.apply_datasource_config(ds_config, ds)
+
+    def apply_adhoc_config(self, adhoc_ds):
+        ds_config = {
+            'tables': adhoc_ds.table_configs
+        }
+        self.apply_datasource_config(ds_config, adhoc_ds)
+
+    def remove_adhoc_config(self, adhoc_ds):
+        pass
+
+    def populate_table_field_map(self, ds):
+        for table in ds.metadata.tables.values():
             if not table.sqlaw:
                 continue
             for column in table.c:
@@ -521,7 +715,10 @@ class Warehouse:
                     continue
                 fields = column.sqlaw.fields
                 for field in fields:
-                    self.table_field_map[ds_name].setdefault(table.fullname, {}).setdefault(field, []).append(column)
+                    self.table_field_map[ds.name].setdefault(table.fullname, {}).setdefault(field, []).append(column)
+
+    def remove_table_field_map(self, ds):
+        del self.table_field_map[ds.name]
 
     def field_exists(self, field):
         if field in self.dimensions or field in self.facts:
@@ -601,45 +798,66 @@ class Warehouse:
             neighbor_tables.append(NeighborTable(parent, pk_fields))
         return neighbor_tables
 
-    def add_ds_graph(self, ds_name):
-        assert not (ds_name in self.ds_graphs), 'Datasource %s already has a graph' % ds_name
+    def add_ds_graph(self, ds):
+        assert not (ds.name in self.ds_graphs), 'Datasource %s already has a graph' % ds.name
         graph = nx.DiGraph()
-        self.ds_graphs[ds_name] = graph
-        tables = self.tables[ds_name].values()
+        self.ds_graphs[ds.name] = graph
+        tables = self.tables[ds.name].values()
         for table in tables:
             graph.add_node(table.fullname)
-            neighbors = self.find_neighbor_tables(ds_name, table)
+            neighbors = self.find_neighbor_tables(ds.name, table)
             for neighbor in neighbors:
                 graph.add_node(neighbor.table.fullname)
                 graph.add_edge(table.fullname, neighbor.table.fullname, join_fields=neighbor.join_fields)
 
-    def add_table(self, ds_name, table):
+    def remove_ds_graph(self, ds):
+        del self.ds_graphs[ds.name]
+
+    def add_table(self, ds, table):
         if not table.sqlaw:
             return
-        self.tables[ds_name][table.fullname] = table
+        self.tables[ds.name][table.fullname] = table
         if table.sqlaw.type == TableTypes.FACT:
-            self.add_fact_table(ds_name, table)
+            self.add_fact_table(ds, table)
         elif table.sqlaw.type == TableTypes.DIMENSION:
-            self.add_dimension_table(ds_name, table)
+            self.add_dimension_table(ds, table)
         else:
             assert False, 'Invalid table type: %s' % table_info.type
 
-    def add_fact_table(self, ds_name, table):
-        self.fact_tables[ds_name][table.fullname] = table
+    def remove_table(self, ds, table):
+        if table.sqlaw.type == TableTypes.FACT:
+            self.remove_fact_table(ds, table)
+        elif table.sqlaw.type == TableTypes.DIMENSION:
+            self.remove_dimension_table(ds, table)
+        else:
+            assert False, 'Invalid table type: %s' % table_info.type
+        del self.tables[ds.name][table.fullname]
+
+    def add_fact_table(self, ds, table):
+        self.fact_tables[ds.name][table.fullname] = table
         for column in table.c:
             if not column.sqlaw:
                 continue
 
             for field in column.sqlaw.fields:
                 if field in self.facts:
-                    self.facts[field].add_column(ds_name, column)
+                    self.facts[field].add_column(ds, column)
                 elif field in self.dimensions:
-                    self.dimensions[field].add_column(ds_name, column)
+                    self.dimensions[field].add_column(ds, column)
                 elif table.sqlaw.autocolumns:
                     if is_probably_fact(column):
-                        self.add_fact_column(ds_name, column, field)
+                        self.add_fact_column(ds, column, field)
                     else:
-                        self.add_dimension_column(ds_name, column, field)
+                        self.add_dimension_column(ds, column, field)
+
+    def remove_fact_table(self, ds, table):
+        for column in table.c:
+            for field in column.sqlaw.fields:
+                if field in self.facts:
+                    self.facts[field].remove_column(ds, column)
+                elif field in self.dimensions:
+                    self.dimensions[field].remove_column(ds, column)
+        del self.fact_tables[ds.name][table.fullname]
 
     def get_ds_tables_with_fact(self, fact):
         ds_tables = defaultdict(list)
@@ -661,8 +879,8 @@ class Warehouse:
         dbg('found %d datasource tables with dim %s' % (len(ds_tables), dim))
         return ds_tables
 
-    def add_dimension_table(self, ds_name, table):
-        self.dimension_tables[ds_name][table.fullname] = table
+    def add_dimension_table(self, ds, table):
+        self.dimension_tables[ds.name][table.fullname] = table
         for column in table.c:
             if not column.sqlaw:
                 continue
@@ -671,9 +889,9 @@ class Warehouse:
                 if field in self.facts:
                     assert False, 'Dimension table has fact field: %s' % field
                 elif field in self.dimensions:
-                    self.dimensions[field].add_column(ds_name, column)
+                    self.dimensions[field].add_column(ds, column)
                 elif table.sqlaw.autocolumns:
-                    self.add_dimension_column(ds_name, column, field)
+                    self.add_dimension_column(ds, column, field)
 
     def add_fact(self, fact):
         if fact.name in self.facts:
@@ -681,13 +899,13 @@ class Warehouse:
             return
         self.facts[fact.name] = fact
 
-    def add_fact_column(self, ds_name, column, field):
+    def add_fact_column(self, ds, column, field):
         if field not in self.facts:
-            dbg('Adding fact %s from column %s.%s' % (field, ds_name, column_fullname(column)))
+            dbg('Adding fact %s from column %s.%s' % (field, ds.name, column_fullname(column)))
             aggregation, rounding = infer_aggregation_and_rounding(column)
             fact = Fact(field, column.type, aggregation=aggregation, rounding=rounding)
             self.add_fact(fact)
-        self.facts[field].add_column(ds_name, column)
+        self.facts[field].add_column(ds, column)
 
     def add_dimension(self, dimension):
         if dimension.name in self.dimensions:
@@ -695,12 +913,12 @@ class Warehouse:
             return
         self.dimensions[dimension.name] = dimension
 
-    def add_dimension_column(self, ds_name, column, field):
+    def add_dimension_column(self, ds, column, field):
         if field not in self.dimensions:
-            dbg('Adding dimension %s from column %s.%s' % (field, ds_name, column_fullname(column)))
+            dbg('Adding dimension %s from column %s.%s' % (field, ds.name, column_fullname(column)))
             dimension = Dimension(field, column.type)
             self.add_dimension(dimension)
-        self.dimensions[field].add_column(ds_name, column)
+        self.dimensions[field].add_column(ds, column)
 
     def get_tables_with_dimension(self, ds_name, dimension):
         return [x.table for x in self.dimensions[dimension][ds_name]]
@@ -859,72 +1077,6 @@ class Warehouse:
 
         return join_fields
 
-    def apply_config(self, config):
-        '''
-        This will update or add sqlaw info to the schema item info dict if it
-        appears in the datasource config
-        '''
-
-        for fact_def in config.get('facts', []):
-            if isinstance(fact_def, dict):
-                schema = FactConfigSchema()
-                fact_def = schema.load(fact_def)
-                fact = create_fact(fact_def)
-            else:
-                assert isinstance(fact_def, Fact),\
-                    'Fact definition must be a dict-like object or a Fact object'
-                fact = fact_def
-            self.add_fact(fact)
-
-        for dim_def in config.get('dimensions', []):
-            if isinstance(dim_def, dict):
-                schema = DimensionConfigSchema()
-                dim_def = schema.load(dim_def)
-                dim = create_dimension(dim_def)
-            else:
-                assert isinstance(dim_def, Dimension),\
-                    'Dimension definition must be a dict-like object or a Dimension object'
-                dim = dim_def
-            self.add_dimension(dim)
-
-        for ds_name, metadata in self.ds_map.items():
-            if ds_name not in config['datasources']:
-                continue
-
-            ds_config = config['datasources'][ds_name]
-
-            for table in metadata.tables.values():
-                if table.fullname not in ds_config['tables']:
-                    continue
-
-                table_config = ds_config['tables'][table.fullname]
-                column_configs = table_config.get('columns', None)
-                if 'columns' in table_config:
-                    del table_config['columns']
-
-                sqlaw_info = table.info.get('sqlaw', {})
-                # Config takes precendence over values on table objects
-                sqlaw_info.update(table_config)
-                table.info['sqlaw'] = TableInfo.create(sqlaw_info)
-
-                autocolumns = table.info['sqlaw'].autocolumns
-                if not autocolumns:
-                    assert column_configs, ('Table %s.%s has autocolumns=False and no column configs' %
-                                            (ds_name, table.fullname))
-                if not column_configs:
-                    continue
-
-                for column in table.columns:
-                    if column.name not in column_configs:
-                        continue
-
-                    column_config = column_configs[column.name]
-                    sqlaw_info = column.info.get('sqlaw', {})
-                    # Config takes precendence over values on column objects
-                    sqlaw_info.update(column_config)
-                    sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
-                    column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
-
     def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
         return Report(self,
                       facts=facts,
@@ -934,7 +1086,11 @@ class Warehouse:
                       rollup=rollup,
                       pivot=pivot)
 
-    def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
+    def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None,
+               pivot=None, adhoc_datasources=None):
+        adhoc_datasources = adhoc_datasources or []
+        self.add_adhoc_datasources(adhoc_datasources)
+
         report = self.build_report(facts=facts,
                                    dimensions=dimensions,
                                    criteria=criteria,
@@ -942,6 +1098,8 @@ class Warehouse:
                                    rollup=rollup,
                                    pivot=pivot)
         result = report.execute()
+
+        self.remove_adhoc_datasources(adhoc_datasources)
         return result
 
 class DataSourceQuery(PrintMixin):
@@ -955,9 +1113,9 @@ class DataSourceQuery(PrintMixin):
         self.select = self.build_select()
 
     def get_conn(self):
-        datasource = self.warehouse.ds_map[self.table_set.ds_name]
-        assert datasource.bind, 'Datasource "%s" does not have metadata.bind set' % self.table_set.ds_name
-        conn = datasource.bind.connect()
+        ds = self.warehouse.get_datasource(self.table_set.ds_name)
+        assert ds.metadata.bind, 'Datasource "%s" does not have metadata.bind set' % self.table_set.ds_name
+        conn = ds.metadata.bind.connect()
         return conn
 
     def build_select(self):
@@ -1081,7 +1239,7 @@ class BaseCombinedResult:
     def __init__(self, warehouse, ds_query_results, primary_ds_dimensions):
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
-        self.table_name = 'sqlaw_%s_%s' % (str(time.time()).replace('.','_'), random.randint(0,1E6))
+        self.table_name = 'sqlaw_%s_%s' % (str(time.time()).replace('.','_'), random.randint(0, 1E9))
         self.primary_ds_dimensions = orderedsetify(primary_ds_dimensions) if primary_ds_dimensions else []
         self.ds_dimensions, self.ds_facts = self.get_fields()
         self.create_table()

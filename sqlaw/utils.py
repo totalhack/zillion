@@ -9,7 +9,9 @@ except ImportError:
     print('WARNING: Failed to import simplejson, falling back to built-in json')
     import json
     from json import JSONEncoder
+import os
 from pprint import pformat
+import random
 import string
 import sys
 
@@ -219,6 +221,9 @@ def string_has_format_args(s):
         return True
     return False
 
+def random_string(length=10):
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(length))
+
 #-------- Dict/JSON/Set utils
 
 # https://stackoverflow.com/questions/7204805/dictionaries-of-dictionaries-merge
@@ -282,3 +287,8 @@ def orderedsetify(obj):
 
 def parse_date(s):
     return dateparser.parse(s)
+
+#-------- File utils
+
+def rmfile(filename):
+    os.remove(filename)

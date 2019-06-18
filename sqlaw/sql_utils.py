@@ -62,11 +62,14 @@ def infer_aggregation_and_rounding(column):
     if type(column.type) in FLOAT_SA_TYPES:
         rounding = column.type.scale
         precision = column.type.precision
-        whole_digits = precision - rounding
-        if whole_digits <= DIGIT_THRESHOLD_FOR_AVG_AGGR:
-            aggregation = AggregationTypes.AVG
-        else:
+        if rounding is None and precision is None:
             aggregation = AggregationTypes.SUM
+        else:
+            whole_digits = precision - rounding
+            if whole_digits <= DIGIT_THRESHOLD_FOR_AVG_AGGR:
+                aggregation = AggregationTypes.AVG
+            else:
+                aggregation = AggregationTypes.SUM
         return aggregation, rounding
     assert False, 'Column %s is not a numeric type' % column
 

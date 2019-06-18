@@ -34,7 +34,7 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
     return result
 
 def load_config(filename, preserve_order=False):
-    file_schema = SQLAWConfigSchema()
+    file_schema = WarehouseConfigSchema()
     config = parse_schema_file(filename, file_schema,
                                object_pairs_hook=OrderedDict if preserve_order else None)
     return config
@@ -166,7 +166,7 @@ class DimensionConfigSchema(BaseSchema):
     type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
     formula = mfields.String(default=None, missing=None)
 
-class SQLAWConfigSchema(BaseSchema):
+class WarehouseConfigSchema(BaseSchema):
     facts = mfields.List(mfields.Nested(FactConfigSchema))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     datasources = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(DataSourceConfigSchema), required=True)
