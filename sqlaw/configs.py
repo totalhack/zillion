@@ -11,12 +11,12 @@ from sqlaw.core import (TableTypes,
                         FIELD_ALLOWABLE_CHARS_STR)
 from sqlaw.sql_utils import (type_string_to_sa_type,
                              InvalidSQLAlchemyTypeString)
-from sqlaw.utils import (dbg,
-                         error,
-                         json,
-                         st,
-                         is_int,
-                         initializer)
+from toolbox import (dbg,
+                     error,
+                     json,
+                     st,
+                     is_int,
+                     initializer)
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""

@@ -2,7 +2,7 @@ import string
 
 import sqlalchemy as sa
 
-from sqlaw.utils import ClassValueContainsMeta
+from toolbox import ClassValueContainsMeta
 
 class FieldTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = 'dimension'

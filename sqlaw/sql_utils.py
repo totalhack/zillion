@@ -8,7 +8,7 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
                         AggregationTypes)
-from sqlaw.utils import dbg, st, get_class_var_values
+from toolbox import dbg, st, get_class_var_values
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 

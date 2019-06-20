@@ -8,4 +8,5 @@ pylint
 simplejson
 sqlalchemy
 sqlparse
+git+git://github.com/totalhack/toolbox.git#egg=toolbox
 wheel

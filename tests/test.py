@@ -3,7 +3,6 @@ import copy
 
 from sqlaw.configs import load_config
 from sqlaw.core import TableTypes
-from sqlaw.utils import dbg, st, testcli
 from sqlaw.warehouse import (DataSource,
                              AdHocDataSource,
                              Warehouse,
@@ -11,6 +10,7 @@ from sqlaw.warehouse import (DataSource,
                              ROLLUP_TOTALS,
                              InvalidFieldException)
 from test_utils import TestBase, run_tests, create_adhoc_datatable
+from toolbox import dbg, st, testcli
 
 TESTDB_CONFIG = load_config('testdb_config.json')
 
