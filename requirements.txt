@@ -8,4 +8,4 @@ pylint
 simplejson
 sqlalchemy
 sqlparse
-
+wheel
