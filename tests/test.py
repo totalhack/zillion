@@ -1,51 +1,18 @@
 import climax
 import copy
-import random
 
 from sqlaw.configs import load_config
 from sqlaw.core import TableTypes
-from sqlaw.utils import dbg, st, testcli, random_string
+from sqlaw.utils import dbg, st, testcli
 from sqlaw.warehouse import (DataSource,
-                             AdHocDataTable,
                              AdHocDataSource,
                              Warehouse,
                              ROLLUP_INDEX_LABEL,
                              ROLLUP_TOTALS,
                              InvalidFieldException)
-from test_utils import TestBase, run_tests
+from test_utils import TestBase, run_tests, create_adhoc_datatable
 
 TESTDB_CONFIG = load_config('testdb_config.json')
-
-def create_adhoc_data(column_defs, size):
-    data = []
-
-    def get_random_value(coltype):
-        if coltype == str:
-            return random_string()
-        elif coltype == int:
-            return random.randint(0, 1E2)
-        elif coltype == float:
-            return random.random() * 1E2
-        else:
-            assert False, 'Unsupported column type: %s' % coltype
-
-    for i in range(0, size):
-        row = dict()
-        for column_name, column_def in column_defs.items():
-            row[column_name] = get_random_value(column_def.get('type', str))
-        data.append(row)
-
-    return data
-
-def create_adhoc_datatable(name, table_type, column_defs, primary_key, size, parent=None):
-    data = create_adhoc_data(column_defs, size)
-    column_defs = copy.deepcopy(column_defs)
-    for column_name, column_def in column_defs.items():
-        if 'type' in column_def:
-            # The column schema doesn't allow this column
-            del column_def['type']
-    dt = AdHocDataTable(name, table_type, primary_key, data, columns=column_defs, parent=parent)
-    return dt
 
 def init_datasources():
     ds = DataSource('testdb', 'sqlite:///testdb', reflect=True)
@@ -389,7 +356,8 @@ class TestSQLAW(TestBase):
             }
         }
 
-        dt = create_adhoc_datatable('adhoc_table1', TableTypes.FACT, column_defs, ['partner_name'], 10)
+        size = 10
+        dt = create_adhoc_datatable('adhoc_table1', TableTypes.FACT, column_defs, ['partner_name'], size)
         adhoc_ds = AdHocDataSource([dt])
 
         result = wh.report(facts, dimensions=dimensions, adhoc_datasources=[adhoc_ds])

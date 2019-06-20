@@ -41,6 +41,10 @@ def prompt_user(msg, answers):
 
 #-------- Object utils
 
+def chunk(l, n):
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
 def get_class_vars(cls):
     return set([i for i in dir(cls) if (not isinstance(i, Callable)) and (not i.startswith('_'))])
 

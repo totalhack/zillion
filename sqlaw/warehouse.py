@@ -44,6 +44,7 @@ from sqlaw.utils import (dbg,
                          warn,
                          error,
                          st,
+                         chunk,
                          rmfile,
                          initializer,
                          is_int,
@@ -54,13 +55,17 @@ from sqlaw.utils import (dbg,
 
 DEFAULT_IFNULL_VALUE = '--'
 MAX_FORMULA_DEPTH = 3
+
 # Last unicode char - this helps get the rollup rows to sort last, but may
 # need to be replaced for presentation
 ROLLUP_INDEX_LABEL = chr(1114111)
 ROLLUP_INDEX_PRETTY_LABEL = '::'
 ROLLUP_TOTALS = 'totals'
+
 # TODO: make configurable
 ADHOC_DATASOURCE_DIRECTORY = '/tmp'
+
+LOAD_TABLE_CHUNK_SIZE = 5000
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.AVG: 'mean',
@@ -119,7 +124,8 @@ class AdHocDataSource(DataSource):
         engine = sa.create_engine(conn_url, echo=False)
         for dt in datatables:
             df = pd.DataFrame.from_records(dt.data, dt.primary_key, columns=dt.column_names, coerce_float=coerce_float)
-            df.to_sql(dt.name, engine, if_exists=if_exists, method='multi')
+            size = int(1E3) # This hits limits in allowed sqlite params if chunks are too large
+            df.to_sql(dt.name, engine, if_exists=if_exists, method='multi', chunksize=size)
             self.table_configs[dt.name] = dict(type=dt.type, parent=dt.parent, columns=dt.columns, autocolumns=dt.autocolumns)
         super(AdHocDataSource, self).__init__(ds_name, conn_url, reflect=True)
 
@@ -1088,6 +1094,7 @@ class Warehouse:
 
     def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None,
                pivot=None, adhoc_datasources=None):
+        start = time.time()
         adhoc_datasources = adhoc_datasources or []
         self.add_adhoc_datasources(adhoc_datasources)
 
@@ -1100,6 +1107,7 @@ class Warehouse:
         result = report.execute()
 
         self.remove_adhoc_datasources(adhoc_datasources)
+        dbg('warehouse report took %.3fs' % (time.time() - start))
         return result
 
 class DataSourceQuery(PrintMixin):
@@ -1264,9 +1272,7 @@ class BaseCombinedResult:
         raise NotImplementedError
 
     def get_row_hash(self, row):
-        # TODO: should we limit length of particular primary dims if they are long strings?
-        hash_bytes = str([row[k] for k in row.keys() if k in self.primary_ds_dimensions]).encode('utf8')
-        return hash(hash_bytes)
+        return hash(row[:len(self.primary_ds_dimensions)])
 
     def get_fields(self):
         dimensions = OrderedDict()
@@ -1286,6 +1292,10 @@ class BaseCombinedResult:
                 facts[fact_name] = fact
 
         return dimensions, facts
+
+    def get_field_names(self):
+        dims, facts = self.get_fields()
+        return list(dims.keys()) + list(facts.keys())
 
 class SQLiteMemoryCombinedResult(BaseCombinedResult):
     def get_conn(self):
@@ -1319,37 +1329,41 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             self.cursor.execute(index_sql)
         self.conn.commit()
 
-    def get_row_insert_sql(self, row):
-        # TODO: switch to bulk insert
-        values_clause = ', '.join(['?'] * (1 + len(row)))
-        columns = [k for k in row.keys()]
+    def get_bulk_insert_sql(self, rows):
+        columns = [k for k in rows[0].keys()]
+        placeholder = '(%s)' % (', '.join(['?'] * (1 + len(columns))))
         columns_clause = 'hash, ' + ', '.join(columns)
 
-        sql = 'INSERT INTO %s (%s) VALUES (%s)' % (self.table_name, columns_clause, values_clause)
+        sql = 'INSERT INTO %s (%s) VALUES %s' % (self.table_name, columns_clause, placeholder)
 
         update_clauses = []
         for k in columns:
             if k in self.primary_ds_dimensions:
                 continue
             update_clauses.append('%s=excluded.%s' % (k, k))
+
         if update_clauses:
             update_clause = ' ON CONFLICT(hash) DO UPDATE SET ' + ', '.join(update_clauses)
             sql = sql + update_clause
 
-        hash_value = self.get_row_hash(row)
-        values = [hash_value]
-        for value in row.values():
-            # XXX Hack: sqlite cant handle Decimal values.
-            if isinstance(value, decimal.Decimal):
-                value = float(value)
-            values.append(value)
+        values = []
+        for row in rows:
+            row_values = [self.get_row_hash(row)]
+            for value in row.values():
+                # XXX: sqlite cant handle Decimal values. Alternative approach:
+                # https://stackoverflow.com/questions/6319409/how-to-convert-python-decimal-to-sqlite-numeric
+                if isinstance(value, decimal.Decimal):
+                    value = float(value)
+                row_values.append(value)
+            values.append(row_values)
+
         return sql, values
 
     def load_table(self):
         for qr in self.ds_query_results:
-            for row in qr.data:
-                insert_sql, values = self.get_row_insert_sql(row)
-                self.cursor.execute(insert_sql, values)
+            for rows in chunk(qr.data, LOAD_TABLE_CHUNK_SIZE):
+                insert_sql, values = self.get_bulk_insert_sql(rows)
+                self.cursor.executemany(insert_sql, values)
             self.conn.commit()
 
     def select_all(self):
@@ -1403,80 +1417,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         df = pd.concat(level_aggrs, sort=False, copy=False)
         df.sort_index(inplace=True)
-        return df
-
-    def get_multi_rollup_df_alternate(self, df, rollup, dimensions, aggrs, wavg, wavgs):
-        # Keeping this function around until I have time to test both further and see which
-        # scales better.
-        # TODO: signature of this is a bit odd
-        # TODO: test weighted averages
-
-        level_aggrs = []
-        for level in range(rollup):
-            grouped = df.groupby(level=list(range(0,level+1)))
-            level_aggr = grouped.agg(aggrs)
-            for fact_name, weighting_fact in wavgs:
-                level_aggr[fact_name] = wavg(fact_name, weighting_fact)
-            level_aggrs.append(level_aggr)
-
-        last_index = None
-        rows = []
-
-        def to_dict(tuple_row):
-            row = dict()
-            for i, name in enumerate(df.index.names):
-                row[name] = tuple_row.Index[i]
-            for col in df.columns:
-                row[col] = getattr(tuple_row, col)
-            return row
-
-        def get_rollup_row(last_index, level):
-            rollup_rows = []
-            rollup_row_key = last_index[:level+1]
-
-            if len(rollup_row_key) > 1:
-                # Hack necessary to get a dataframe back
-                rollup_df = level_aggrs[level].loc[[rollup_row_key], :]
-            else:
-                rollup_df = level_aggrs[level].loc[rollup_row_key, :]
-            assert isinstance(rollup_df, pd.DataFrame), 'Rollup row type expected DataFrame, got %s' % type(rollup_df)
-            new_index_dims = []
-            for dim in dimensions[level+1:]:
-                rollup_df[dim] = ROLLUP_INDEX_LABEL
-                new_index_dims.append(dim)
-            rollup_df = rollup_df.set_index(new_index_dims, append=True)
-            for rollup_row in rollup_df.itertuples():
-                rollup_rows.append(to_dict(rollup_row))
-            assert len(rollup_rows) == 1, 'Unexpected number of rollup rows:\n%s' % rollup_rows
-            return rollup_rows[0]
-
-        # Note: to_records is faster but not a generator
-        for row in df.itertuples():
-            index = row.Index
-            row = to_dict(row)
-
-            if not last_index:
-                last_index = index
-                rows.append(row)
-                continue
-
-            rollup_rows = []
-            for level in range(rollup):
-                if index[level] != last_index[level]:
-                    rollup_row = get_rollup_row(last_index, level)
-                    rollup_rows.append(rollup_row)
-
-            for rollup_row in reversed(rollup_rows):
-                rows.append(rollup_row)
-
-            last_index = index
-            rows.append(row)
-
-        # Add in rollup for last row
-        for level in range(rollup):
-            rows.append(get_rollup_row(last_index, level))
-
-        df = pd.DataFrame.from_records(rows, index=df.index.names)
         return df
 
     def apply_rollup(self, df, rollup, facts, dimensions):
@@ -1592,6 +1532,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 class Report:
     @initializer
     def __init__(self, warehouse, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
+        start = time.time()
         self.facts = self.facts or []
         self.dimensions = self.dimensions or []
         assert self.facts or self.dimensions, 'One of facts or dimensions must be specified for Report'
@@ -1617,6 +1558,7 @@ class Report:
 
         self.queries = self.build_ds_queries()
         self.combined_query = None
+        dbg('Report init took %.3fs' % (time.time() - start))
 
     def add_ds_fields(self, field_name, field_type):
         if field_type == FieldTypes.FACT:
@@ -1672,12 +1614,20 @@ class Report:
         return results
 
     def execute(self):
+        start = time.time()
         ds_query_results = self.execute_ds_queries(self.queries)
+        dbg('DataSource queries took %.3fs' % (time.time() - start))
+
+        start = time.time()
         cr = self.create_combined_result(ds_query_results)
+        dbg('Combined result took %.3fs' % (time.time() - start))
+
         try:
+            start = time.time()
             final_result = cr.get_final_result(self.facts, self.dimensions, self.row_filters, self.rollup, self.pivot)
             dbg(final_result)
             self.result = ReportResult(final_result)
+            dbg('Final result took %.3fs' % (time.time() - start))
             return self.result
         finally:
             cr.clean_up()
