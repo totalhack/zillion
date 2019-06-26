@@ -166,34 +166,21 @@ class ColumnInfo(SQLAWInfo, PrintMixin):
     repr_attrs = ['fields', 'active']
     schema = ColumnInfoSchema
 
-    @classmethod
-    def create(cls, sqlaw_info):
-        if isinstance(sqlaw_info, cls):
-            return sqlaw_info
-        assert isinstance(sqlaw_info, dict), 'Raw info must be a dict: %s' % sqlaw_info
+    def __init__(self, **kwargs):
+        super(ColumnInfo, self).__init__(**kwargs)
+        # XXX: field_map could get out of sync if fields is edited. Should we
+        # instead just change/force everything to be a dict? Downside is the
+        # sqlaw objects would differ from how they were defined, which could
+        # be confusing.
+        self.field_map = OrderedDict()
+        for field in self.fields:
+            if isinstance(field, str):
+                self.field_map[field] = None
+            else:
+                self.field_map[field['name']] = field
 
-        # Need to reformat the fields from config format to ColumnInfo format
-        fields_dict = {}
-        for field_row in sqlaw_info.get('fields', []):
-            if isinstance(field_row, str):
-                fields_dict[field_row] = None
-                continue
-
-            if isinstance(field_row, (tuple, list)):
-                name = field_row[0]
-                config = field_row[1]
-                # TODO: column formulas should probably be verified to be using fully
-                # qualified column names. We could use something like sqlparse to
-                # help analyze this for SQL-based datasources, but not everything
-                # will be sql.
-                fields_dict[name] = config
-                continue
-
-            assert False, 'Invalid field row format: %s' % sqlaw_info
-
-        sqlaw_info['fields'] = fields_dict
-        sqlaw_info = cls.schema().load(sqlaw_info)
-        return cls(**sqlaw_info)
+    def get_field_names(self):
+        return self.field_map.keys()
 
 class TableSet(PrintMixin):
     repr_attrs = ['ds_name', 'join_list', 'grain', 'target_fields']
@@ -263,13 +250,13 @@ def joins_from_path(graph, path, field_map=None):
 def get_table_fields(table):
     fields = set()
     for col in table.c:
-        for field in col.sqlaw.fields:
+        for field in col.sqlaw.get_field_names():
             fields.add(field)
     return fields
 
 def get_table_field_column(table, field_name):
     for col in table.c:
-        for field in col.sqlaw.fields:
+        for field in col.sqlaw.get_field_names():
             if field == field_name:
                 return col
     assert False, 'Field %s is not present in table %s' % (field_name, table.fullname)
@@ -277,7 +264,7 @@ def get_table_field_column(table, field_name):
 def get_table_facts(warehouse, table):
     facts = set()
     for col in table.c:
-        for field in col.sqlaw.fields:
+        for field in col.sqlaw.get_field_names():
             if field in warehouse.facts:
                 facts.add(field)
     return facts
@@ -285,7 +272,7 @@ def get_table_facts(warehouse, table):
 def get_table_dimensions(warehouse, table):
     dims = set()
     for col in table.c:
-        for field in col.sqlaw.fields:
+        for field in col.sqlaw.get_fields_names():
             if field in warehouse.dimensions:
                 dims.add(field)
     return dims
@@ -332,6 +319,9 @@ class Field(PrintMixin):
     def get_columns(self, ds_name):
         return self.column_map[ds_name]
 
+    def get_column_names(self, ds_name):
+        return [column_fullname(x) for x in self.column_map[ds_name]]
+
     def remove_datasource(self, ds):
         del self.column_map[ds.name]
 
@@ -339,7 +329,7 @@ class Field(PrintMixin):
         return []
 
     def get_ds_expression(self, column):
-        ds_formula = column.sqlaw.fields[self.name].get('ds_formula', None) if column.sqlaw.fields[self.name] else None
+        ds_formula = column.sqlaw.field_map[self.name].get('ds_formula', None) if column.sqlaw.field_map[self.name] else None
         if not ds_formula:
             return sa.func.ifnull(column, self.ifnull_value).label(self.name)
         return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
@@ -376,7 +366,7 @@ class Fact(Field):
         aggr = aggregation_to_sqla_func(self.aggregation)
         skip_aggr = False
 
-        ds_formula = column.sqlaw.fields[self.name].get('ds_formula', None) if column.sqlaw.fields[self.name] else None
+        ds_formula = column.sqlaw.field_map[self.name].get('ds_formula', None) if column.sqlaw.field_map[self.name] else None
         if ds_formula:
             if contains_aggregation(ds_formula):
                 warn('Datasource formula contains aggregation, skipping default logic!')
@@ -621,17 +611,17 @@ class Warehouse:
                         continue
                     else:
                         sqlaw_info = {}
-                sqlaw_info['fields'] = sqlaw_info.get('fields', {field_safe_name(column_fullname(column)): None})
+                sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
+                column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
+                setattr(column, 'sqlaw', column.info['sqlaw'])
 
                 if column.primary_key:
                     dim_count = 0
-                    for field in sqlaw_info['fields']:
+                    for field in column.sqlaw.get_field_names():
                         if field in self.dimensions or field not in self.facts:
                             dim_count += 1
                         assert dim_count < 2, 'Primary key column may only map to a single dimension: %s' % column
 
-                column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
-                setattr(column, 'sqlaw', column.info['sqlaw'])
 
     def apply_global_config(self, config):
         for fact_def in config.get('facts', []):
@@ -718,8 +708,7 @@ class Warehouse:
             for column in table.c:
                 if not column.sqlaw:
                     continue
-                fields = column.sqlaw.fields
-                for field in fields:
+                for field in column.sqlaw.get_field_names():
                     self.table_field_map[ds.name].setdefault(table.fullname, {}).setdefault(field, []).append(column)
 
     def remove_table_field_map(self, ds):
@@ -844,7 +833,10 @@ class Warehouse:
             if not column.sqlaw:
                 continue
 
-            for field in column.sqlaw.fields:
+            if not column.sqlaw.active:
+                continue
+
+            for field in column.sqlaw.get_field_names():
                 if field in self.facts:
                     self.facts[field].add_column(ds, column)
                 elif field in self.dimensions:
@@ -857,7 +849,7 @@ class Warehouse:
 
     def remove_fact_table(self, ds, table):
         for column in table.c:
-            for field in column.sqlaw.fields:
+            for field in column.sqlaw.get_field_names():
                 if field in self.facts:
                     self.facts[field].remove_column(ds, column)
                 elif field in self.dimensions:
@@ -890,7 +882,10 @@ class Warehouse:
             if not column.sqlaw:
                 continue
 
-            for field in column.sqlaw.fields:
+            if not column.sqlaw.active:
+                continue
+
+            for field in column.sqlaw.get_field_names():
                 if field in self.facts:
                     assert False, 'Dimension table has fact field: %s' % field
                 elif field in self.dimensions:

@@ -67,12 +67,9 @@ def is_valid_aggregation(val):
 def is_valid_column_field_config(val):
     if isinstance(val, str):
         return True
-    if isinstance(val, (list, tuple)):
-        if not len(val) == 2:
-            raise ValidationError('Invalid column field config length: %s' % val)
-        name, config = val
+    if isinstance(val, dict):
         schema = ColumnFieldConfigSchema()
-        schema.load(config)
+        schema.load(val)
         return True
     raise ValidationError('Invalid column field config: %s' % val)
 
@@ -115,6 +112,7 @@ class AdHocFactSchema(AdHocFieldSchema):
     rounding = mfields.Integer(default=None, missing=None)
 
 class ColumnFieldConfigSchema(BaseSchema):
+    name = mfields.Str(required=True, validate=is_valid_field_name)
     ds_formula = mfields.Str(required=True)
 
 class ColumnFieldConfigField(mfields.Field):
@@ -123,13 +121,11 @@ class ColumnFieldConfigField(mfields.Field):
         super(ColumnFieldConfigField, self)._validate(value)
 
 class ColumnInfoSchema(BaseSchema):
-    # TODO: this needs separate validation?
-    fields = mfields.Dict(keys=mfields.Str(), values=mfields.Field(allow_none=True))
-    active = mfields.Boolean(default=True, missing=True)
-
-class ColumnConfigSchema(BaseSchema):
     fields = mfields.List(ColumnFieldConfigField())
     active = mfields.Boolean(default=True, missing=True)
+
+class ColumnConfigSchema(ColumnInfoSchema):
+    pass
 
 class TableTypeField(mfields.Field):
     def _validate(self, value):
@@ -141,7 +137,6 @@ class TableInfoSchema(BaseSchema):
     autocolumns = mfields.Boolean(default=False, missing=False)
     active = mfields.Boolean(default=True, missing=True)
     parent = mfields.Str(default=None, missing=None)
-    columns = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema))
 
 class TableConfigSchema(TableInfoSchema):
     columns = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema))

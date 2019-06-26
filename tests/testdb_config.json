@@ -171,10 +171,10 @@
                                 "revenue_ma_5",
                                 "revenue_sum_5",
                                 "revenue_boll_5",
-                                ["revenue_ds", {"ds_formula": "IFNULL(sales.revenue, 0)"}],
+                                {"name": "revenue_ds", "ds_formula": "IFNULL(sales.revenue, 0)"},
                                 "revenue_avg",
-                                ["revenue_avg_ds_weighted", {"ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"}],
-                                ["revenue_decile", {"ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}]
+                                {"name": "revenue_avg_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},
+                                {"name": "revenue_decile", "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}
                             ]
                         }
                     }

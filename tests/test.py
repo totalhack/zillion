@@ -43,18 +43,16 @@ class TestSQLAW(TestBase):
         wh = Warehouse(self.datasources)
         self.assertTrue(wh.dimensions)
 
-    # TODO: need to rewrite this test
-    #def testTableConfigOverride(self):
-    #    self.config['datasources']['testdb']['tables']['sales']['type'] = 'dimension'
-    #    wh = Warehouse(self.datasources, config=self.config)
-    #    self.assertIn('sales', wh.dimension_tables['testdb'])
+    def testTableConfigOverride(self):
+        self.config['datasources']['testdb']['tables']['campaigns']['type'] = 'fact'
+        wh = Warehouse(self.datasources, config=self.config)
+        self.assertIn('campaigns', wh.fact_tables['testdb'])
 
-    # TODO: need to rewrite this test
-    #def testColumnConfigOverride(self):
-    #    table_config = self.config['datasources']['testdb']['tables']['sales']
-    #    table_config['columns']['revenue']['active'] = False
-    #    wh = Warehouse(self.datasources, config=self.config)
-    #    self.assertNotIn('revenue', wh.facts)
+    def testColumnConfigOverride(self):
+        table_config = self.config['datasources']['testdb']['tables']['sales']
+        table_config['columns']['lead_id']['active'] = False
+        wh = Warehouse(self.datasources, config=self.config)
+        self.assertNotIn('sales.lead_id', wh.dimensions['lead_id'].get_column_names('testdb'))
 
     def testContainsAggregation(self):
         sql_with_aggr = [
