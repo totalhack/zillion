@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import re
 
-from marshmallow import Schema, fields as mfields, ValidationError
+from marshmallow import Schema, fields as mfields, ValidationError, validates_schema
 
 from sqlaw.core import (TableTypes,
                         AggregationTypes,
@@ -92,7 +92,7 @@ def is_valid_technical(val):
 
 class BaseSchema(Schema):
     class Meta:
-        # Use the json module as imported from utils
+        # Use the json module as imported from toolbox
         json_module = json
 
 class TechnicalInfoSchema(BaseSchema):
@@ -115,7 +115,6 @@ class AdHocFactSchema(AdHocFieldSchema):
     rounding = mfields.Integer(default=None, missing=None)
 
 class ColumnFieldConfigSchema(BaseSchema):
-    # TODO: Allow type and aggregation overrides?
     ds_formula = mfields.Str(required=True)
 
 class ColumnFieldConfigField(mfields.Field):
@@ -142,6 +141,7 @@ class TableInfoSchema(BaseSchema):
     autocolumns = mfields.Boolean(default=False, missing=False)
     active = mfields.Boolean(default=True, missing=True)
     parent = mfields.Str(default=None, missing=None)
+    columns = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema))
 
 class TableConfigSchema(TableInfoSchema):
     columns = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema))
@@ -149,7 +149,6 @@ class TableConfigSchema(TableInfoSchema):
 class DataSourceConfigSchema(BaseSchema):
     tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
 
-# TODO: if type is missing, formula must be supplied and vice-versa
 class FactConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
     type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
@@ -160,6 +159,11 @@ class FactConfigSchema(BaseSchema):
     weighting_fact = mfields.Str(default=None, missing=None)
     formula = mfields.String(default=None, missing=None)
     technical = TechnicalField(default=None, missing=None)
+
+    @validates_schema(skip_on_field_errors=True)
+    def validate_object(self, data):
+        if (not data.get('type', None)) and (not data.get('formula', None)):
+            raise ValidationError('Either type or formula must be specified for fact: %s' % data)
 
 class DimensionConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)

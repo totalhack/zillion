@@ -381,7 +381,6 @@ class Fact(Field):
             if contains_aggregation(ds_formula):
                 warn('Datasource formula contains aggregation, skipping default logic!')
                 skip_aggr = True
-            # TODO: is literal_column() appropriate vs text()?
             expr = sa.literal_column(ds_formula)
 
         if not skip_aggr:
@@ -1606,7 +1605,6 @@ class Report:
         return DataSourceQueryResult(query, data)
 
     def execute_ds_queries(self, queries):
-        # TODO: execute datasource queries in parallel threads
         results = []
         for query in queries:
             result = self.execute_ds_query(query)
@@ -1633,7 +1631,6 @@ class Report:
             cr.clean_up()
 
     def get_grain(self):
-        # TODO: may need to adjust this to support partition dimensions
         if not (self.ds_dimensions or self.criteria):
             return None
         grain = set()

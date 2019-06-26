@@ -3,6 +3,7 @@ import copy
 
 from sqlaw.configs import load_config
 from sqlaw.core import TableTypes
+from sqlaw.sql_utils import contains_aggregation
 from sqlaw.warehouse import (DataSource,
                              AdHocDataSource,
                              Warehouse,
@@ -54,6 +55,30 @@ class TestSQLAW(TestBase):
     #    table_config['columns']['revenue']['active'] = False
     #    wh = Warehouse(self.datasources, config=self.config)
     #    self.assertNotIn('revenue', wh.facts)
+
+    def testContainsAggregation(self):
+        sql_with_aggr = [
+            'select sum(column) from table',
+            'select avg(column) from table',
+            'sum(column)',
+            'avg(column)',
+        ]
+
+        sql_without_aggr = [
+            'select column from table',
+            'column',
+            'a + b',
+            '(a) + (b)',
+            '(a + b)',
+            'sum',
+            'sum + avg',
+        ]
+
+        for sql in sql_with_aggr:
+            self.assertTrue(contains_aggregation(sql))
+
+        for sql in sql_without_aggr:
+            self.assertFalse(contains_aggregation(sql))
 
     def testReport(self):
         wh = Warehouse(self.datasources, config=self.config)

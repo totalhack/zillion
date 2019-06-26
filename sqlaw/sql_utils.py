@@ -8,7 +8,7 @@ from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
                         AggregationTypes)
-from toolbox import dbg, st, get_class_var_values
+from toolbox import dbg, st, get_class_vars
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 
@@ -25,17 +25,15 @@ class InvalidSQLAlchemyTypeString(Exception):
     pass
 
 def contains_aggregation(sql):
-    # TODO: this function needs more testing
     if isinstance(sql, str):
         sql = sp.parse(sql)
 
-    aggr_types = get_class_var_values(AggregationTypes)
+    aggr_types = {x.lower() for x in get_class_vars(AggregationTypes)}
 
     for token in sql:
         if isinstance(token, sp.sql.Function):
             name = token.get_name()
-            # TODO: should we use a hardcoded list here?
-            # If case changes or aggregation naming is changed, this could fail
+            # NOTE: If AggregationTypes naming is changed, this could fail
             if name.lower() in aggr_types:
                 return True
         if isinstance(token, sp.sql.TokenList):
@@ -107,7 +105,6 @@ def get_sqla_clause(column, criterion, negate=False):
         if v is None or (isinstance(v, str) and len(v) == 4 and v.lower() == 'null'):
             has_null = True
 
-    # TODO: support partition clauses
     if op == '=':
         clauses = [column == v if v is not None else column._is(None) for v in values]
     elif op == '!=':
