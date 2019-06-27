@@ -1,7 +1,9 @@
 from collections import OrderedDict
+import os
 import re
 
 from marshmallow import Schema, fields as mfields, ValidationError, validates_schema
+import yaml
 
 from sqlaw.core import (TableTypes,
                         AggregationTypes,
@@ -18,6 +20,14 @@ from toolbox import (dbg,
                      is_int,
                      initializer)
 
+def load_sqlaw_config():
+    sqlaw_config_fname = os.environ.get('SQLAW_CONFIG', None)
+    if not sqlaw_config_fname:
+        return dict(ADHOC_DATASOURCE_DIRECTORY='/tmp',
+                    LOAD_TABLE_CHUNK_SIZE=5000,
+                    IFNULL_PRETTY_VALUE='--')
+    return yaml.safe_load(open(sqlaw_config_fname))
+
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""
     f = open(filename)
@@ -33,7 +43,7 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
         raise
     return result
 
-def load_config(filename, preserve_order=False):
+def load_warehouse_config(filename, preserve_order=False):
     file_schema = WarehouseConfigSchema()
     config = parse_schema_file(filename, file_schema,
                                object_pairs_hook=OrderedDict if preserve_order else None)

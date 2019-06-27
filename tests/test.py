@@ -1,7 +1,7 @@
 import climax
 import copy
 
-from sqlaw.configs import load_config
+from sqlaw.configs import load_warehouse_config
 from sqlaw.core import TableTypes
 from sqlaw.sql_utils import contains_aggregation
 from sqlaw.warehouse import (DataSource,
@@ -13,7 +13,7 @@ from sqlaw.warehouse import (DataSource,
 from test_utils import TestBase, run_tests, create_adhoc_datatable
 from toolbox import dbg, st, testcli
 
-TESTDB_CONFIG = load_config('testdb_config.json')
+TESTDB_CONFIG = load_warehouse_config('testdb_config.json')
 
 def init_datasources():
     ds = DataSource('testdb', 'sqlite:///testdb', reflect=True)

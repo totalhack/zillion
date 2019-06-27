@@ -5,6 +5,7 @@ networkx
 orderedset
 pandas
 pylint
+pyyaml
 simplejson
 sqlalchemy
 sqlparse

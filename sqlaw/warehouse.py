@@ -18,7 +18,8 @@ from sqlaw.configs import (AdHocFieldSchema,
                            FactConfigSchema,
                            TechnicalInfoSchema,
                            DimensionConfigSchema,
-                           is_valid_field_name)
+                           is_valid_field_name,
+                           load_sqlaw_config)
 from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
@@ -53,7 +54,8 @@ from toolbox import (dbg,
                      PrintMixin,
                      MappingMixin)
 
-DEFAULT_IFNULL_VALUE = '--'
+sqlaw_config = load_sqlaw_config()
+
 MAX_FORMULA_DEPTH = 3
 
 # Last unicode char - this helps get the rollup rows to sort last, but may
@@ -61,11 +63,6 @@ MAX_FORMULA_DEPTH = 3
 ROLLUP_INDEX_LABEL = chr(1114111)
 ROLLUP_INDEX_PRETTY_LABEL = '::'
 ROLLUP_TOTALS = 'totals'
-
-# TODO: make configurable
-ADHOC_DATASOURCE_DIRECTORY = '/tmp'
-
-LOAD_TABLE_CHUNK_SIZE = 5000
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.AVG: 'mean',
@@ -130,7 +127,7 @@ class AdHocDataSource(DataSource):
         super(AdHocDataSource, self).__init__(ds_name, conn_url, reflect=True)
 
     def get_datasource_filename(self, ds_name):
-        return '%s/%s.db' % (ADHOC_DATASOURCE_DIRECTORY, ds_name)
+        return '%s/%s.db' % (sqlaw_config['ADHOC_DATASOURCE_DIRECTORY'], ds_name)
 
     def clean_up(self):
         # TODO: should datasource retention be managed elsewhere?
@@ -296,7 +293,7 @@ class Technical(MappingMixin, PrintMixin):
 
 class Field(PrintMixin):
     repr_attrs = ['name']
-    ifnull_value = DEFAULT_IFNULL_VALUE
+    ifnull_value = sqlaw_config['IFNULL_PRETTY_VALUE']
 
     @initializer
     def __init__(self, name, type, **kwargs):
@@ -1355,7 +1352,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def load_table(self):
         for qr in self.ds_query_results:
-            for rows in chunk(qr.data, LOAD_TABLE_CHUNK_SIZE):
+            for rows in chunk(qr.data, sqlaw_config['LOAD_TABLE_CHUNK_SIZE']):
                 insert_sql, values = self.get_bulk_insert_sql(rows)
                 self.cursor.executemany(insert_sql, values)
             self.conn.commit()
