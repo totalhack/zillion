@@ -170,6 +170,10 @@ class FactConfigSchema(BaseSchema):
         if (not data.get('type', None)) and (not data.get('formula', None)):
             raise ValidationError('Either type or formula must be specified for fact: %s' % data)
 
+        if data['weighting_fact'] and not data['aggregation'] == AggregationTypes.AVG:
+            raise ValidationError('only "%s" aggregation type is allowed with weighting facts: %s' %
+                                  (AggregationTypes.AVG, data))
+
 class DimensionConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
     type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)

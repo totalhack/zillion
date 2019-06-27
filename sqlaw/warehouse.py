@@ -130,14 +130,9 @@ class AdHocDataSource(DataSource):
         return '%s/%s.db' % (sqlaw_config['ADHOC_DATASOURCE_DIRECTORY'], ds_name)
 
     def clean_up(self):
-        # TODO: should datasource retention be managed elsewhere?
         filename = self.get_datasource_filename(self.name)
         dbg('Removing %s' % filename)
         rmfile(filename)
-
-# TODO:
-# CSVDataSource
-# URLDataSource
 
 class SQLAWInfo(MappingMixin):
     schema = None
@@ -347,16 +342,23 @@ class Field(PrintMixin):
 class Fact(Field):
     def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None,
                  weighting_fact=None, technical=None, **kwargs):
-        # TODO: enforce this in config instead?
         if weighting_fact:
             assert aggregation == AggregationTypes.AVG,\
-                'Weighting facts are only supported for aggregation type: %s' % AggregationTypes.AVG
+                'Weighting facts are only supported for "%s" aggregation type' % AggregationTypes.AVG
 
         if technical:
             technical = Technical.create(technical)
 
         super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding,
                                    weighting_fact=weighting_fact, technical=technical, **kwargs)
+
+    def add_column(self, ds, column):
+        super(Fact, self).add_column(ds, column)
+        if self.weighting_fact:
+            for col in column.table.c:
+                if self.weighting_fact in col.sqlaw.get_field_names():
+                    return
+            assert False, 'Fact "%s" requires weighting_fact "%s" but it is missing from table for column %s' % (self.name, self.weighting_fact, column_fullname(column))
 
     def get_ds_expression(self, column):
         expr = column
@@ -377,7 +379,6 @@ class Fact(Field):
                 return aggr(expr).label(self.name)
 
             if self.weighting_fact:
-                # TODO: check weighting fact is present in this table when reading config
                 w_column = get_table_field_column(column.table, self.weighting_fact)
                 w_column_name = column_fullname(w_column)
                 # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
@@ -385,10 +386,6 @@ class Fact(Field):
                 expr = sa.func.sum(sa.text('1.0') * expr * sa.text(w_column_name)) / sa.func.sum(sa.text(w_column_name))
             else:
                 expr = aggr(expr)
-
-        # XXX Only applying rounding on final result DataFrame
-        # if self.rounding:
-        #    expr = sa.func.round(expr, self.rounding)
 
         return expr.label(self.name)
 
