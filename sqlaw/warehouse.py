@@ -1,4 +1,5 @@
 from collections import defaultdict, OrderedDict
+import copy
 import datetime
 import decimal
 import random
@@ -428,6 +429,11 @@ class FormulaField(Field):
         raw_formula = self.formula.format(**field_formula_map)
         return raw_fields, raw_formula
 
+    def check_formula_fields(self, warehouse):
+        fields, _ = self.get_formula_fields(warehouse)
+        for field in fields:
+            warehouse.get_field(field)
+
     def get_ds_expression(self, column):
         assert False, 'Formula-based Fields do not support get_ds_expression'
 
@@ -442,8 +448,6 @@ class FormulaFact(FormulaField):
 
     def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None,
                  technical=None, **kwargs):
-        # TODO: ensure formula params are valid fields as objects are formed
-        # We'd need to defer formula facts until the end to achieve this.
         if technical:
             technical = Technical.create(technical)
 
@@ -452,17 +456,8 @@ class FormulaFact(FormulaField):
 
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
-        # XXX Only applying rounding on final result DataFrame
-        if False and self.rounding:
-            # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
-            # to integer values improperly by some database dialects such as sqlite
-            format_args = {k:('(1.0*%s)' % k) for k in formula_fields}
-            raw = sa.text(raw_formula.format(**format_args))
-            clause = sa.func.round(raw, self.rounding)
-        else:
-            format_args = {k:k for k in formula_fields}
-            clause = sa.text(raw_formula.format(**format_args))
-
+        format_args = {k:k for k in formula_fields}
+        clause = sa.text(raw_formula.format(**format_args))
         return sqla_compile(clause)
 
 class AdHocField(FormulaField):
@@ -616,8 +611,9 @@ class Warehouse:
                             dim_count += 1
                         assert dim_count < 2, 'Primary key column may only map to a single dimension: %s' % column
 
-
     def apply_global_config(self, config):
+        formula_facts = []
+
         for fact_def in config.get('facts', []):
             if isinstance(fact_def, dict):
                 schema = FactConfigSchema()
@@ -627,7 +623,12 @@ class Warehouse:
                 assert isinstance(fact_def, Fact),\
                     'Fact definition must be a dict-like object or a Fact object'
                 fact = fact_def
-            self.add_fact(fact)
+
+            if isinstance(fact, FormulaFact):
+                # These get added later
+                formula_facts.append(fact)
+            else:
+                self.add_fact(fact)
 
         for dim_def in config.get('dimensions', []):
             if isinstance(dim_def, dict):
@@ -640,15 +641,19 @@ class Warehouse:
                 dim = dim_def
             self.add_dimension(dim)
 
+        # Defer formula facts so params can be checked against existing fields
+        for fact in formula_facts:
+            fact.check_formula_fields(self)
+            self.add_fact(fact)
+
     def apply_datasource_config(self, ds_config, ds):
         for table in ds.metadata.tables.values():
             if table.fullname not in ds_config['tables']:
                 continue
 
-            table_config = ds_config['tables'][table.fullname]
+            table_config = copy.deepcopy(ds_config['tables'][table.fullname])
             column_configs = table_config.get('columns', None)
             if 'columns' in table_config:
-                # TODO: operate on a copy of config instead?
                 del table_config['columns']
 
             sqlaw_info = table.info.get('sqlaw', {})
@@ -719,7 +724,7 @@ class Warehouse:
                 return self.facts[obj]
             if obj in self.dimensions:
                 return self.dimensions[obj]
-            assert False, 'Field %s does not exist' % obj
+            assert False, 'Field "%s" does not exist' % obj
         elif isinstance(obj, dict):
             return AdHocField.create(obj)
         else:
@@ -733,6 +738,7 @@ class Warehouse:
         elif isinstance(obj, dict):
             fact = AdHocFact.create(obj)
             assert fact.name not in self.facts, 'AdHocFact can not use name of an existing fact: %s' % fact.name
+            fact.check_formula_fields(self)
             return fact
         else:
             raise InvalidFieldException('Invalid fact object: %s' % obj)
@@ -925,7 +931,7 @@ class Warehouse:
             if column.table == table:
                 paths = [[table.fullname]]
             else:
-                # TODO: use shortest_simple_paths instead?
+                # TODO: consider caching with larger graphs, or precomputing
                 paths = nx.all_simple_paths(ds_graph, table.fullname, column.table.fullname)
 
             if not paths:
