@@ -1,5 +1,7 @@
-import climax
 import copy
+import traceback
+
+import climax
 
 from sqlaw.configs import load_warehouse_config
 from sqlaw.core import TableTypes
@@ -77,6 +79,30 @@ class TestSQLAW(TestBase):
 
         for sql in sql_without_aggr:
             self.assertFalse(contains_aggregation(sql))
+
+    def testGetDimensionTableSet(self):
+        wh = Warehouse(self.datasources, config=self.config)
+        possible = [
+            {'partner_id', 'partner_name'},
+            {'campaign_name', 'partner_name'},
+        ]
+
+        impossible = [
+            {'lead_id', 'partner_id'},
+            {'sale_id', 'lead_id', 'campaign_name', 'partner_name'}
+        ]
+
+        for grain in possible:
+            try:
+                ts = wh.get_dimension_table_set(grain)
+                # TODO: assert specific table set?
+            except Exception as e:
+                print(traceback.format_exc())
+                self.fail('Could not satisfy grain: %s' % grain)
+
+        for grain in impossible:
+            with self.assertRaises(AssertionError):
+                wh.get_dimension_table_set(grain)
 
     def testReport(self):
         wh = Warehouse(self.datasources, config=self.config)

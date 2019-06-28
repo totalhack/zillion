@@ -190,6 +190,11 @@ class TableSet(PrintMixin):
         covered_fields = get_table_fields(warehouse, self.ds_table)
         return covered_fields
 
+    def __len__(self):
+        if not self.join_list:
+            return 1
+        return len(self.join_list.table_names)
+
 class NeighborTable(PrintMixin):
     repr_attrs = ['table_name', 'join_fields']
 
@@ -205,7 +210,10 @@ class JoinInfo(PrintMixin):
         pass
 
 class JoinList(PrintMixin):
-    '''Field map represents the requested fields this join list is meant to satisfy'''
+    '''
+    JoinList is just a group of joins that would be used together.
+    field_map represents the requested fields this join list is meant to satisfy
+    '''
     repr_attrs = ['table_names', 'field_map']
 
     @initializer
@@ -859,21 +867,25 @@ class Warehouse:
     def get_ds_tables_with_fact(self, fact):
         ds_tables = defaultdict(list)
         ds_fact_columns = self.facts[fact].column_map
+        count = 0
         for ds_name, columns in ds_fact_columns.items():
             for column in columns:
                 ds_tables[ds_name].append(column.table)
-        dbg('found %d datasource tables with fact %s' % (len(ds_tables), fact))
+            count += 1
+        dbg('found %d datasources, %d columns for fact %s' % (len(ds_tables), count, fact))
         return ds_tables
 
     def get_ds_dim_tables_with_dim(self, dim):
         ds_tables = defaultdict(list)
         ds_dim_columns = self.dimensions[dim].column_map
+        count = 0
         for ds_name, columns in ds_dim_columns.items():
             for column in columns:
                 if column.table.sqlaw.type != TableTypes.DIMENSION:
                     continue
                 ds_tables[ds_name].append(column.table)
-        dbg('found %d datasource tables with dim %s' % (len(ds_tables), dim))
+                count += 1
+        dbg('found %d datasources, %d columns for dim %s' % (len(ds_tables), count, dim))
         return ds_tables
 
     def add_dimension_table(self, ds, table):
@@ -1015,9 +1027,10 @@ class Warehouse:
 
     def choose_best_table_set(self, ds_table_sets):
         ds_name = self.choose_best_data_source(list(ds_table_sets.keys()))
-        # TODO: establish table set priorities based on query performance/complexity
-        warn('Just picking first available table set for now')
-        return ds_table_sets[ds_name][0]
+        if len(ds_table_sets[ds_name]) > 1:
+            # TODO: establish table set priorities based on expected query performance?
+            warn('Picking smallest of %d available table sets' % len(ds_table_sets[ds_name]))
+        return sorted(ds_table_sets[ds_name], key=lambda x: len(x))[0]
 
     def get_fact_table_set(self, fact, grain):
         dbg('fact:%s grain:%s' % (fact, grain))
@@ -1028,6 +1041,11 @@ class Warehouse:
         return table_set
 
     def get_dimension_table_set(self, grain):
+        '''
+        This is meant to be used in cases where no facts are requested. We only
+        allow it to look at dim tables since the assumption is joining to a fact
+        table to explore dimensions doesn't make sense and would have poor performance.
+        '''
         # TODO: this needs more thorough review/testing
         dbg('grain:%s' % grain)
 
@@ -1038,6 +1056,7 @@ class Warehouse:
             if not ds_table_sets:
                 continue
             table_set = self.choose_best_table_set(ds_table_sets)
+            break
 
         assert table_set, 'No dimension table set found to meet grain: %s' % grain
         return table_set
