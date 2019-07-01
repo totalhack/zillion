@@ -104,6 +104,30 @@ class TestSQLAW(TestBase):
             with self.assertRaises(AssertionError):
                 wh.get_dimension_table_set(grain)
 
+    def testGetFactTableSet(self):
+        wh = Warehouse(self.datasources, config=self.config)
+        possible = [
+            ('leads', {'partner_id', 'partner_name'}),
+            ('leads', {'campaign_name', 'partner_name'}),
+            ('revenue', {'campaign_name', 'partner_name', 'lead_id'}),
+        ]
+
+        impossible = [
+            ('leads', {'sale_id'}),
+        ]
+
+        for fact, grain in possible:
+            try:
+                ts = wh.get_fact_table_set(fact, grain)
+                # TODO: assert specific table set?
+            except Exception as e:
+                print(traceback.format_exc())
+                self.fail('Could not satisfy fact %s at grain: %s' % (fact, grain))
+
+        for fact, grain in impossible:
+            with self.assertRaises(AssertionError):
+                wh.get_fact_table_set(fact, grain)
+
     def testReport(self):
         wh = Warehouse(self.datasources, config=self.config)
         facts = ['revenue', 'sales_quantity']
