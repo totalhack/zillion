@@ -716,7 +716,9 @@ class Warehouse:
                 if not column.sqlaw:
                     continue
                 for field in column.sqlaw.get_field_names():
-                    self.table_field_map[ds.name].setdefault(table.fullname, {}).setdefault(field, []).append(column)
+                    assert not self.table_field_map[ds.name].get(table.fullname, {}).get(field, None),\
+                        'Multiple columns for the same field in a single table not allowed'
+                    self.table_field_map[ds.name].setdefault(table.fullname, {})[field] = column
 
     def remove_table_field_map(self, ds):
         del self.table_field_map[ds.name]
@@ -1046,7 +1048,6 @@ class Warehouse:
         allow it to look at dim tables since the assumption is joining to a fact
         table to explore dimensions doesn't make sense and would have poor performance.
         '''
-        # TODO: this needs more thorough review/testing
         dbg('grain:%s' % grain)
 
         table_set = None
@@ -1159,10 +1160,7 @@ class DataSourceQuery(PrintMixin):
     def column_for_field(self, field, table=None):
         ts = self.table_set
         if table is not None:
-            columns = self.warehouse.table_field_map[ts.ds_name][table.fullname][field]
-            # TODO: add check for this in warehouse formation? Make it not a list?
-            assert len(columns) == 1, 'Multiple columns for same field in single table not supported yet'
-            column = columns[0]
+            column = self.warehouse.table_field_map[ts.ds_name][table.fullname][field]
         else:
             if ts.join_list and field in ts.join_list.field_map:
                 column = ts.join_list.field_map[field]
