@@ -1,17 +1,18 @@
-import climax
 import copy
 import contextlib
 import cProfile
 import pstats
 import time
 
-from sqlaw.configs import load_config
+import climax
+from toolbox import dbg, st, testcli
+
+from sqlaw.configs import load_warehouse_config
 from sqlaw.core import TableTypes
 from sqlaw.warehouse import DataSource, AdHocDataSource, Warehouse
 from test_utils import TestBase, run_tests, create_adhoc_datatable
-from toolbox import dbg, st, testcli
 
-TESTDB_CONFIG = load_config('testdb_config.json')
+TESTDB_CONFIG = load_warehouse_config('testdb_config.json')
 
 @contextlib.contextmanager
 def profiled(pattern=None):

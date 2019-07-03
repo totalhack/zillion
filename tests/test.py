@@ -2,18 +2,17 @@ import copy
 import traceback
 
 import climax
+from toolbox import dbg, st, testcli
 
 from sqlaw.configs import load_warehouse_config
 from sqlaw.core import TableTypes
 from sqlaw.sql_utils import contains_aggregation
+from sqlaw.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 from sqlaw.warehouse import (DataSource,
                              AdHocDataSource,
                              Warehouse,
-                             ROLLUP_INDEX_LABEL,
-                             ROLLUP_TOTALS,
                              InvalidFieldException)
 from test_utils import TestBase, run_tests, create_adhoc_datatable
-from toolbox import dbg, st, testcli
 
 TESTDB_CONFIG = load_warehouse_config('testdb_config.json')
 
@@ -94,9 +93,9 @@ class TestSQLAW(TestBase):
 
         for grain in possible:
             try:
-                ts = wh.get_dimension_table_set(grain)
+                wh.get_dimension_table_set(grain)
                 # TODO: assert specific table set?
-            except Exception as e:
+            except Exception:
                 print(traceback.format_exc())
                 self.fail('Could not satisfy grain: %s' % grain)
 
@@ -118,9 +117,9 @@ class TestSQLAW(TestBase):
 
         for fact, grain in possible:
             try:
-                ts = wh.get_fact_table_set(fact, grain)
+                wh.get_fact_table_set(fact, grain)
                 # TODO: assert specific table set?
-            except Exception as e:
+            except Exception:
                 print(traceback.format_exc())
                 self.fail('Could not satisfy fact %s at grain: %s' % (fact, grain))
 

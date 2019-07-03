@@ -2,8 +2,9 @@ import copy
 import random
 import unittest
 
-from sqlaw.warehouse import AdHocDataTable
 from toolbox import st, dbg, random_string
+
+from sqlaw.warehouse import AdHocDataTable
 
 class TestBase(unittest.TestCase):
     DEBUG = False

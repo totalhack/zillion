@@ -1,8 +1,8 @@
 from collections import OrderedDict
 import os
-import re
 
 from marshmallow import Schema, fields as mfields, ValidationError, validates_schema
+from toolbox import dbg, error, json, st
 import yaml
 
 from sqlaw.core import (TableTypes,
@@ -13,12 +13,6 @@ from sqlaw.core import (TableTypes,
                         FIELD_ALLOWABLE_CHARS_STR)
 from sqlaw.sql_utils import (type_string_to_sa_type,
                              InvalidSQLAlchemyTypeString)
-from toolbox import (dbg,
-                     error,
-                     json,
-                     st,
-                     is_int,
-                     initializer)
 
 def load_sqlaw_config():
     sqlaw_config_fname = os.environ.get('SQLAW_CONFIG', None)
@@ -27,6 +21,8 @@ def load_sqlaw_config():
                     LOAD_TABLE_CHUNK_SIZE=5000,
                     IFNULL_PRETTY_VALUE='--')
     return yaml.safe_load(open(sqlaw_config_fname))
+
+sqlaw_config = load_sqlaw_config()
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""

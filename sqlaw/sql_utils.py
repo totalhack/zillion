@@ -3,12 +3,12 @@ import ast
 import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 import sqlparse as sp
+from toolbox import dbg, st, get_class_vars
 
 from sqlaw.core import (NUMERIC_SA_TYPES,
                         INTEGER_SA_TYPES,
                         FLOAT_SA_TYPES,
                         AggregationTypes)
-from toolbox import dbg, st, get_class_vars
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 
