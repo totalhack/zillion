@@ -25,6 +25,10 @@ class TechnicalTypes(metaclass=ClassValueContainsMeta):
     SUM = 'SUM'
     BOLL = 'BOLL'
 
+class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
+    SEQUENTIAL = 'sequential'
+    MULTITHREADED = 'multithreaded'
+
 def parse_technical_string(val):
     min_period = None
     center = None

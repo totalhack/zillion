@@ -19,7 +19,9 @@ def load_sqlaw_config():
     if not sqlaw_config_fname:
         return dict(ADHOC_DATASOURCE_DIRECTORY='/tmp',
                     LOAD_TABLE_CHUNK_SIZE=5000,
-                    IFNULL_PRETTY_VALUE='--')
+                    IFNULL_PRETTY_VALUE='--',
+                    DATASOURCE_QUERY_MODE='sequential',
+                    DATASOURCE_QUERY_TIMEOUT=None)
     return yaml.safe_load(open(sqlaw_config_fname))
 
 sqlaw_config = load_sqlaw_config()

@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from concurrent.futures import as_completed, ThreadPoolExecutor, TimeoutError
 import decimal
 import random
 from sqlite3 import connect, Row
@@ -19,6 +20,7 @@ from toolbox import (dbg,
 
 from sqlaw.configs import sqlaw_config
 from sqlaw.core import (AggregationTypes,
+                        DataSourceQueryModes,
                         FieldTypes,
                         TechnicalTypes,
                         ROW_FILTER_OPS)
@@ -48,10 +50,17 @@ class DataSourceQuery(PrintMixin):
         self.dimensions = orderedsetify(dimensions) if dimensions else []
         self.select = self.build_select()
 
-    def get_conn(self):
-        ds = self.warehouse.get_datasource(self.table_set.ds_name)
+    def get_datasource(self):
+        return self.warehouse.get_datasource(self.table_set.ds_name)
+
+    def get_bind(self):
+        ds = self.get_datasource()
         assert ds.metadata.bind, 'Datasource "%s" does not have metadata.bind set' % self.table_set.ds_name
-        conn = ds.metadata.bind.connect()
+        return ds.metadata.bind
+
+    def get_conn(self):
+        bind = self.get_bind()
+        conn = bind.connect()
         return conn
 
     def build_select(self):
@@ -515,7 +524,6 @@ class Report:
         # Explain query?
         # MySQL: SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
         #  finally: SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
-
         start = time.time()
         conn = query.get_conn()
         try:
@@ -531,12 +539,41 @@ class Report:
         dbg('Got %d rows in %.3fs' % (len(data), end - start))
         return DataSourceQueryResult(query, data)
 
-    def execute_ds_queries(self, queries):
+    def execute_ds_queries_sequential(self, queries):
         results = []
         for query in queries:
             result = self.execute_ds_query(query)
             results.append(result)
         return results
+
+    def execute_ds_queries_multithreaded(self, queries):
+        # https://docs.python.org/3/library/concurrent.futures.html
+        finished = {}
+
+        with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+            # Note: if we eventually want to kill() a query on timeout so the thread returns immediately,
+            # need to loop over futures and call future.result() rather than using as_completed, so we have
+            # a ref to the timed out query in the loop
+            # https://stackoverflow.com/questions/6509261/how-to-use-concurrent-futures-with-timeouts
+            futures_map = {executor.submit(self.execute_ds_query, query): query for query in queries}
+            try:
+                for future in as_completed(futures_map, timeout=sqlaw_config['DATASOURCE_QUERY_TIMEOUT']):
+                    data = future.result()
+                    query = futures_map[future]
+                    finished[future] = data
+            except TimeoutError as e:
+                error('TimeoutError: %s' % str(e))
+                raise
+
+        return finished.values()
+
+    def execute_ds_queries(self, queries):
+        dbg('Executing %s datasource queries in %s mode' % (len(queries), sqlaw_config['DATASOURCE_QUERY_MODE']))
+        if sqlaw_config['DATASOURCE_QUERY_MODE'] == DataSourceQueryModes.SEQUENTIAL:
+            return self.execute_ds_queries_sequential(queries)
+        if sqlaw_config['DATASOURCE_QUERY_MODE'] == DataSourceQueryModes.MULTITHREADED:
+            return self.execute_ds_queries_multithreaded(queries)
+        assert False, 'Invalid DATASOURCE_QUERY_MODE: %s' % sqlaw_config['DATASOURCE_QUERY_MODE']
 
     def execute(self):
         start = time.time()
