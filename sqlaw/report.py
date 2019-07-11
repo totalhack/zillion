@@ -11,6 +11,7 @@ import sqlalchemy as sa
 from toolbox import (dbg,
                      dbgsql,
                      error,
+                     sqlformat,
                      st,
                      chunk,
                      initializer,
@@ -50,18 +51,42 @@ class DataSourceQuery(PrintMixin):
         self.dimensions = orderedsetify(dimensions) if dimensions else []
         self.select = self.build_select()
 
+    def get_datasource_name(self):
+        return self.table_set.ds_name
+
     def get_datasource(self):
-        return self.warehouse.get_datasource(self.table_set.ds_name)
+        return self.warehouse.get_datasource(self.get_datasource_name())
 
     def get_bind(self):
         ds = self.get_datasource()
-        assert ds.metadata.bind, 'Datasource "%s" does not have metadata.bind set' % self.table_set.ds_name
+        assert ds.metadata.bind, 'Datasource "%s" does not have metadata.bind set' % self.get_datasource_name()
         return ds.metadata.bind
 
     def get_conn(self):
         bind = self.get_bind()
         conn = bind.connect()
         return conn
+
+    def execute(self):
+        # TODOs:
+        # Add straight joins? Optimize indexes?
+        # MySQL: SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+        #  finally: SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
+
+        start = time.time()
+        conn = self.get_conn()
+        try:
+            result = conn.execute(self.select)
+            data = result.fetchall()
+        except:
+            error('Exception during query:')
+            dbgsql(self.select)
+            raise
+        finally:
+            conn.close()
+        diff = time.time() - start
+        dbg('Got %d rows in %.3fs' % (len(data), diff))
+        return DataSourceQueryResult(self, data, diff)
 
     def build_select(self):
         # https://docs.sqlalchemy.org/en/latest/core/selectable.html
@@ -168,12 +193,39 @@ class DataSourceQuery(PrintMixin):
         self.facts.add(fact)
         self.select = self.select.column(self.get_field_expression(fact))
 
-class DataSourceQueryResult(PrintMixin):
-    repr_attrs = ['rowcount']
+class DataSourceQuerySummary(PrintMixin):
+    repr_attrs = ['datasource_name', 'rowcount', 'duration']
 
-    @initializer
-    def __init__(self, query, data):
+    def __init__(self, query, data, duration):
+        self.datasource_name = query.get_datasource_name()
+        self.facts = query.facts
+        self.dimensions = query.dimensions
+        self.select = query.select
+        self.duration = round(duration, 4)
         self.rowcount = len(data)
+
+    def format_query(self):
+        return sqlformat(sqla_compile(self.select))
+
+    def format(self):
+        sql = self.format_query()
+        parts = [
+            '%d rows in %.4f seconds' % (self.rowcount, self.duration),
+            'Datasource: %s' % self.datasource_name,
+            'Facts: %s' % list(self.facts),
+            'Dimensions: %s' % list(self.dimensions),
+            '\n%s' % sql,
+            # TODO: Explain of query plan
+        ]
+        return '\n'.join(parts)
+
+class DataSourceQueryResult(PrintMixin):
+    repr_attrs = ['summary']
+
+    def __init__(self, query, data, duration):
+        self.query = query
+        self.data = data
+        self.summary = DataSourceQuerySummary(query, data, duration)
 
 class BaseCombinedResult:
     @initializer
@@ -518,31 +570,10 @@ class Report:
             else:
                 assert False, 'Could not find field %s in warehouse' % formula_field
 
-    def execute_ds_query(self, query):
-        # TODOs:
-        # Add straight joins? Optimize indexes?
-        # Explain query?
-        # MySQL: SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
-        #  finally: SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
-        start = time.time()
-        conn = query.get_conn()
-        try:
-            result = conn.execute(query.select)
-            data = result.fetchall()
-        except:
-            error('Exception during query:')
-            dbgsql(query.select)
-            raise
-        finally:
-            conn.close()
-        end = time.time()
-        dbg('Got %d rows in %.3fs' % (len(data), end - start))
-        return DataSourceQueryResult(query, data)
-
     def execute_ds_queries_sequential(self, queries):
         results = []
         for query in queries:
-            result = self.execute_ds_query(query)
+            result = query.execute()
             results.append(result)
         return results
 
@@ -555,7 +586,7 @@ class Report:
             # need to loop over futures and call future.result() rather than using as_completed, so we have
             # a ref to the timed out query in the loop
             # https://stackoverflow.com/questions/6509261/how-to-use-concurrent-futures-with-timeouts
-            futures_map = {executor.submit(self.execute_ds_query, query): query for query in queries}
+            futures_map = {executor.submit(query.execute): query for query in queries}
             try:
                 for future in as_completed(futures_map, timeout=sqlaw_config['DATASOURCE_QUERY_TIMEOUT']):
                     data = future.result()
@@ -568,17 +599,19 @@ class Report:
         return finished.values()
 
     def execute_ds_queries(self, queries):
-        dbg('Executing %s datasource queries in %s mode' % (len(queries), sqlaw_config['DATASOURCE_QUERY_MODE']))
-        if sqlaw_config['DATASOURCE_QUERY_MODE'] == DataSourceQueryModes.SEQUENTIAL:
+        mode = sqlaw_config['DATASOURCE_QUERY_MODE']
+        dbg('Executing %s datasource queries in %s mode' % (len(queries), mode))
+        if mode == DataSourceQueryModes.SEQUENTIAL:
             return self.execute_ds_queries_sequential(queries)
-        if sqlaw_config['DATASOURCE_QUERY_MODE'] == DataSourceQueryModes.MULTITHREADED:
+        if mode == DataSourceQueryModes.MULTITHREADED:
             return self.execute_ds_queries_multithreaded(queries)
-        assert False, 'Invalid DATASOURCE_QUERY_MODE: %s' % sqlaw_config['DATASOURCE_QUERY_MODE']
+        assert False, 'Invalid DATASOURCE_QUERY_MODE: %s' % mode
 
     def execute(self):
-        start = time.time()
+        start = very_start = time.time()
         ds_query_results = self.execute_ds_queries(self.queries)
         dbg('DataSource queries took %.3fs' % (time.time() - start))
+        ds_query_summaries = [x.summary for x in ds_query_results]
 
         start = time.time()
         cr = self.create_combined_result(ds_query_results)
@@ -588,8 +621,8 @@ class Report:
             start = time.time()
             final_result = cr.get_final_result(self.facts, self.dimensions, self.row_filters, self.rollup, self.pivot)
             dbg(final_result)
-            self.result = ReportResult(final_result)
             dbg('Final result took %.3fs' % (time.time() - start))
+            self.result = ReportResult(final_result, time.time() - very_start, ds_query_summaries)
             return self.result
         finally:
             cr.clean_up()
@@ -641,10 +674,13 @@ class Report:
     def create_combined_result(self, ds_query_results):
         return SQLiteMemoryCombinedResult(self.warehouse, ds_query_results, self.ds_dimensions)
 
-class ReportResult:
+class ReportResult(PrintMixin):
+    repr_attrs = ['rowcount', 'duration', 'query_summaries']
+
     @initializer
-    def __init__(self, df):
-        return df
+    def __init__(self, df, duration, query_summaries):
+        self.duration = round(duration, 4)
+        self.rowcount = len(df)
 
     def get_rollup_mask(self):
         # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.Index.isin.html

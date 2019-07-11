@@ -136,6 +136,7 @@ class TestSQLAW(TestBase):
         rollup = ROLLUP_TOTALS
         result = wh.report(facts, dimensions=dimensions, criteria=criteria,
                            row_filters=row_filters, rollup=rollup)
+        dbg(result)
         self.assertTrue(result)
 
     def testReportPivot(self):
