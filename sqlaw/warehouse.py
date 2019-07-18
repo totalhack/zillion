@@ -27,6 +27,9 @@ from sqlaw.configs import (AdHocFieldSchema,
                            is_valid_field_name,
                            sqlaw_config)
 from sqlaw.core import (DATASOURCE_ALLOWABLE_CHARS,
+                        UnsupportedGrainException,
+                        InvalidFieldException,
+                        MaxFormulaDepthException,
                         AggregationTypes,
                         TableTypes,
                         parse_technical_string,
@@ -41,12 +44,6 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              column_fullname)
 
 MAX_FORMULA_DEPTH = 3
-
-class InvalidFieldException(Exception):
-    pass
-
-class MaxFormulaDepthException(Exception):
-    pass
 
 class DataSource(PrintMixin):
     repr_attrs = ['name']
@@ -245,7 +242,7 @@ def get_table_facts(warehouse, table):
 def get_table_dimensions(warehouse, table):
     dims = set()
     for col in table.c:
-        for field in col.sqlaw.get_fields_names():
+        for field in col.sqlaw.get_field_names():
             if field in warehouse.dimensions:
                 dims.add(field)
     return dims
@@ -506,6 +503,7 @@ class Warehouse:
         self.dimensions = defaultdict(dict)
         self.table_field_map = defaultdict(dict)
         self.ds_graphs = {}
+        self.supported_dimension_cache = {}
 
         if config:
             self.apply_config(config)
@@ -744,6 +742,41 @@ class Warehouse:
 
         raise InvalidFieldException('Invalid fact object: %s' % obj)
 
+    def get_supported_dimensions_for_fact(self, fact, use_cache=True):
+        dims = set()
+        fact = self.get_fact(fact)
+
+        if use_cache and fact.name in self.supported_dimension_cache:
+            return self.supported_dimension_cache[fact]
+
+        ds_names = self.get_datasource_names()
+
+        for ds_name in ds_names:
+            ds_tables = self.get_tables_with_fact(ds_name, fact.name)
+            ds_graph = self.ds_graphs[ds_name]
+            used_tables = set()
+
+            for ds_table in ds_tables:
+                if ds_table.fullname not in used_tables:
+                    dims |= get_table_dimensions(self, self.tables[ds_name][ds_table.fullname])
+                    used_tables.add(ds_table.fullname)
+
+                desc_tables = nx.descendants(ds_graph, ds_table.fullname)
+                for desc_table in desc_tables:
+                    if desc_table not in used_tables:
+                        dims |= get_table_dimensions(self, self.tables[ds_name][desc_table])
+                        used_tables.add(desc_table)
+
+        self.supported_dimension_cache[fact] = dims
+        return dims
+
+    def get_supported_dimensions(self, facts):
+        dims = set()
+        for fact in facts:
+            supported_dims = self.get_supported_dimensions_for_fact(fact)
+            dims = (dims & supported_dims) if len(dims) else supported_dims
+        return dims
+
     def get_primary_key_fields(self, primary_key):
         pk_fields = set()
         for col in primary_key:
@@ -899,6 +932,10 @@ class Warehouse:
             self.add_fact(fact)
         self.facts[field].add_column(ds, column)
 
+    def get_tables_with_fact(self, ds_name, fact_name):
+        columns = self.facts[fact_name].get_columns(ds_name)
+        return {x.table for x in columns}
+
     def add_dimension(self, dimension):
         if dimension.name in self.dimensions:
             warn('Dimension %s is already in warehouse dimensions' % dimension.name)
@@ -912,8 +949,9 @@ class Warehouse:
             self.add_dimension(dimension)
         self.dimensions[field].add_column(ds, column)
 
-    def get_tables_with_dimension(self, ds_name, dimension):
-        return [x.table for x in self.dimensions[dimension][ds_name]]
+    def get_tables_with_dimension(self, ds_name, dim_name):
+        columns = self.dimensions[dim_name].get_columns(ds_name)
+        return {x.table for x in columns}
 
     def find_joins_to_dimension(self, ds_name, table, dimension):
         ds_graph = self.ds_graphs[ds_name]
@@ -1012,11 +1050,29 @@ class Warehouse:
             warn('Picking smallest of %d available table sets' % len(ds_table_sets[ds_name]))
         return sorted(ds_table_sets[ds_name], key=lambda x: len(x))[0]
 
+    def generate_unsupported_grain_msg(self, grain, fact):
+        '''
+        This assumes you are in a situation where you are sure the fact can not
+        meet the grain and want to generate a helpful message pinpointing the
+        issue.  If the fact actually supports all dimensions, the conclusion
+        is that it just doesn't support them all in a single datasource and
+        thus can't meet the grain.
+        '''
+        supported = self.get_supported_dimensions_for_fact(fact)
+        unsupported = grain - supported
+        if unsupported:
+            msg = ('fact %s can not meet grain %s due to unsupported dimensions: %s' % (fact, grain, unsupported))
+        else:
+            msg = ('fact %s can not meet grain %s in any single datasource' % (fact, grain))
+        return msg
+
     def get_fact_table_set(self, fact, grain):
         dbg('fact:%s grain:%s' % (fact, grain))
         ds_fact_tables = self.get_ds_tables_with_fact(fact)
         ds_table_sets = self.get_ds_table_sets(ds_fact_tables, fact, grain)
-        assert ds_table_sets, 'No table set found for fact %s at grain %s' % (fact, grain)
+        if not ds_table_sets:
+            msg = self.generate_unsupported_grain_msg(grain, fact)
+            raise UnsupportedGrainException(msg)
         table_set = self.choose_best_table_set(ds_table_sets)
         return table_set
 
@@ -1037,7 +1093,8 @@ class Warehouse:
             table_set = self.choose_best_table_set(ds_table_sets)
             break
 
-        assert table_set, 'No dimension table set found to meet grain: %s' % grain
+        if not table_set:
+            raise UnsupportedGrainException('No dimension table set found to meet grain: %s' % grain)
         return table_set
 
     @classmethod

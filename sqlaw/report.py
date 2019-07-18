@@ -24,6 +24,7 @@ from sqlaw.core import (AggregationTypes,
                         DataSourceQueryModes,
                         FieldTypes,
                         TechnicalTypes,
+                        UnsupportedGrainException,
                         ROW_FILTER_OPS)
 from sqlaw.sql_utils import (sqla_compile,
                              get_sqla_clause,
@@ -639,6 +640,7 @@ class Report:
 
     def build_ds_queries(self):
         grain = self.get_grain()
+        grain_errors = []
         queries = []
 
         def fact_covered_in_queries(fact):
@@ -656,9 +658,18 @@ class Report:
                 dbg('Fact %s is covered by existing query' % fact)
                 continue
 
-            table_set = self.warehouse.get_fact_table_set(fact, grain)
+            try:
+                table_set = self.warehouse.get_fact_table_set(fact, grain)
+            except UnsupportedGrainException as e:
+                # Gather all grain errors to be raised in one exception
+                grain_errors.append(str(e))
+                continue
+
             query = DataSourceQuery(self.warehouse, [fact], self.ds_dimensions, self.criteria, table_set)
             queries.append(query)
+
+        if grain_errors:
+            raise UnsupportedGrainException(grain_errors)
 
         if not self.ds_facts:
             dbg('No facts requested, getting dimension table sets')

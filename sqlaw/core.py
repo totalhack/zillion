@@ -4,6 +4,15 @@ import sqlalchemy as sa
 
 from toolbox import ClassValueContainsMeta
 
+class UnsupportedGrainException(Exception):
+    pass
+
+class InvalidFieldException(Exception):
+    pass
+
+class MaxFormulaDepthException(Exception):
+    pass
+
 class FieldTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = 'dimension'
     FACT = 'fact'

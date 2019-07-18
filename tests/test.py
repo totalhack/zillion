@@ -5,13 +5,14 @@ import climax
 from toolbox import dbg, st, testcli
 
 from sqlaw.configs import load_warehouse_config
-from sqlaw.core import TableTypes
+from sqlaw.core import (TableTypes,
+                        UnsupportedGrainException,
+                        InvalidFieldException)
 from sqlaw.sql_utils import contains_aggregation
 from sqlaw.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 from sqlaw.warehouse import (DataSource,
                              AdHocDataSource,
-                             Warehouse,
-                             InvalidFieldException)
+                             Warehouse)
 from test_utils import TestBase, run_tests, create_adhoc_datatable
 
 TESTDB_CONFIG = load_warehouse_config('testdb_config.json')
@@ -95,12 +96,12 @@ class TestSQLAW(TestBase):
             try:
                 wh.get_dimension_table_set(grain)
                 # TODO: assert specific table set?
-            except Exception:
+            except UnsupportedGrainException:
                 print(traceback.format_exc())
                 self.fail('Could not satisfy grain: %s' % grain)
 
         for grain in impossible:
-            with self.assertRaises(AssertionError):
+            with self.assertRaises(UnsupportedGrainException):
                 wh.get_dimension_table_set(grain)
 
     def testGetFactTableSet(self):
@@ -119,13 +120,20 @@ class TestSQLAW(TestBase):
             try:
                 wh.get_fact_table_set(fact, grain)
                 # TODO: assert specific table set?
-            except Exception:
+            except UnsupportedGrainException:
                 print(traceback.format_exc())
                 self.fail('Could not satisfy fact %s at grain: %s' % (fact, grain))
 
         for fact, grain in impossible:
-            with self.assertRaises(AssertionError):
+            with self.assertRaises(UnsupportedGrainException):
                 wh.get_fact_table_set(fact, grain)
+
+    def testGetSupportedDimensions(self):
+        wh = Warehouse(self.datasources, config=self.config)
+        facts = ['leads', 'sales_quantity']
+        dims = wh.get_supported_dimensions(facts)
+        self.assertTrue(dims & {'campaign_name', 'created_at', 'partner_name'})
+        self.assertFalse(dims & {'sale_id'})
 
     def testReport(self):
         wh = Warehouse(self.datasources, config=self.config)
@@ -138,6 +146,14 @@ class TestSQLAW(TestBase):
                            row_filters=row_filters, rollup=rollup)
         dbg(result)
         self.assertTrue(result)
+
+    def testImpossibleReport(self):
+        wh = Warehouse(self.datasources, config=self.config)
+        facts = ['leads']
+        dimensions = ['sale_id']
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        with self.assertRaises(UnsupportedGrainException):
+            result = wh.report(facts, dimensions=dimensions, criteria=criteria)
 
     def testReportPivot(self):
         wh = Warehouse(self.datasources, config=self.config)
