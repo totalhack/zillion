@@ -130,6 +130,7 @@ class ColumnFieldConfigField(mfields.Field):
 
 class ColumnInfoSchema(BaseSchema):
     fields = mfields.List(ColumnFieldConfigField())
+    allow_type_conversions = mfields.Boolean(default=False, missing=False)
     active = mfields.Boolean(default=True, missing=True)
 
 class ColumnConfigSchema(ColumnInfoSchema):

@@ -3,14 +3,88 @@ import ast
 import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 import sqlparse as sp
-from toolbox import dbg, st, get_class_vars
+from toolbox import dbg, st, get_class_vars, get_string_format_args
 
-from sqlaw.core import (NUMERIC_SA_TYPES,
-                        INTEGER_SA_TYPES,
-                        FLOAT_SA_TYPES,
-                        AggregationTypes)
+from sqlaw.core import AggregationTypes
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
+
+INTEGER_SA_TYPES = [
+    sa.BigInteger,
+    sa.sql.sqltypes.BIGINT,
+    sa.Integer,
+    sa.sql.sqltypes.INTEGER,
+    sa.SmallInteger,
+    sa.sql.sqltypes.SMALLINT,
+]
+
+FLOAT_SA_TYPES = [
+    sa.sql.sqltypes.DECIMAL,
+    sa.Float,
+    sa.sql.sqltypes.FLOAT,
+    sa.Numeric,
+    sa.sql.sqltypes.NUMERIC,
+    sa.sql.sqltypes.REAL,
+]
+
+NUMERIC_SA_TYPES = INTEGER_SA_TYPES + FLOAT_SA_TYPES
+
+DATETIME_SA_TYPES = [
+    sa.DateTime,
+    sa.TIMESTAMP,
+]
+
+DATE_SA_TYPES = [
+    sa.Date
+]
+
+DATE_HIERARCHY = [
+    'year',
+    'month',
+    'month_of_year',
+    'date',
+    'day_of_week',
+    'day_of_month',
+    'day_of_year',
+    'hour',
+    'hour_of_day',
+    'minute',
+    'minute_of_hour',
+    'datetime',
+    'unix_timestamp'
+]
+
+DIALECT_DATE_CONVERSIONS = {
+    'sqlite': {
+        # https://www.sqlite.org/lang_datefunc.html
+        'year': "strftime('%Y', {})",
+        'month': "strftime('%Y-%m', {})",
+        'month_of_year': "strftime('%m', {})",
+        'date': "strftime('%Y-%m-%d', {})",
+        'day_of_week': "strftime('%w', {})", # day of week 0-6 with Sunday==0
+        'day_of_month': "strftime('%d', {})",
+        'day_of_year': "strftime('%j', {})",
+        'hour': "strftime('%Y-%m-%d %H', {})",
+        'hour_of_day': "strftime('%H', {})",
+        'minute': "strftime('%Y-%m-%d %H:%M', {})",
+        'minute_of_hour': "strftime('%M', {})",
+        'datetime': "strftime('%Y-%m-%d %H:%M:%S', {})",
+        'unix_timestamp': "strftime('%s', {})",
+    },
+
+    #'mysql': {
+    # TODO
+    #}
+}
+
+TYPE_ALLOWED_CONVERSIONS = {
+    sa.DateTime: {'allowed_conversions': DATE_HIERARCHY,
+                  'dialect_conversions': DIALECT_DATE_CONVERSIONS},
+    sa.TIMESTAMP: {'allowed_conversions': DATE_HIERARCHY,
+                   'dialect_conversions': DIALECT_DATE_CONVERSIONS},
+    sa.Date: {'allowed_conversions': DATE_HIERARCHY[0:DATE_HIERARCHY.index('hour')],
+              'dialect_conversions': DIALECT_DATE_CONVERSIONS},
+}
 
 AGGREGATION_SQLA_FUNC_MAP = {
     AggregationTypes.AVG: sa.func.avg,
@@ -23,6 +97,28 @@ AGGREGATION_SQLA_FUNC_MAP = {
 
 class InvalidSQLAlchemyTypeString(Exception):
     pass
+
+def get_dialect_type_conversions(dialect, column):
+    coltype = type(column.type)
+    conv_info = TYPE_ALLOWED_CONVERSIONS.get(coltype, None)
+    if not conv_info:
+        return []
+
+    results = []
+    allowed = conv_info['allowed_conversions']
+    convs = conv_info['dialect_conversions']
+    for field in allowed:
+        conv = convs[dialect].get(field, None)
+        if not conv:
+            continue
+        format_args = get_string_format_args(conv)
+        assert not any([x != '' for x in format_args]), \
+            'Field conversion has non-named format arguments: %s' % conv
+        if format_args:
+            conv = conv.format(*[column_fullname(column) for i in format_args])
+        results.append((field, conv))
+
+    return results
 
 def contains_aggregation(sql):
     if isinstance(sql, str):

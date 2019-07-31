@@ -167,7 +167,7 @@ class DataSourceQuery(PrintMixin):
     def add_group_by(self, select):
         if not self.dimensions:
             return select
-        return select.group_by(*[sa.text(x) for x in self.dimensions])
+        return select.group_by(*[sa.text(str(x)) for x in range(1, len(self.dimensions)+1)])
 
     def add_order_by(self, select, asc=True):
         if not self.dimensions:

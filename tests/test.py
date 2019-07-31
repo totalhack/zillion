@@ -132,7 +132,7 @@ class TestSQLAW(TestBase):
         wh = Warehouse(self.datasources, config=self.config)
         facts = ['leads', 'sales_quantity']
         dims = wh.get_supported_dimensions(facts)
-        self.assertTrue(dims & {'campaign_name', 'created_at', 'partner_name'})
+        self.assertTrue(dims & {'campaign_name', 'partner_name'})
         self.assertFalse(dims & {'sale_id'})
 
     def testReport(self):
@@ -450,6 +450,18 @@ class TestSQLAW(TestBase):
         adhoc_ds = AdHocDataSource([dt])
 
         result = wh.report(facts, dimensions=dimensions, adhoc_datasources=[adhoc_ds])
+        self.assertTrue(result)
+
+    def testDateConversionReport(self):
+        wh = Warehouse(self.datasources, config=self.config)
+        facts = ['revenue']
+        dimensions = [
+            'datetime',
+            'hour_of_day',
+        ]
+        criteria = [('campaign_name', '!=', 'Campaign 2B')]
+        result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        dbg(result)
         self.assertTrue(result)
 
 @climax.command(parents=[testcli])

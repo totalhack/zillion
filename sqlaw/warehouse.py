@@ -1,6 +1,8 @@
 from collections import defaultdict, OrderedDict
 import copy
 import datetime
+from functools import reduce
+from operator import or_
 import random
 import time
 
@@ -41,9 +43,16 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              type_string_to_sa_type,
                              is_probably_fact,
                              sqla_compile,
+                             get_dialect_type_conversions,
                              column_fullname)
 
 MAX_FORMULA_DEPTH = 3
+
+from itertools import chain, combinations
+def powerset(iterable):
+    "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
+    s = list(iterable)
+    return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 class DataSource(PrintMixin):
     repr_attrs = ['name']
@@ -63,6 +72,9 @@ class DataSource(PrintMixin):
         if reflect:
             metadata.reflect()
         self.metadata = metadata
+
+    def get_dialect_name(self):
+        return self.metadata.bind.dialect.name
 
     @classmethod
     def check_or_create_name(cls, name):
@@ -130,16 +142,22 @@ class ColumnInfo(SQLAWInfo, PrintMixin):
 
     def __init__(self, **kwargs):
         super(ColumnInfo, self).__init__(**kwargs)
-        # XXX: field_map could get out of sync if fields is edited. Should we
-        # instead just change/force everything to be a dict? Downside is the
-        # sqlaw objects would differ from how they were defined, which could
-        # be confusing.
+        # XXX: field_map could get out of sync if fields is edited.  Is there
+        # a way to enforce using add_field, other than storing the values as
+        # _fields instead?
         self.field_map = OrderedDict()
         for field in self.fields:
-            if isinstance(field, str):
-                self.field_map[field] = None
-            else:
-                self.field_map[field['name']] = field
+            self.add_field_to_map(field)
+
+    def add_field_to_map(self, field):
+        if isinstance(field, str):
+            self.field_map[field] = None
+        else:
+            self.field_map[field['name']] = field
+
+    def add_field(self, field):
+        self.fields.append(field)
+        self.add_field_to_map(field)
 
     def get_field_names(self):
         return self.field_map.keys()
@@ -155,8 +173,8 @@ class TableSet(PrintMixin):
         covered_facts = get_table_facts(warehouse, self.ds_table)
         return covered_facts
 
-    def get_covered_fields(self, warehouse):
-        covered_fields = get_table_fields(warehouse, self.ds_table)
+    def get_covered_fields(self):
+        covered_fields = get_table_fields(self.ds_table)
         return covered_fields
 
     def __len__(self):
@@ -200,6 +218,30 @@ class JoinList(PrintMixin):
 
     def __eq__(self, other):
         return isinstance(self, type(other)) and self.__key() == other.__key()
+
+    def __len__(self):
+        return len(self.table_names)
+
+    # TODO: should this perhaps be storing the ds_name in the first place?
+    def get_covered_fields(self, warehouse, ds_name):
+        '''Generate a list of all possible fields this can cover'''
+        fields = set()
+        for table_name in self.table_names:
+            table = warehouse.tables[ds_name][table_name]
+            covered_fields = get_table_fields(table)
+            fields = fields | covered_fields
+        return fields
+
+    def add_field(self, warehouse, ds_name, field):
+        assert field not in self.field_map, 'Field %s is already in field map' % field
+        for table_name in self.table_names:
+            table = warehouse.tables[ds_name][table_name]
+            covered_fields = get_table_fields(table)
+            if field in covered_fields:
+                column = get_table_field_column(table, field)
+                self.field_map[field] = column
+                return
+        assert False, 'Field %s is not in any join tables: %s' % (field, self.table_names)
 
 def joins_from_path(graph, path, field_map=None):
     joins = []
@@ -538,7 +580,8 @@ class Warehouse:
 
     def add_datasource(self, ds):
         dbg('Adding datasource %s' % ds.name)
-        self.ensure_metadata_info(ds.metadata)
+        self.ensure_metadata_info(ds)
+        self.populate_conversion_fields(ds)
         self.populate_table_field_map(ds)
         self.add_datasource_tables(ds)
         self.add_ds_graph(ds)
@@ -562,9 +605,9 @@ class Warehouse:
             self.datasources.remove(adhoc_ds)
             adhoc_ds.clean_up()
 
-    def ensure_metadata_info(self, metadata):
+    def ensure_metadata_info(self, ds):
         '''Ensure that all sqlaw info are of proper type'''
-        for table in metadata.tables.values():
+        for table in ds.metadata.tables.values():
             sqlaw_info = table.info.get('sqlaw', None)
             if not sqlaw_info:
                 setattr(table, 'sqlaw', None)
@@ -681,13 +724,45 @@ class Warehouse:
     def remove_adhoc_config(self, adhoc_ds):
         pass
 
+    def populate_conversion_fields(self, ds):
+        for table in ds.metadata.tables.values():
+            if not table.sqlaw:
+                continue
+
+            table_fields = get_table_fields(table)
+            types_converted = set()
+            for column in table.c:
+                if not column.sqlaw:
+                    continue
+
+                if not column.sqlaw.allow_type_conversions:
+                    # TODO: could allow specifying certain allowable conversions
+                    # instead of just on/off switch
+                    continue
+
+                convs = get_dialect_type_conversions(ds.get_dialect_name(), column)
+                if convs:
+                    assert not type(column.type) in types_converted, \
+                        'Table %s has multiple columns of same type allowing conversions' % table.fullname
+                    types_converted.add(type(column.type))
+
+                for field_name, ds_formula in convs:
+                    if field_name in table_fields:
+                        dbg('Skipping conversion field %s for column %s, already in table',
+                            (field_name, column_fullname(column)))
+                        continue
+                    dbg('Adding conversion field %s for column %s' % (field_name, column_fullname(column)))
+                    column.sqlaw.add_field(dict(name=field_name, ds_formula=ds_formula))
+
     def populate_table_field_map(self, ds):
         for table in ds.metadata.tables.values():
             if not table.sqlaw:
                 continue
+
             for column in table.c:
                 if not column.sqlaw:
                     continue
+
                 for field in column.sqlaw.get_field_names():
                     assert not self.table_field_map[ds.name].get(table.fullname, {}).get(field, None),\
                         'Multiple columns for the same field in a single table not allowed'
@@ -731,7 +806,7 @@ class Warehouse:
     def get_dimension(self, obj):
         if isinstance(obj, str):
             if obj not in self.dimensions:
-                raise InvalidFieldException('Invalid dimensions name: %s' % obj)
+                raise InvalidFieldException('Invalid dimension name: %s' % obj)
             return self.dimensions[obj]
 
         if isinstance(obj, dict):
@@ -957,7 +1032,9 @@ class Warehouse:
         ds_graph = self.ds_graphs[ds_name]
         joins = []
 
-        for column in self.dimensions[dimension].get_columns(ds_name):
+        dim_columns = self.dimensions[dimension].get_columns(ds_name)
+        dim_column_table_map = {c.table.fullname:c for c in dim_columns}
+        for column in dim_columns:
             if column.table == table:
                 paths = [[table.fullname]]
             else:
@@ -968,7 +1045,15 @@ class Warehouse:
                 continue
 
             for path in paths:
-                field_map = {dimension:column}
+                # For each path, if this dim can be found earlier in the path then
+                # reference it in the earlier (child) table
+                field_map = None
+                for table_name in path:
+                    if table_name in dim_column_table_map:
+                        field_map = {dimension: dim_column_table_map[table_name]}
+                        break
+
+                assert field_map, 'Could not map dimension %s to column' % dimension
                 join_list = joins_from_path(ds_graph, path, field_map=field_map)
                 joins.append(join_list)
 
@@ -977,6 +1062,12 @@ class Warehouse:
         return joins
 
     def get_possible_joins(self, ds_name, table, grain):
+        '''This takes a given table (usually a fact table) and tries to find one or
+        more joins to each dimension of the grain. It's possible some of these
+        joins satisfy other parts of the grain too which leaves room for
+        consolidation, but it's also possible to have it generate independent,
+        non-overlapping joins to meet the grain.
+        '''
         assert table.fullname in self.tables[ds_name],\
             'Could not find table %s in datasource %s' % (table.fullname, ds_name)
 
@@ -993,7 +1084,7 @@ class Warehouse:
 
             possible_dim_joins[dimension] = dim_joins
 
-        possible_joins = self.consolidate_field_joins(possible_dim_joins)
+        possible_joins = self.consolidate_field_joins(ds_name, grain, possible_dim_joins)
         dbg('possible joins:')
         dbg(possible_joins)
         return possible_joins
@@ -1004,6 +1095,7 @@ class Warehouse:
             if (not grain) or grain.issubset(get_table_fields(field_table)):
                 table_set = TableSet(ds_name, field_table, None, grain, set([field]))
                 table_sets.append(table_set)
+                dbg('full grain (%s) covered in %s' % (grain, field_table.fullname))
                 continue
 
             joins = self.get_possible_joins(ds_name, field_table, grain)
@@ -1016,7 +1108,6 @@ class Warehouse:
                 table_set = TableSet(ds_name, field_table, join_list, grain, set([field]))
                 table_sets.append(table_set)
 
-        dbg(table_sets)
         return table_sets
 
     def get_ds_table_sets(self, ds_tables, field, grain):
@@ -1097,10 +1188,10 @@ class Warehouse:
             raise UnsupportedGrainException('No dimension table set found to meet grain: %s' % grain)
         return table_set
 
-    @classmethod
-    def consolidate_field_joins(cls, field_joins):
-        '''This takes a mapping of fields to joins that satisfy that field and
-        returns a minimized map of joins to fields satisfied by that join'''
+    def consolidate_field_joins(self, ds_name, grain, field_joins):
+        '''This takes a mapping of fields to joins (JoinLists) that satisfy that field
+        and returns a minimized map of joins to fields satisfied by that join.
+        '''
 
         join_fields = defaultdict(set) # map of join to fields it covers
 
@@ -1111,24 +1202,101 @@ class Warehouse:
                     dbg('join %s already used, adding field %s' % (join, field))
                 join_fields[join].add(field)
 
-        # Then consolidate based on subsets
-        joins_to_delete = []
-        for join in list(join_fields.keys()):
-            for other_join in list(join_fields.keys()):
-                if join == other_join or other_join in joins_to_delete:
+        # Find the maximum part of the grain the join can cover
+        for join, covered_fields in join_fields.items():
+            for field in grain:
+                if field in covered_fields:
                     continue
-                if join.table_names.issubset(other_join.table_names):
-                    joins_to_delete.append(join)
-                    fields = join_fields[join]
-                    dbg('Fields %s satisfied by other join %s' % (fields, other_join.table_names))
-                    for key, value in join.field_map.items():
-                        if key not in other_join.field_map:
-                            other_join.field_map[key] = value
-                    join_fields[other_join] = join_fields[other_join].union(fields)
+                all_covered_fields = join.get_covered_fields(self, ds_name)
+                if field in all_covered_fields:
+                    covered_fields.add(field)
 
-        for join in joins_to_delete:
-            if join in join_fields:
-                del join_fields[join]
+        # Now find the minimal set of joins that covers the entire grain
+        # Sort by number of dims covered desc, number of tables involved asc
+        sorted_join_fields = sorted(join_fields.items(),
+                                    key=lambda kv: (len(kv[1]), -len(kv[0])),
+                                    reverse=True)
+
+        if len(sorted_join_fields[0][1]) == len(grain):
+            # Single join covers entire grain. It should be ~optimal based on sorting.
+            join = sorted_join_fields[0][0]
+            covered_fields = sorted_join_fields[0][1]
+            for field in covered_fields:
+                if field not in join.field_map:
+                    join.add_field(self, ds_name, field)
+            return {join:covered_fields}
+
+        # TODO: make separate function
+        # Eliminate some redundant joins
+        joins_to_delete = set()
+        for join, covered_fields in sorted_join_fields:
+            if join in joins_to_delete:
+                continue
+
+            dbg('Finding redundant joins for %s / %s' % (join.table_names, covered_fields))
+            for other_join, other_covered_fields in sorted_join_fields:
+                if join == other_join or join in joins_to_delete:
+                    continue
+
+                is_superset = join.table_names.issubset(other_join.table_names)
+                has_unique_fields = other_covered_fields - covered_fields
+                if is_superset and not has_unique_fields:
+                    dbg('Removing redundant join %s / %s' % (other_join.table_names, other_covered_fields))
+                    joins_to_delete.add(other_join)
+
+        sorted_join_fields = [(join, fields) for join, fields in sorted_join_fields
+                              if join not in joins_to_delete]
+
+        # TODO: make separate function
+        # TODO: confusing naming, this is a list of JoinLists
+        candidates = []
+        for join_list_combo in powerset(sorted_join_fields):
+            if not join_list_combo:
+                continue
+
+            covered = set()
+            has_subsets = False
+            for join, covered_dims in join_list_combo:
+                covered |= covered_dims
+                # If any of the other joins are a subset of this join we ignore it.
+                # The powerset has every combination so it will eventually hit the case
+                # where there are only distinct joins.
+                for other_join, other_covered_dims in join_list_combo:
+                    if join == other_join:
+                        continue
+                    if other_join.table_names.issubset(join.table_names):
+                        has_subsets = True
+                        break
+                if has_subsets:
+                    break
+
+            if has_subsets:
+                continue
+
+            if len(covered) == len(grain):
+                # This combination of joins covers the entire grain. Add it as a candidate if
+                # there isn't an existing candidate that is a a subset of these joins
+                skip = False
+                join_lists = set([x[0] for x in join_list_combo])
+                for other_join_list_combo in candidates:
+                    other_join_lists = set([x[0] for x in other_join_list_combo])
+                    if other_join_lists.issubset(join_lists):
+                        skip = True
+                if skip:
+                    dbg('Skipping subset join list combination')
+                    continue
+                candidates.append(join_list_combo)
+
+        # Now we have to choose a candidate - choose the one with the fewest total tables
+        ordered = sorted(candidates, key=lambda x: len(reduce(or_, [y[0].table_names for y in x])))
+        chosen = ordered[0]
+        join_fields = {}
+        for join, covered_fields in chosen:
+            join_fields[join] = covered_fields
+            # XXX should this be done earlier?
+            for field in covered_fields:
+                if field not in join.field_map:
+                    join.add_field(self, ds_name, field)
 
         return join_fields
 
