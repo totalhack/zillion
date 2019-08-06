@@ -1,8 +1,6 @@
 from collections import defaultdict, OrderedDict
 import copy
 import datetime
-from functools import reduce
-from operator import or_
 import random
 import time
 
@@ -16,6 +14,8 @@ from toolbox import (dbg,
                      rmfile,
                      initializer,
                      get_string_format_args,
+                     iter_or,
+                     powerset,
                      PrintMixin,
                      MappingMixin)
 
@@ -47,12 +47,6 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              column_fullname)
 
 MAX_FORMULA_DEPTH = 3
-
-from itertools import chain, combinations
-def powerset(iterable):
-    "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
-    s = list(iterable)
-    return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 class DataSource(PrintMixin):
     repr_attrs = ['name']
@@ -163,10 +157,10 @@ class ColumnInfo(SQLAWInfo, PrintMixin):
         return self.field_map.keys()
 
 class TableSet(PrintMixin):
-    repr_attrs = ['ds_name', 'join_list', 'grain', 'target_fields']
+    repr_attrs = ['ds_name', 'join', 'grain', 'target_fields']
 
     @initializer
-    def __init__(self, ds_name, ds_table, join_list, grain, target_fields):
+    def __init__(self, ds_name, ds_table, join, grain, target_fields):
         pass
 
     def get_covered_facts(self, warehouse):
@@ -178,9 +172,9 @@ class TableSet(PrintMixin):
         return covered_fields
 
     def __len__(self):
-        if not self.join_list:
+        if not self.join:
             return 1
-        return len(self.join_list.table_names)
+        return len(self.join.table_names)
 
 class NeighborTable(PrintMixin):
     repr_attrs = ['table_name', 'join_fields']
@@ -189,25 +183,31 @@ class NeighborTable(PrintMixin):
     def __init__(self, table, join_fields):
         self.table_name = table.fullname
 
-class JoinInfo(PrintMixin):
-    repr_attrs = ['table_names', 'join_fields']
+class JoinPart(PrintMixin):
+    repr_attrs = ['ds_name', 'table_names', 'join_fields']
 
     @initializer
-    def __init__(self, table_names, join_fields):
+    def __init__(self, ds_name, table_names, join_fields):
         pass
 
-class JoinList(PrintMixin):
+class Join(PrintMixin):
     '''
-    JoinList is just a group of joins that would be used together.
+    Join is a group of join parts that would be used together.
     field_map represents the requested fields this join list is meant to satisfy
     '''
     repr_attrs = ['table_names', 'field_map']
 
     @initializer
-    def __init__(self, joins, field_map):
+    def __init__(self, join_parts, field_map):
         self.table_names = OrderedSet()
-        for join in self.joins:
-            for table_name in join.table_names:
+        self.ds_name = None
+        for join_part in self.join_parts:
+            if not self.ds_name:
+                self.ds_name = join_part.ds_name
+            else:
+                assert join_part.ds_name == self.ds_name, \
+                    'Can not form %s using join_parts from different datasources' % self.__class__
+            for table_name in join_part.table_names:
                 self.table_names.add(table_name)
 
     def __key(self):
@@ -223,19 +223,19 @@ class JoinList(PrintMixin):
         return len(self.table_names)
 
     # TODO: should this perhaps be storing the ds_name in the first place?
-    def get_covered_fields(self, warehouse, ds_name):
+    def get_covered_fields(self, warehouse):
         '''Generate a list of all possible fields this can cover'''
         fields = set()
         for table_name in self.table_names:
-            table = warehouse.tables[ds_name][table_name]
+            table = warehouse.tables[self.ds_name][table_name]
             covered_fields = get_table_fields(table)
             fields = fields | covered_fields
         return fields
 
-    def add_field(self, warehouse, ds_name, field):
+    def add_field(self, warehouse, field):
         assert field not in self.field_map, 'Field %s is already in field map' % field
         for table_name in self.table_names:
-            table = warehouse.tables[ds_name][table_name]
+            table = warehouse.tables[self.ds_name][table_name]
             covered_fields = get_table_fields(table)
             if field in covered_fields:
                 column = get_table_field_column(table, field)
@@ -243,21 +243,26 @@ class JoinList(PrintMixin):
                 return
         assert False, 'Field %s is not in any join tables: %s' % (field, self.table_names)
 
-def joins_from_path(graph, path, field_map=None):
-    joins = []
+    def add_fields(self, warehouse, fields):
+        for field in fields:
+            if field not in self.field_map:
+                self.add_field(warehouse, field)
+
+def joins_from_path(ds_name, ds_graph, path, field_map=None):
+    join_parts = []
     if len(path) == 1:
         # A placeholder join that is really just a single table
-        join_info = JoinInfo(path, None)
-        joins.append(join_info)
+        join_part = JoinPart(ds_name, path, None)
+        join_parts.append(join_part)
     else:
         for i, node in enumerate(path):
             if i == (len(path) - 1):
                 break
             start, end = path[i], path[i+1]
-            edge = graph.edges[start, end]
-            join_info = JoinInfo([start, end], edge['join_fields'])
-            joins.append(join_info)
-    return JoinList(joins, field_map=field_map)
+            edge = ds_graph.edges[start, end]
+            join_part = JoinPart(ds_name, [start, end], edge['join_fields'])
+            join_parts.append(join_part)
+    return Join(join_parts, field_map=field_map)
 
 def get_table_fields(table):
     fields = set()
@@ -1054,8 +1059,8 @@ class Warehouse:
                         break
 
                 assert field_map, 'Could not map dimension %s to column' % dimension
-                join_list = joins_from_path(ds_graph, path, field_map=field_map)
-                joins.append(join_list)
+                join = joins_from_path(ds_name, ds_graph, path, field_map=field_map)
+                joins.append(join)
 
         dbg('Found joins to dim %s for table %s:' % (dimension, table.fullname))
         dbg(joins)
@@ -1104,8 +1109,8 @@ class Warehouse:
                 continue
 
             dbg('adding %d possible join(s) to table %s' % (len(joins), field_table.fullname))
-            for join_list, covered_dims in joins.items():
-                table_set = TableSet(ds_name, field_table, join_list, grain, set([field]))
+            for join, covered_dims in joins.items():
+                table_set = TableSet(ds_name, field_table, join, grain, set([field]))
                 table_sets.append(table_set)
 
         return table_sets
@@ -1188,46 +1193,26 @@ class Warehouse:
             raise UnsupportedGrainException('No dimension table set found to meet grain: %s' % grain)
         return table_set
 
-    def consolidate_field_joins(self, ds_name, grain, field_joins):
-        '''This takes a mapping of fields to joins (JoinLists) that satisfy that field
-        and returns a minimized map of joins to fields satisfied by that join.
-        '''
-
-        join_fields = defaultdict(set) # map of join to fields it covers
-
-        # First get all joins and fields they cover
+    def invert_field_joins(self, field_joins):
+        '''Take a map of fields to relevant joins and invert it'''
+        join_fields = defaultdict(set)
         for field, joins in field_joins.items():
             for join in joins:
                 if join in join_fields:
                     dbg('join %s already used, adding field %s' % (join, field))
                 join_fields[join].add(field)
+        return join_fields
 
-        # Find the maximum part of the grain the join can cover
+    def populate_max_join_field_coverage(self, join_fields, grain):
         for join, covered_fields in join_fields.items():
             for field in grain:
                 if field in covered_fields:
                     continue
-                all_covered_fields = join.get_covered_fields(self, ds_name)
+                all_covered_fields = join.get_covered_fields(self)
                 if field in all_covered_fields:
                     covered_fields.add(field)
 
-        # Now find the minimal set of joins that covers the entire grain
-        # Sort by number of dims covered desc, number of tables involved asc
-        sorted_join_fields = sorted(join_fields.items(),
-                                    key=lambda kv: (len(kv[1]), -len(kv[0])),
-                                    reverse=True)
-
-        if len(sorted_join_fields[0][1]) == len(grain):
-            # Single join covers entire grain. It should be ~optimal based on sorting.
-            join = sorted_join_fields[0][0]
-            covered_fields = sorted_join_fields[0][1]
-            for field in covered_fields:
-                if field not in join.field_map:
-                    join.add_field(self, ds_name, field)
-            return {join:covered_fields}
-
-        # TODO: make separate function
-        # Eliminate some redundant joins
+    def eliminate_redundant_joins(self, sorted_join_fields):
         joins_to_delete = set()
         for join, covered_fields in sorted_join_fields:
             if join in joins_to_delete:
@@ -1246,22 +1231,22 @@ class Warehouse:
 
         sorted_join_fields = [(join, fields) for join, fields in sorted_join_fields
                               if join not in joins_to_delete]
+        return sorted_join_fields
 
-        # TODO: make separate function
-        # TODO: confusing naming, this is a list of JoinLists
+    def find_join_combinations(self, sorted_join_fields, grain):
         candidates = []
-        for join_list_combo in powerset(sorted_join_fields):
-            if not join_list_combo:
+        for join_combo in powerset(sorted_join_fields):
+            if not join_combo:
                 continue
 
             covered = set()
             has_subsets = False
-            for join, covered_dims in join_list_combo:
+            for join, covered_dims in join_combo:
                 covered |= covered_dims
                 # If any of the other joins are a subset of this join we ignore it.
                 # The powerset has every combination so it will eventually hit the case
                 # where there are only distinct joins.
-                for other_join, other_covered_dims in join_list_combo:
+                for other_join, other_covered_dims in join_combo:
                     if join == other_join:
                         continue
                     if other_join.table_names.issubset(join.table_names):
@@ -1277,27 +1262,51 @@ class Warehouse:
                 # This combination of joins covers the entire grain. Add it as a candidate if
                 # there isn't an existing candidate that is a a subset of these joins
                 skip = False
-                join_lists = set([x[0] for x in join_list_combo])
-                for other_join_list_combo in candidates:
-                    other_join_lists = set([x[0] for x in other_join_list_combo])
-                    if other_join_lists.issubset(join_lists):
+                joins = set([x[0] for x in join_combo])
+                for other_join_combo in candidates:
+                    other_joins = set([x[0] for x in other_join_combo])
+                    if other_joins.issubset(joins):
                         skip = True
                 if skip:
                     dbg('Skipping subset join list combination')
                     continue
-                candidates.append(join_list_combo)
+                candidates.append(join_combo)
 
-        # Now we have to choose a candidate - choose the one with the fewest total tables
-        ordered = sorted(candidates, key=lambda x: len(reduce(or_, [y[0].table_names for y in x])))
+        return candidates
+
+    def choose_best_join_combination(self, candidates):
+        ordered = sorted(candidates, key=lambda x: len(iter_or([y[0].table_names for y in x])))
         chosen = ordered[0]
         join_fields = {}
         for join, covered_fields in chosen:
             join_fields[join] = covered_fields
-            # XXX should this be done earlier?
-            for field in covered_fields:
-                if field not in join.field_map:
-                    join.add_field(self, ds_name, field)
+            join.add_fields(self, covered_fields)
+        return join_fields
 
+    def consolidate_field_joins(self, ds_name, grain, field_joins):
+        '''This takes a mapping of fields to joins that satisfy that field
+        and returns a minimized map of joins to fields satisfied by that join.
+        '''
+
+        # Some preliminary shuffling of the inputs to support later logic
+        join_fields = self.invert_field_joins(field_joins)
+        self.populate_max_join_field_coverage(join_fields, grain)
+
+        # Sort by number of dims covered desc, number of tables involved asc
+        sorted_join_fields = sorted(join_fields.items(),
+                                    key=lambda kv: (len(kv[1]), -len(kv[0])),
+                                    reverse=True)
+
+        if len(sorted_join_fields[0][1]) == len(grain):
+            # Single join covers entire grain. It should be ~optimal based on sorting.
+            join = sorted_join_fields[0][0]
+            covered_fields = sorted_join_fields[0][1]
+            join.add_fields(self, covered_fields)
+            return {join:covered_fields}
+
+        sorted_join_fields = self.eliminate_redundant_joins(sorted_join_fields)
+        candidates = self.find_join_combinations(sorted_join_fields, grain)
+        join_fields = self.choose_best_join_combination(candidates)
         return join_fields
 
     def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):

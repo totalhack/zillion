@@ -111,8 +111,8 @@ class DataSourceQuery(PrintMixin):
         if table is not None:
             column = self.warehouse.table_field_map[ts.ds_name][table.fullname][field]
         else:
-            if ts.join_list and field in ts.join_list.field_map:
-                column = ts.join_list.field_map[field]
+            if ts.join and field in ts.join.field_map:
+                column = ts.join.field_map[field]
             elif field in self.warehouse.table_field_map[ts.ds_name][ts.ds_table.fullname]:
                 column = self.column_for_field(field, table=ts.ds_table)
             else:
@@ -130,11 +130,11 @@ class DataSourceQuery(PrintMixin):
         sqla_join = None
         last_table = None
 
-        if not ts.join_list:
+        if not ts.join:
             return ts.ds_table
 
-        for join in ts.join_list.joins:
-            for table_name in join.table_names:
+        for join_part in ts.join.join_parts:
+            for table_name in join_part.table_names:
                 table = self.warehouse.tables[ts.ds_name][table_name]
                 if sqla_join is None:
                     sqla_join = table
@@ -145,7 +145,7 @@ class DataSourceQuery(PrintMixin):
                     continue
 
                 conditions = []
-                for field in join.join_fields:
+                for field in join_part.join_fields:
                     last_column = self.column_for_field(field, table=last_table)
                     column = self.column_for_field(field, table=table)
                     conditions.append(column==last_column)
