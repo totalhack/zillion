@@ -1,6 +1,7 @@
 from collections import defaultdict, OrderedDict
 import copy
 import datetime
+import logging
 import random
 import time
 
@@ -45,6 +46,9 @@ from sqlaw.sql_utils import (infer_aggregation_and_rounding,
                              sqla_compile,
                              get_dialect_type_conversions,
                              column_fullname)
+
+if sqlaw_config['DEBUG']:
+    logging.getLogger().setLevel(logging.DEBUG)
 
 MAX_FORMULA_DEPTH = 3
 

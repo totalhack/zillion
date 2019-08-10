@@ -17,7 +17,8 @@ from sqlaw.sql_utils import (type_string_to_sa_type,
 def load_sqlaw_config():
     sqlaw_config_fname = os.environ.get('SQLAW_CONFIG', None)
     if not sqlaw_config_fname:
-        return dict(ADHOC_DATASOURCE_DIRECTORY='/tmp',
+        return dict(DEBUG=False,
+                    ADHOC_DATASOURCE_DIRECTORY='/tmp',
                     LOAD_TABLE_CHUNK_SIZE=5000,
                     IFNULL_PRETTY_VALUE='--',
                     DATASOURCE_QUERY_MODE='sequential',

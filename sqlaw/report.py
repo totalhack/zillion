@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from concurrent.futures import as_completed, ThreadPoolExecutor, TimeoutError
 import decimal
+import logging
 import random
 from sqlite3 import connect, Row
 import time
@@ -29,6 +30,9 @@ from sqlaw.core import (AggregationTypes,
 from sqlaw.sql_utils import (sqla_compile,
                              get_sqla_clause,
                              to_sqlite_type)
+
+if sqlaw_config['DEBUG']:
+    logging.getLogger().setLevel(logging.DEBUG)
 
 # Last unicode char - this helps get the rollup rows to sort last, but may
 # need to be replaced for presentation
