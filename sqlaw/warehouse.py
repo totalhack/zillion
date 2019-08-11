@@ -609,7 +609,6 @@ class Warehouse:
 
     def remove_adhoc_datasources(self, adhoc_datasources):
         for adhoc_ds in adhoc_datasources:
-            self.remove_adhoc_config(adhoc_ds)
             self.remove_datasource(adhoc_ds)
             self.datasources.remove(adhoc_ds)
             adhoc_ds.clean_up()
@@ -729,9 +728,6 @@ class Warehouse:
             'tables': adhoc_ds.table_configs
         }
         self.apply_datasource_config(ds_config, adhoc_ds)
-
-    def remove_adhoc_config(self, adhoc_ds):
-        pass
 
     def populate_conversion_fields(self, ds):
         for table in ds.metadata.tables.values():
