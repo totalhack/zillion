@@ -82,12 +82,12 @@
         {
             "name": "leads",
             "type": "Integer",
-            "aggregation": "count_distinct"
+            "aggregation": "sum"
         },
         {
             "name": "sales",
             "type": "Integer",
-            "aggregation": "count_distinct"
+            "aggregation": "sum"
         }
     ],
 
@@ -103,7 +103,7 @@
     ],
     
     "datasources": {
-        "testdb": {
+        "testdb1": {
             "tables": {
                 "partners": {
                     "type": "dimension",
@@ -140,7 +140,10 @@
                     "autocolumns": true,
                     "columns": {
                         "id": {
-                            "fields": ["lead_id", "leads"]
+                            "fields": [
+                                "lead_id",
+                                {"name":"leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
+                            ]
                         },
                         "created_at": {
                             "allow_type_conversions": true
@@ -157,7 +160,10 @@
                     "parent": "leads",
                     "columns": {
                         "id": {
-                            "fields": ["sale_id", "sales"]
+                            "fields": [
+                                "sale_id",
+                                {"name":"sales", "ds_formula": "COUNT(DISTINCT sales.id)"}
+                            ]
                         },
                         "created_at": {
                             "allow_type_conversions": true
@@ -176,6 +182,62 @@
                                 {"name": "revenue_avg_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},
                                 {"name": "revenue_decile", "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}
                             ]
+                        }
+                    }
+                }
+            }
+        },
+
+        "testdb2": {
+            "tables": {
+                "partners": {
+                    "type": "dimension",
+                    "autocolumns": true,
+                    "columns": {
+                        "id": {
+                            "fields": ["partner_id"]
+                        },
+                        "name": {
+                            "fields": ["partner_name"]
+                        }
+                    }
+                },
+                
+                "campaigns": {
+                    "type": "dimension",
+                    "autocolumns": true,
+                    "parent": "partners",
+                    "columns": {
+                        "id": {
+                            "fields": ["campaign_id"]
+                        },
+                        "name": {
+                            "fields": ["campaign_name"]
+                        },
+                        "partner_id": {
+                            "fields": ["partner_id"]
+                        }
+                    }
+                },
+
+                "aggregated_stats": {
+                    "type": "fact",
+                    "autocolumns": true,
+                    "columns": {
+                        "partner_id": {
+                            "fields": ["partner_id"]
+                        },
+                        "campaign_id": {
+                            "fields": ["campaign_id"]
+                        },
+                        "leads": {
+                            "fields": ["leads"]
+                        },
+                        "sales": {
+                            "fields": ["sales"]
+                        },
+                        "revenue": {
+                            "fields": ["revenue"]
                         }
                     }
                 }

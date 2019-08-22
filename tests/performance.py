@@ -10,9 +10,9 @@ from toolbox import dbg, st, testcli
 from sqlaw.configs import load_warehouse_config
 from sqlaw.core import TableTypes
 from sqlaw.warehouse import DataSource, AdHocDataSource, Warehouse
-from test_utils import TestBase, run_tests, create_adhoc_datatable
+from test_utils import TestBase, run_tests, create_adhoc_datatable, get_testdb_url
 
-TESTDB_CONFIG = load_warehouse_config('testdb_config.json')
+TEST_CONFIG = load_warehouse_config('test_config.json')
 
 @contextlib.contextmanager
 def profiled(pattern=None):
@@ -30,8 +30,8 @@ def profiled(pattern=None):
         stats.print_stats(pattern, 10)
 
 def init_datasources():
-    ds = DataSource('testdb', 'sqlite:///testdb', reflect=True)
-    return [ds]
+    ds1 = DataSource('testdb1', get_testdb_url(), reflect=True)
+    return [ds1]
 
 def get_adhoc_ds(size):
     facts = [
@@ -87,7 +87,7 @@ def get_adhoc_ds(size):
 class TestSQLAWPerformance(TestBase):
     def setUp(self):
         self.datasources = init_datasources()
-        self.config = copy.deepcopy(TESTDB_CONFIG)
+        self.config = copy.deepcopy(TEST_CONFIG)
 
     def tearDown(self):
         del self.datasources

@@ -540,6 +540,8 @@ def create_dimension(dim_def):
 class Warehouse:
     def __init__(self, datasources, config=None, ds_priority=None):
         self.datasources = datasources
+        # Note: if no ds_priority is established the datasource chosen may
+        # change from report to report if multiple can satisfy a query
         self.ds_priority = ds_priority
         if ds_priority:
             ds_names = {ds.name for ds in datasources}
@@ -860,7 +862,7 @@ class Warehouse:
     def get_primary_key_fields(self, primary_key):
         pk_fields = set()
         for col in primary_key:
-            pk_dims = [x for x in col.sqlaw.fields if x in self.dimensions]
+            pk_dims = [x for x in col.sqlaw.fields if isinstance(x, str) and x in self.dimensions]
             assert len(pk_dims) == 1, \
                 'Primary key column has multiple dimensions: %s/%s' % (col, col.sqlaw.fields)
             pk_fields.add(pk_dims[0])

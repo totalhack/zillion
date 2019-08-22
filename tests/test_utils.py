@@ -6,6 +6,8 @@ from toolbox import st, dbg, random_string
 
 from sqlaw.warehouse import AdHocDataTable
 
+DEFAULT_TEST_DB = 'testdb1'
+
 class TestBase(unittest.TestCase):
     DEBUG = False
 
@@ -58,3 +60,6 @@ def create_adhoc_datatable(name, table_type, column_defs, primary_key, size, par
             del column_def['type']
     dt = AdHocDataTable(name, table_type, primary_key, data, columns=column_defs, parent=parent)
     return dt
+
+def get_testdb_url(dbname=DEFAULT_TEST_DB):
+    return 'sqlite:///%s' % dbname

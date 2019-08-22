@@ -13,25 +13,31 @@ from sqlaw.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 from sqlaw.warehouse import (DataSource,
                              AdHocDataSource,
                              Warehouse)
-from test_utils import TestBase, run_tests, create_adhoc_datatable
+from test_utils import TestBase, run_tests, create_adhoc_datatable, get_testdb_url
 
-TESTDB_CONFIG = load_warehouse_config('testdb_config.json')
+TEST_CONFIG = load_warehouse_config('test_config.json')
 
 def init_datasources():
-    ds = DataSource('testdb', 'sqlite:///testdb', reflect=True)
-    return [ds]
+    ds1 = DataSource('testdb1', get_testdb_url('testdb1'), reflect=True)
+    ds2 = DataSource('testdb2', get_testdb_url('testdb2'), reflect=True)
+    # ds2 will end up with a higher priority
+    return [ds2, ds1]
 
 class TestSQLAW(TestBase):
     def setUp(self):
         self.datasources = init_datasources()
-        self.config = copy.deepcopy(TESTDB_CONFIG)
+        self.ds_priority = [ds.name for ds in self.datasources]
+        self.config = copy.deepcopy(TEST_CONFIG)
 
     def tearDown(self):
         del self.datasources
         self.config = None
 
+    def getWarehouse(self):
+        return Warehouse(self.datasources, config=self.config, ds_priority=self.ds_priority)
+
     def testWarehouseInit(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         self.assertTrue(wh.dimension_tables)
         self.assertTrue(wh.dimensions)
 
@@ -46,15 +52,15 @@ class TestSQLAW(TestBase):
         self.assertTrue(wh.dimensions)
 
     def testTableConfigOverride(self):
-        self.config['datasources']['testdb']['tables']['campaigns']['type'] = 'fact'
-        wh = Warehouse(self.datasources, config=self.config)
-        self.assertIn('campaigns', wh.fact_tables['testdb'])
+        self.config['datasources']['testdb1']['tables']['campaigns']['type'] = 'fact'
+        wh = self.getWarehouse()
+        self.assertIn('campaigns', wh.fact_tables['testdb1'])
 
     def testColumnConfigOverride(self):
-        table_config = self.config['datasources']['testdb']['tables']['sales']
+        table_config = self.config['datasources']['testdb1']['tables']['sales']
         table_config['columns']['lead_id']['active'] = False
-        wh = Warehouse(self.datasources, config=self.config)
-        self.assertNotIn('sales.lead_id', wh.dimensions['lead_id'].get_column_names('testdb'))
+        wh = self.getWarehouse()
+        self.assertNotIn('sales.lead_id', wh.dimensions['lead_id'].get_column_names('testdb1'))
 
     def testContainsAggregation(self):
         sql_with_aggr = [
@@ -81,7 +87,7 @@ class TestSQLAW(TestBase):
             self.assertFalse(contains_aggregation(sql))
 
     def testGetDimensionTableSet(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         possible = [
             {'partner_id', 'partner_name'},
             {'campaign_name', 'partner_name'},
@@ -105,7 +111,7 @@ class TestSQLAW(TestBase):
                 wh.get_dimension_table_set(grain)
 
     def testGetFactTableSet(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         possible = [
             ('leads', {'partner_id', 'partner_name'}),
             ('leads', {'campaign_name', 'partner_name'}),
@@ -129,14 +135,14 @@ class TestSQLAW(TestBase):
                 wh.get_fact_table_set(fact, grain)
 
     def testGetSupportedDimensions(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['leads', 'sales_quantity']
         dims = wh.get_supported_dimensions(facts)
         self.assertTrue(dims & {'campaign_name', 'partner_name'})
         self.assertFalse(dims & {'sale_id'})
 
     def testReport(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', 'sales_quantity']
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
@@ -148,7 +154,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testImpossibleReport(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['leads']
         dimensions = ['sale_id']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
@@ -156,7 +162,7 @@ class TestSQLAW(TestBase):
             result = wh.report(facts, dimensions=dimensions, criteria=criteria)
 
     def testReportPivot(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', 'sales_quantity']
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
@@ -168,7 +174,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportMovingAverageFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = [
             'revenue',
             'revenue_ma_5',
@@ -184,7 +190,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportMovingAverageAdHocFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = [
             'revenue',
             {'formula': '{revenue}', 'technical': 'MA-5', 'name': 'my_revenue_ma_5'},
@@ -200,7 +206,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportMovingAverageFormulaFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = [
             'revenue',
             'rpl',
@@ -217,7 +223,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportCumSumFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = [
             'revenue',
             'revenue_sum_5',
@@ -233,7 +239,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportBollingerFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = [
             'revenue',
             'revenue_boll_5',
@@ -249,21 +255,21 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportNoDimensions(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', 'sales_quantity']
         criteria = [('campaign_name', '=', 'Campaign 2B')]
         result = wh.report(facts, criteria=criteria)
         self.assertTrue(result)
 
     def testReportNoFacts(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = []
         dimensions = ['partner_name', 'campaign_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportNullCriteria(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = ['partner_name']
         criteria = [('campaign_name', '!=', None)]
@@ -271,63 +277,63 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportCountFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['leads']
         dimensions = ['campaign_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAliasFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue_avg']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAliasDimension(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = ['lead_id']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportMultipleQueries(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportFormulaFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['rpl', 'revenue', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportNestedFormulaFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['rpl_squared', 'rpl_unsquared', 'rpl', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportDSDimensionFormula(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['sales']
         dimensions = ['revenue_decile']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportDSFactFormula(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', 'revenue_ds']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportNonExistentFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['sales1234']
         dimensions = ['campaign_id']
         result = False
@@ -338,28 +344,28 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportWeightedFormulaFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['rpl_weighted', 'rpl', 'sales_quantity', 'revenue', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedDSFactFormula(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue_avg', 'revenue_avg_ds_weighted']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['sales_quantity', 'revenue_avg', 'revenue', 'leads']
         dimensions = ['partner_name']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedFactWithRollup(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['sales_quantity', 'revenue_avg', 'leads']
         dimensions = ['partner_name']
         rollup = ROLLUP_TOTALS
@@ -367,7 +373,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportWeightedFactWithMultiRollup(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['sales_quantity', 'revenue_avg', 'leads']
         dimensions = ['partner_name', 'campaign_name', 'lead_id']
         rollup = 2
@@ -375,14 +381,14 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportMultiDimension(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['leads', 'sales']
         dimensions = ['partner_name', 'lead_id']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportRollup(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
@@ -393,7 +399,7 @@ class TestSQLAW(TestBase):
         self.assertEqual(revenue, revenue_sum)
 
     def testReportMultiRollup(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = ['partner_name', 'campaign_name', 'lead_id']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
@@ -404,7 +410,7 @@ class TestSQLAW(TestBase):
         self.assertEqual(revenue, revenue_sum)
 
     def testReportMultiRollupPivot(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = ['partner_name', 'campaign_name', 'lead_id']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
@@ -414,7 +420,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportAdHocDimension(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['leads', 'sales']
         dimensions = ['partner_name',
                       'lead_id',
@@ -423,14 +429,14 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testReportAdHocFact(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', {'formula': '{revenue} > 3*{lead_id}', 'name': 'testfact'}]
         dimensions = ['partner_name', 'lead_id']
         result = wh.report(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAdHocDataSource(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue', 'adhoc_fact']
         dimensions = ['partner_name']
 
@@ -453,7 +459,7 @@ class TestSQLAW(TestBase):
         self.assertTrue(result)
 
     def testDateConversionReport(self):
-        wh = Warehouse(self.datasources, config=self.config)
+        wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = [
             'datetime',
@@ -461,6 +467,23 @@ class TestSQLAW(TestBase):
         ]
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        dbg(result)
+        self.assertTrue(result)
+
+    def testReportDataSourcePriority(self):
+        wh = self.getWarehouse()
+        facts = ['revenue', 'leads', 'sales']
+        dimensions = ['partner_name']
+        report = wh.build_report(facts, dimensions=dimensions)
+        self.assertTrue(report.queries[0].get_datasource_name() == 'testdb2')
+
+    def testReportMultiDataSource(self):
+        wh = self.getWarehouse()
+        facts = ['revenue', 'leads', 'sales', 'revenue_avg']
+        dimensions = ['partner_name']
+        report = wh.build_report(facts, dimensions=dimensions)
+        self.assertTrue(len(report.queries) == 2)
+        result = report.execute()
         dbg(result)
         self.assertTrue(result)
 
