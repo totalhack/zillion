@@ -9,16 +9,16 @@ import networkx as nx
 from orderedset import OrderedSet
 import pandas as pd
 import sqlalchemy as sa
-from toolbox import (dbg,
-                     warn,
-                     st,
-                     rmfile,
-                     initializer,
-                     get_string_format_args,
-                     iter_or,
-                     powerset,
-                     PrintMixin,
-                     MappingMixin)
+from tlbx import (dbg,
+                  warn,
+                  st,
+                  rmfile,
+                  initializer,
+                  get_string_format_args,
+                  iter_or,
+                  powerset,
+                  PrintMixin,
+                  MappingMixin)
 
 from sqlaw.configs import (AdHocFieldSchema,
                            AdHocFactSchema,
@@ -60,19 +60,25 @@ class DataSource(PrintMixin):
         self.name = DataSource.check_or_create_name(name)
 
         if isinstance(url_or_metadata, str):
-            engine = sa.create_engine(url_or_metadata)
-            metadata = sa.MetaData()
-            metadata.bind = engine
+            self.metadata = sa.MetaData()
+            self.metadata.bind = sa.create_engine(url_or_metadata)
         else:
             assert isinstance(url_or_metadata, sa.MetaData), 'Invalid URL or MetaData object: %s' % url_or_metadata
-            metadata = url_or_metadata
+            self.metadata = url_or_metadata
+            assert self.metadata.bind, 'MetaData object must have a bind (engine) attribute specified'
 
         if reflect:
-            metadata.reflect()
-        self.metadata = metadata
+            self.metadata.reflect()
 
     def get_dialect_name(self):
         return self.metadata.bind.dialect.name
+
+    def get_params(self):
+        return dict(
+            name=self.name,
+            url=str(self.metadata.bind.url),
+            reflect=self.reflect
+        )
 
     @classmethod
     def check_or_create_name(cls, name):
@@ -569,6 +575,13 @@ class Warehouse:
 
     def get_datasource_names(self):
         return self.ds_graphs.keys()
+
+    def get_adhoc_datasources(self):
+        adhoc_datasources = []
+        for ds in self.datasources:
+            if isinstance(ds, AdHocDataSource):
+                adhoc_datasources.append(ds)
+        return adhoc_datasources
 
     def get_datasource(self, name):
         for ds in self.datasources:
@@ -1311,7 +1324,8 @@ class Warehouse:
         join_fields = self.choose_best_join_combination(candidates)
         return join_fields
 
-    def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None, pivot=None):
+    def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None,
+                     rollup=None, pivot=None):
         return Report(self,
                       facts=facts,
                       dimensions=dimensions,
@@ -1320,8 +1334,17 @@ class Warehouse:
                       rollup=rollup,
                       pivot=pivot)
 
-    def report(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None,
-               pivot=None, adhoc_datasources=None):
+    def load_report(self, report_id):
+        report = Report.load(self, report_id)
+        return report
+
+    # def save_report(self, **kwargs):
+    #     report = self.build_report(**kwargs)
+    #     report.save()
+    #     return report
+
+    def execute(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None,
+                pivot=None, adhoc_datasources=None):
         start = time.time()
         adhoc_datasources = adhoc_datasources or []
         self.add_adhoc_datasources(adhoc_datasources)
@@ -1332,6 +1355,18 @@ class Warehouse:
                                    row_filters=row_filters,
                                    rollup=rollup,
                                    pivot=pivot)
+        result = report.execute()
+
+        self.remove_adhoc_datasources(adhoc_datasources)
+        dbg('warehouse report took %.3fs' % (time.time() - start))
+        return result
+
+    def execute_id(self, report_id, adhoc_datasources=None):
+        start = time.time()
+        adhoc_datasources = adhoc_datasources or []
+        self.add_adhoc_datasources(adhoc_datasources)
+
+        report = self.load_report(report_id)
         result = report.execute()
 
         self.remove_adhoc_datasources(adhoc_datasources)

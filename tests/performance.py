@@ -5,7 +5,7 @@ import pstats
 import time
 
 import climax
-from toolbox import dbg, st, testcli
+from tlbx import dbg, st, Script, Arg
 
 from sqlaw.configs import load_warehouse_config
 from sqlaw.core import TableTypes
@@ -113,9 +113,8 @@ class TestSQLAWPerformance(TestBase):
                                adhoc_datasources=[adhoc_ds])
         self.assertTrue(result)
 
-
-@climax.command(parents=[testcli])
-@climax.argument('testnames', type=str, nargs='*', help='Names of tests to run')
+@Script(Arg('testnames', type=str, nargs='*', help='Names of tests to run'),
+        Arg('--debug', action='store_true'))
 def main(testnames, debug):
     run_tests(TestSQLAWPerformance, testnames, debug)
 

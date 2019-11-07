@@ -1,7 +1,7 @@
 from sqlite3 import connect, Row
 
 from test_utils import get_testdb_url
-from toolbox import st, rmfile, shell
+from tlbx import st, rmfile, shell
 
 CREATE_AGGREGATED_STATS = '''CREATE TABLE aggregated_stats (
 partner_id int,

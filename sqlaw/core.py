@@ -1,6 +1,6 @@
 import string
 
-from toolbox import ClassValueContainsMeta
+from tlbx import ClassValueContainsMeta
 
 class UnsupportedGrainException(Exception):
     pass

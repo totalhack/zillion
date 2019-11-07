@@ -2,7 +2,7 @@ from collections import OrderedDict
 import os
 
 from marshmallow import Schema, fields as mfields, ValidationError, validates_schema
-from toolbox import dbg, error, json, st
+from tlbx import dbg, error, json, st
 import yaml
 
 from sqlaw.core import (TableTypes,
@@ -18,6 +18,7 @@ def load_sqlaw_config():
     sqlaw_config_fname = os.environ.get('SQLAW_CONFIG', None)
     if not sqlaw_config_fname:
         return dict(DEBUG=False,
+                    SQLAW_DB_URL='sqlite:////tmp/sqlaw.db',
                     ADHOC_DATASOURCE_DIRECTORY='/tmp',
                     LOAD_TABLE_CHUNK_SIZE=5000,
                     IFNULL_PRETTY_VALUE='--',
@@ -98,7 +99,7 @@ def is_valid_technical(val):
 
 class BaseSchema(Schema):
     class Meta:
-        # Use the json module as imported from toolbox
+        # Use the json module as imported from tlbx
         json_module = json
 
 class TechnicalInfoSchema(BaseSchema):

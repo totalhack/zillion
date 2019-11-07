@@ -2,7 +2,7 @@ import copy
 import traceback
 
 import climax
-from toolbox import dbg, st, testcli
+from tlbx import dbg, st, Script, Arg
 
 from sqlaw.configs import load_warehouse_config
 from sqlaw.core import (TableTypes,
@@ -22,6 +22,23 @@ def init_datasources():
     ds2 = DataSource('testdb2', get_testdb_url('testdb2'), reflect=True)
     # ds2 will end up with a higher priority
     return [ds2, ds1]
+
+def get_adhoc_datasource():
+    column_defs = {
+        'partner_name': {
+            'fields': ['partner_name'],
+            'type': str,
+        },
+        'adhoc_fact': {
+            'fields': ['adhoc_fact'],
+            'type': float,
+        }
+    }
+
+    size = 10
+    dt = create_adhoc_datatable('adhoc_table1', TableTypes.FACT, column_defs, ['partner_name'], size)
+    adhoc_ds = AdHocDataSource([dt])
+    return adhoc_ds
 
 class TestSQLAW(TestBase):
     def setUp(self):
@@ -148,8 +165,8 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 11)]
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup)
         dbg(result)
         self.assertTrue(result)
 
@@ -159,7 +176,7 @@ class TestSQLAW(TestBase):
         dimensions = ['sale_id']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         with self.assertRaises(UnsupportedGrainException):
-            result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+            result = wh.execute(facts, dimensions=dimensions, criteria=criteria)
 
     def testReportPivot(self):
         wh = self.getWarehouse()
@@ -169,8 +186,8 @@ class TestSQLAW(TestBase):
         row_filters = [('revenue', '>', 11)]
         rollup = ROLLUP_TOTALS
         pivot = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup, pivot=pivot)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup, pivot=pivot)
         self.assertTrue(result)
 
     def testReportMovingAverageFact(self):
@@ -185,8 +202,8 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 8)]
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
     def testReportMovingAverageAdHocFact(self):
@@ -201,8 +218,8 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 8)]
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
     def testReportMovingAverageFormulaFact(self):
@@ -218,8 +235,8 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = [('revenue', '>', 8)]
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
     def testReportCumSumFact(self):
@@ -234,8 +251,8 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = None
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
     def testReportBollingerFact(self):
@@ -250,22 +267,22 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         row_filters = None
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria,
-                           row_filters=row_filters, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria,
+                            row_filters=row_filters, rollup=rollup)
         self.assertTrue(result)
 
     def testReportNoDimensions(self):
         wh = self.getWarehouse()
         facts = ['revenue', 'sales_quantity']
         criteria = [('campaign_name', '=', 'Campaign 2B')]
-        result = wh.report(facts, criteria=criteria)
+        result = wh.execute(facts, criteria=criteria)
         self.assertTrue(result)
 
     def testReportNoFacts(self):
         wh = self.getWarehouse()
         facts = []
         dimensions = ['partner_name', 'campaign_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportNullCriteria(self):
@@ -273,63 +290,63 @@ class TestSQLAW(TestBase):
         facts = ['revenue']
         dimensions = ['partner_name']
         criteria = [('campaign_name', '!=', None)]
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria)
         self.assertTrue(result)
 
     def testReportCountFact(self):
         wh = self.getWarehouse()
         facts = ['leads']
         dimensions = ['campaign_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAliasFact(self):
         wh = self.getWarehouse()
         facts = ['revenue_avg']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAliasDimension(self):
         wh = self.getWarehouse()
         facts = ['revenue']
         dimensions = ['lead_id']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportMultipleQueries(self):
         wh = self.getWarehouse()
         facts = ['revenue', 'leads']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportFormulaFact(self):
         wh = self.getWarehouse()
         facts = ['rpl', 'revenue', 'leads']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportNestedFormulaFact(self):
         wh = self.getWarehouse()
         facts = ['rpl_squared', 'rpl_unsquared', 'rpl', 'leads']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportDSDimensionFormula(self):
         wh = self.getWarehouse()
         facts = ['sales']
         dimensions = ['revenue_decile']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportDSFactFormula(self):
         wh = self.getWarehouse()
         facts = ['revenue', 'revenue_ds']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportNonExistentFact(self):
@@ -338,7 +355,7 @@ class TestSQLAW(TestBase):
         dimensions = ['campaign_id']
         result = False
         try:
-            wh.report(facts, dimensions=dimensions)
+            wh.execute(facts, dimensions=dimensions)
         except InvalidFieldException:
             result = True
         self.assertTrue(result)
@@ -347,21 +364,21 @@ class TestSQLAW(TestBase):
         wh = self.getWarehouse()
         facts = ['rpl_weighted', 'rpl', 'sales_quantity', 'revenue', 'leads']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedDSFactFormula(self):
         wh = self.getWarehouse()
         facts = ['revenue_avg', 'revenue_avg_ds_weighted']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedFact(self):
         wh = self.getWarehouse()
         facts = ['sales_quantity', 'revenue_avg', 'revenue', 'leads']
         dimensions = ['partner_name']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportWeightedFactWithRollup(self):
@@ -369,7 +386,7 @@ class TestSQLAW(TestBase):
         facts = ['sales_quantity', 'revenue_avg', 'leads']
         dimensions = ['partner_name']
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, rollup=rollup)
         self.assertTrue(result)
 
     def testReportWeightedFactWithMultiRollup(self):
@@ -377,14 +394,14 @@ class TestSQLAW(TestBase):
         facts = ['sales_quantity', 'revenue_avg', 'leads']
         dimensions = ['partner_name', 'campaign_name', 'lead_id']
         rollup = 2
-        result = wh.report(facts, dimensions=dimensions, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, rollup=rollup)
         self.assertTrue(result)
 
     def testReportMultiDimension(self):
         wh = self.getWarehouse()
         facts = ['leads', 'sales']
         dimensions = ['partner_name', 'lead_id']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportRollup(self):
@@ -393,7 +410,7 @@ class TestSQLAW(TestBase):
         dimensions = ['partner_name', 'campaign_name']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         rollup = ROLLUP_TOTALS
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
         revenue = result.rollup_rows().iloc[-1]['revenue']
         revenue_sum = result.non_rollup_rows().sum()['revenue']
         self.assertEqual(revenue, revenue_sum)
@@ -404,7 +421,7 @@ class TestSQLAW(TestBase):
         dimensions = ['partner_name', 'campaign_name', 'lead_id']
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         rollup = 3
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria, rollup=rollup)
         revenue = result.rollup_rows().iloc[-1]['revenue']
         revenue_sum = result.non_rollup_rows().sum()['revenue']
         self.assertEqual(revenue, revenue_sum)
@@ -416,7 +433,7 @@ class TestSQLAW(TestBase):
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
         rollup = 3
         pivot = ['campaign_name']
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria, rollup=rollup, pivot=pivot)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria, rollup=rollup, pivot=pivot)
         self.assertTrue(result)
 
     def testReportAdHocDimension(self):
@@ -425,37 +442,22 @@ class TestSQLAW(TestBase):
         dimensions = ['partner_name',
                       'lead_id',
                       {'formula':'{lead_id} > 3', 'name':'testdim'}]
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAdHocFact(self):
         wh = self.getWarehouse()
         facts = ['revenue', {'formula': '{revenue} > 3*{lead_id}', 'name': 'testfact'}]
         dimensions = ['partner_name', 'lead_id']
-        result = wh.report(facts, dimensions=dimensions)
+        result = wh.execute(facts, dimensions=dimensions)
         self.assertTrue(result)
 
     def testReportAdHocDataSource(self):
         wh = self.getWarehouse()
         facts = ['revenue', 'adhoc_fact']
         dimensions = ['partner_name']
-
-        column_defs = {
-            'partner_name': {
-                'fields': ['partner_name'],
-                'type': str,
-            },
-            'adhoc_fact': {
-                'fields': ['adhoc_fact'],
-                'type': float,
-            }
-        }
-
-        size = 10
-        dt = create_adhoc_datatable('adhoc_table1', TableTypes.FACT, column_defs, ['partner_name'], size)
-        adhoc_ds = AdHocDataSource([dt])
-
-        result = wh.report(facts, dimensions=dimensions, adhoc_datasources=[adhoc_ds])
+        adhoc_ds = get_adhoc_datasource()
+        result = wh.execute(facts, dimensions=dimensions, adhoc_datasources=[adhoc_ds])
         self.assertTrue(result)
 
     def testDateConversionReport(self):
@@ -466,7 +468,7 @@ class TestSQLAW(TestBase):
             'hour_of_day',
         ]
         criteria = [('campaign_name', '!=', 'Campaign 2B')]
-        result = wh.report(facts, dimensions=dimensions, criteria=criteria)
+        result = wh.execute(facts, dimensions=dimensions, criteria=criteria)
         dbg(result)
         self.assertTrue(result)
 
@@ -474,21 +476,60 @@ class TestSQLAW(TestBase):
         wh = self.getWarehouse()
         facts = ['revenue', 'leads', 'sales']
         dimensions = ['partner_name']
-        report = wh.build_report(facts, dimensions=dimensions)
+        report = wh.build_report(facts=facts, dimensions=dimensions)
         self.assertTrue(report.queries[0].get_datasource_name() == 'testdb2')
 
     def testReportMultiDataSource(self):
         wh = self.getWarehouse()
         facts = ['revenue', 'leads', 'sales', 'revenue_avg']
         dimensions = ['partner_name']
-        report = wh.build_report(facts, dimensions=dimensions)
+        report = wh.build_report(facts=facts, dimensions=dimensions)
         self.assertTrue(len(report.queries) == 2)
         result = report.execute()
         dbg(result)
         self.assertTrue(result)
 
-@climax.command(parents=[testcli])
-@climax.argument('testnames', type=str, nargs='*', help='Names of tests to run')
+    def testReportSaveAndLoad(self):
+        wh = self.getWarehouse()
+        facts = ['revenue', 'leads', 'sales']
+        dimensions = ['partner_name']
+        report = wh.build_report(facts=facts, dimensions=dimensions)
+        report_id = report.save()
+        result = wh.execute_id(report_id)
+        self.assertTrue(result)
+
+    def testReportAdHocDataSourceSaveAndLoad(self):
+        wh = self.getWarehouse()
+        facts = ['revenue', 'leads', 'adhoc_fact']
+        dimensions = ['partner_name']
+        adhoc_ds = get_adhoc_datasource()
+        wh.add_adhoc_datasources([adhoc_ds])
+        report = wh.build_report(facts=facts, dimensions=dimensions)
+        report_id = report.save()
+        result = wh.execute_id(report_id)
+        self.assertTrue(result)
+
+    # TODO: this is failing, doesnt seem to be loading adhoc DS correctly
+    # def testReportMissingAdHocDataSourceSaveAndLoad(self):
+    #     wh = self.getWarehouse()
+    #     facts = ['revenue', 'leads', 'adhoc_fact']
+    #     dimensions = ['partner_name']
+    #     adhoc_ds = get_adhoc_datasource()
+    #     wh.add_adhoc_datasources([adhoc_ds])
+    #     report = wh.build_report(facts=facts, dimensions=dimensions)
+    #     report_id = report.save()
+    #     wh.remove_adhoc_datasources([adhoc_ds])
+    #     result = wh.execute_id(report_id)
+    #     # TODO: should clean up report IDs when done
+    #     self.assertTrue(result)
+
+    def testReportFromId(self):
+        wh = self.getWarehouse()
+        result = wh.execute_id(6)
+        self.assertTrue(result)
+
+@Script(Arg('testnames', type=str, nargs='*', help='Names of tests to run'),
+        Arg('--debug', action='store_true'))
 def main(testnames, debug):
     run_tests(TestSQLAW, testnames, debug)
 

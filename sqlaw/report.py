@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from concurrent.futures import as_completed, ThreadPoolExecutor, TimeoutError
 import decimal
+import inspect
 import logging
 import random
 from sqlite3 import connect, Row
@@ -9,16 +10,17 @@ import time
 from orderedset import OrderedSet
 import pandas as pd
 import sqlalchemy as sa
-from toolbox import (dbg,
-                     dbgsql,
-                     error,
-                     sqlformat,
-                     st,
-                     chunk,
-                     initializer,
-                     is_int,
-                     orderedsetify,
-                     PrintMixin)
+from tlbx import (dbg,
+                  dbgsql,
+                  error,
+                  sqlformat,
+                  json,
+                  st,
+                  chunks,
+                  initializer,
+                  is_int,
+                  orderedsetify,
+                  PrintMixin)
 
 from sqlaw.configs import sqlaw_config
 from sqlaw.core import (AggregationTypes,
@@ -45,6 +47,19 @@ PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT: 'sum',
     AggregationTypes.COUNT_DISTINCT: 'sum',
 }
+
+sqlaw_engine = sa.create_engine(sqlaw_config['SQLAW_DB_URL'])
+sqlaw_metadata = sa.MetaData()
+sqlaw_metadata.bind = sqlaw_engine
+
+Reports = sa.Table(
+    'reports',
+    sqlaw_metadata,
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('params', sa.Text),
+    sa.Column('created_at', sa.DateTime, server_default=sa.func.now())
+)
+sqlaw_metadata.create_all(sqlaw_engine)
 
 class DataSourceQuery(PrintMixin):
     repr_attrs = ['facts', 'dimensions', 'criteria']
@@ -351,7 +366,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def load_table(self):
         for qr in self.ds_query_results:
-            for rows in chunk(qr.data, sqlaw_config['LOAD_TABLE_CHUNK_SIZE']):
+            for rows in chunks(qr.data, sqlaw_config['LOAD_TABLE_CHUNK_SIZE']):
                 insert_sql, values = self.get_bulk_insert_sql(rows)
                 self.cursor.executemany(insert_sql, values)
             self.conn.commit()
@@ -524,16 +539,19 @@ class Report:
     def __init__(self, warehouse, facts=None, dimensions=None, criteria=None,
                  row_filters=None, rollup=None, pivot=None):
         start = time.time()
+        self.id = None
         self.facts = self.facts or []
         self.dimensions = self.dimensions or []
         assert self.facts or self.dimensions, 'One of facts or dimensions must be specified for Report'
         self.criteria = self.criteria or []
         self.row_filters = self.row_filters or []
+
         if rollup is not None:
             assert dimensions, 'Must specify dimensions in order to use rollup'
             if rollup != ROLLUP_TOTALS:
                 assert is_int(rollup) and (0 < int(rollup) <= len(dimensions)), 'Invalid rollup value: %s' % rollup
                 self.rollup = int(rollup)
+
         self.pivot = self.pivot or []
         if pivot:
             assert set(self.pivot).issubset(set(self.dimensions)), 'Pivot columms must be a subset of dimensions'
@@ -551,6 +569,59 @@ class Report:
         self.combined_query = None
         self.result = None
         dbg('Report init took %.3fs' % (time.time() - start))
+
+    def get_params(self):
+        used_datasources = list({q.get_datasource_name() for q in self.queries})
+        datasources = [ds.get_params() for ds in self.warehouse.datasources]
+        return dict(
+            kwargs=dict(
+                facts=self.facts,
+                dimensions=self.dimensions,
+                criteria=self.criteria,
+                row_filters=self.row_filters,
+                rollup=self.rollup,
+                pivot=self.pivot,
+            ),
+            datasources=datasources,
+            used_datasources=used_datasources
+        )
+
+    def get_json(self):
+        return json.dumps(self.get_params())
+
+    def save(self):
+        conn = sqlaw_engine.connect()
+        try:
+            result = conn.execute(Reports.insert(), params=self.get_json())
+            report_id = result.inserted_primary_key[0]
+            assert report_id, 'No report ID found!'
+        finally:
+            conn.close()
+        self.id = report_id
+        return report_id
+
+    @classmethod
+    def load_params(cls, report_id):
+        s = sa.select([Reports.c.params]).where(Reports.c.id == report_id)
+        conn = sqlaw_engine.connect()
+        try:
+            result = conn.execute(s)
+            row = result.fetchone()
+            params = json.loads(row['params'])
+            return params
+        finally:
+            conn.close()
+
+    @classmethod
+    def from_params(cls, warehouse, params):
+        return Report(warehouse, **params['kwargs'])
+
+    @classmethod
+    def load(cls, warehouse, report_id):
+        params = cls.load_params(report_id)
+        # XXX TODO: if build fails, check whether its because expected datasources are missing
+        result = cls.from_params(warehouse, params)
+        return result
 
     def add_ds_fields(self, field_name, field_type):
         if field_type == FieldTypes.FACT:

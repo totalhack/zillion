@@ -2,7 +2,7 @@ import copy
 import random
 import unittest
 
-from toolbox import st, dbg, random_string
+from tlbx import st, dbg, random_string
 
 from sqlaw.warehouse import AdHocDataTable
 

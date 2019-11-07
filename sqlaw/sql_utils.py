@@ -3,7 +3,7 @@ import ast
 import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 import sqlparse as sp
-from toolbox import dbg, st, get_class_vars, get_string_format_args
+from tlbx import dbg, st, get_class_vars, get_string_format_args
 
 from sqlaw.core import AggregationTypes
 
