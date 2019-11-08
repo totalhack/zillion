@@ -22,18 +22,18 @@ from tlbx import (dbg,
                   orderedsetify,
                   PrintMixin)
 
-from sqlaw.configs import sqlaw_config
-from sqlaw.core import (AggregationTypes,
-                        DataSourceQueryModes,
-                        FieldTypes,
-                        TechnicalTypes,
-                        UnsupportedGrainException,
-                        ROW_FILTER_OPS)
-from sqlaw.sql_utils import (sqla_compile,
-                             get_sqla_clause,
-                             to_sqlite_type)
+from zillion.configs import zillion_config
+from zillion.core import (AggregationTypes,
+                          DataSourceQueryModes,
+                          FieldTypes,
+                          TechnicalTypes,
+                          UnsupportedGrainException,
+                          ROW_FILTER_OPS)
+from zillion.sql_utils import (sqla_compile,
+                               get_sqla_clause,
+                               to_sqlite_type)
 
-if sqlaw_config['DEBUG']:
+if zillion_config['DEBUG']:
     logging.getLogger().setLevel(logging.DEBUG)
 
 # Last unicode char - this helps get the rollup rows to sort last, but may
@@ -48,18 +48,18 @@ PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT_DISTINCT: 'sum',
 }
 
-sqlaw_engine = sa.create_engine(sqlaw_config['SQLAW_DB_URL'])
-sqlaw_metadata = sa.MetaData()
-sqlaw_metadata.bind = sqlaw_engine
+zillion_engine = sa.create_engine(zillion_config['ZILLION_DB_URL'])
+zillion_metadata = sa.MetaData()
+zillion_metadata.bind = zillion_engine
 
 Reports = sa.Table(
     'reports',
-    sqlaw_metadata,
+    zillion_metadata,
     sa.Column('id', sa.Integer, primary_key=True),
     sa.Column('params', sa.Text),
     sa.Column('created_at', sa.DateTime, server_default=sa.func.now())
 )
-sqlaw_metadata.create_all(sqlaw_engine)
+zillion_metadata.create_all(zillion_engine)
 
 class DataSourceQuery(PrintMixin):
     repr_attrs = ['facts', 'dimensions', 'criteria']
@@ -252,7 +252,7 @@ class BaseCombinedResult:
     def __init__(self, warehouse, ds_query_results, primary_ds_dimensions):
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
-        self.table_name = 'sqlaw_%s_%s' % (str(time.time()).replace('.', '_'), random.randint(0, 1E9))
+        self.table_name = 'zillion_%s_%s' % (str(time.time()).replace('.', '_'), random.randint(0, 1E9))
         self.primary_ds_dimensions = orderedsetify(primary_ds_dimensions) if primary_ds_dimensions else []
         self.ds_dimensions, self.ds_facts = self.get_fields()
         self.create_table()
@@ -366,7 +366,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def load_table(self):
         for qr in self.ds_query_results:
-            for rows in chunks(qr.data, sqlaw_config['LOAD_TABLE_CHUNK_SIZE']):
+            for rows in chunks(qr.data, zillion_config['LOAD_TABLE_CHUNK_SIZE']):
                 insert_sql, values = self.get_bulk_insert_sql(rows)
                 self.cursor.executemany(insert_sql, values)
             self.conn.commit()
@@ -590,7 +590,7 @@ class Report:
         return json.dumps(self.get_params())
 
     def save(self):
-        conn = sqlaw_engine.connect()
+        conn = zillion_engine.connect()
         try:
             result = conn.execute(Reports.insert(), params=self.get_json())
             report_id = result.inserted_primary_key[0]
@@ -603,7 +603,7 @@ class Report:
     @classmethod
     def load_params(cls, report_id):
         s = sa.select([Reports.c.params]).where(Reports.c.id == report_id)
-        conn = sqlaw_engine.connect()
+        conn = zillion_engine.connect()
         try:
             result = conn.execute(s)
             row = result.fetchone()
@@ -664,7 +664,7 @@ class Report:
             # https://stackoverflow.com/questions/6509261/how-to-use-concurrent-futures-with-timeouts
             futures_map = {executor.submit(query.execute): query for query in queries}
             try:
-                for future in as_completed(futures_map, timeout=sqlaw_config['DATASOURCE_QUERY_TIMEOUT']):
+                for future in as_completed(futures_map, timeout=zillion_config['DATASOURCE_QUERY_TIMEOUT']):
                     data = future.result()
                     query = futures_map[future]
                     finished[future] = data
@@ -675,7 +675,7 @@ class Report:
         return finished.values()
 
     def execute_ds_queries(self, queries):
-        mode = sqlaw_config['DATASOURCE_QUERY_MODE']
+        mode = zillion_config['DATASOURCE_QUERY_MODE']
         dbg('Executing %s datasource queries in %s mode' % (len(queries), mode))
         if mode == DataSourceQueryModes.SEQUENTIAL:
             return self.execute_ds_queries_sequential(queries)

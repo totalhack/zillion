@@ -20,34 +20,34 @@ from tlbx import (dbg,
                   PrintMixin,
                   MappingMixin)
 
-from sqlaw.configs import (AdHocFieldSchema,
-                           AdHocFactSchema,
-                           ColumnInfoSchema,
-                           TableInfoSchema,
-                           FactConfigSchema,
-                           TechnicalInfoSchema,
-                           DimensionConfigSchema,
-                           is_valid_field_name,
-                           sqlaw_config)
-from sqlaw.core import (DATASOURCE_ALLOWABLE_CHARS,
-                        UnsupportedGrainException,
-                        InvalidFieldException,
-                        MaxFormulaDepthException,
-                        AggregationTypes,
-                        TableTypes,
-                        parse_technical_string,
-                        field_safe_name)
-from sqlaw.report import Report
-from sqlaw.sql_utils import (infer_aggregation_and_rounding,
-                             aggregation_to_sqla_func,
-                             contains_aggregation,
-                             type_string_to_sa_type,
-                             is_probably_fact,
-                             sqla_compile,
-                             get_dialect_type_conversions,
-                             column_fullname)
+from zillion.configs import (AdHocFieldSchema,
+                             AdHocFactSchema,
+                             ColumnInfoSchema,
+                             TableInfoSchema,
+                             FactConfigSchema,
+                             TechnicalInfoSchema,
+                             DimensionConfigSchema,
+                             is_valid_field_name,
+                             zillion_config)
+from zillion.core import (DATASOURCE_ALLOWABLE_CHARS,
+                          UnsupportedGrainException,
+                          InvalidFieldException,
+                          MaxFormulaDepthException,
+                          AggregationTypes,
+                          TableTypes,
+                          parse_technical_string,
+                          field_safe_name)
+from zillion.report import Report
+from zillion.sql_utils import (infer_aggregation_and_rounding,
+                               aggregation_to_sqla_func,
+                               contains_aggregation,
+                               type_string_to_sa_type,
+                               is_probably_fact,
+                               sqla_compile,
+                               get_dialect_type_conversions,
+                               column_fullname)
 
-if sqlaw_config['DEBUG']:
+if zillion_config['DEBUG']:
     logging.getLogger().setLevel(logging.DEBUG)
 
 MAX_FORMULA_DEPTH = 3
@@ -84,7 +84,7 @@ class DataSource(PrintMixin):
     def check_or_create_name(cls, name):
         if not name:
             datestr = datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            name = 'sqlaw_ds_%s_%s' % (datestr, random.randint(0, 1E9))
+            name = 'zillion_ds_%s_%s' % (datestr, random.randint(0, 1E9))
             return name
         assert set(name) <= DATASOURCE_ALLOWABLE_CHARS,\
             'DataSource name "%s" has invalid characters. Allowed: %s' % (name, DATASOURCE_ALLOWABLE_CHARS)
@@ -113,34 +113,34 @@ class AdHocDataSource(DataSource):
         super(AdHocDataSource, self).__init__(ds_name, conn_url, reflect=True)
 
     def get_datasource_filename(self, ds_name):
-        return '%s/%s.db' % (sqlaw_config['ADHOC_DATASOURCE_DIRECTORY'], ds_name)
+        return '%s/%s.db' % (zillion_config['ADHOC_DATASOURCE_DIRECTORY'], ds_name)
 
     def clean_up(self):
         filename = self.get_datasource_filename(self.name)
         dbg('Removing %s' % filename)
         rmfile(filename)
 
-class SQLAWInfo(MappingMixin):
+class ZillionInfo(MappingMixin):
     schema = None
 
     @initializer
     def __init__(self, **kwargs):
-        assert self.schema, 'SQLAWInfo subclass must have a schema defined'
+        assert self.schema, 'ZillionInfo subclass must have a schema defined'
         self.schema().load(self)
 
     @classmethod
-    def create(cls, sqlaw_info):
-        if isinstance(sqlaw_info, cls):
-            return sqlaw_info
-        assert isinstance(sqlaw_info, dict), 'Raw info must be a dict: %s' % sqlaw_info
-        sqlaw_info = cls.schema().load(sqlaw_info)
-        return cls(**sqlaw_info)
+    def create(cls, zillion_info):
+        if isinstance(zillion_info, cls):
+            return zillion_info
+        assert isinstance(zillion_info, dict), 'Raw info must be a dict: %s' % zillion_info
+        zillion_info = cls.schema().load(zillion_info)
+        return cls(**zillion_info)
 
-class TableInfo(SQLAWInfo, PrintMixin):
+class TableInfo(ZillionInfo, PrintMixin):
     repr_attrs = ['type', 'active', 'autocolumns', 'parent']
     schema = TableInfoSchema
 
-class ColumnInfo(SQLAWInfo, PrintMixin):
+class ColumnInfo(ZillionInfo, PrintMixin):
     repr_attrs = ['fields', 'active']
     schema = ColumnInfoSchema
 
@@ -277,13 +277,13 @@ def joins_from_path(ds_name, ds_graph, path, field_map=None):
 def get_table_fields(table):
     fields = set()
     for col in table.c:
-        for field in col.sqlaw.get_field_names():
+        for field in col.zillion.get_field_names():
             fields.add(field)
     return fields
 
 def get_table_field_column(table, field_name):
     for col in table.c:
-        for field in col.sqlaw.get_field_names():
+        for field in col.zillion.get_field_names():
             if field == field_name:
                 return col
     assert False, 'Field %s is not present in table %s' % (field_name, table.fullname)
@@ -291,7 +291,7 @@ def get_table_field_column(table, field_name):
 def get_table_facts(warehouse, table):
     facts = set()
     for col in table.c:
-        for field in col.sqlaw.get_field_names():
+        for field in col.zillion.get_field_names():
             if field in warehouse.facts:
                 facts.add(field)
     return facts
@@ -299,7 +299,7 @@ def get_table_facts(warehouse, table):
 def get_table_dimensions(warehouse, table):
     dims = set()
     for col in table.c:
-        for field in col.sqlaw.get_field_names():
+        for field in col.zillion.get_field_names():
             if field in warehouse.dimensions:
                 dims.add(field)
     return dims
@@ -323,7 +323,7 @@ class Technical(MappingMixin, PrintMixin):
 
 class Field(PrintMixin):
     repr_attrs = ['name']
-    ifnull_value = sqlaw_config['IFNULL_PRETTY_VALUE']
+    ifnull_value = zillion_config['IFNULL_PRETTY_VALUE']
 
     @initializer
     def __init__(self, name, type, **kwargs):
@@ -356,8 +356,8 @@ class Field(PrintMixin):
         return []
 
     def get_ds_expression(self, column):
-        ds_formula = column.sqlaw.field_map[self.name].get('ds_formula', None) \
-            if column.sqlaw.field_map[self.name] else None
+        ds_formula = column.zillion.field_map[self.name].get('ds_formula', None) \
+            if column.zillion.field_map[self.name] else None
         if not ds_formula:
             return sa.func.ifnull(column, self.ifnull_value).label(self.name)
         return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
@@ -392,7 +392,7 @@ class Fact(Field):
         super(Fact, self).add_column(ds, column)
         if self.weighting_fact:
             for col in column.table.c:
-                if self.weighting_fact in col.sqlaw.get_field_names():
+                if self.weighting_fact in col.zillion.get_field_names():
                     return
             assert False, 'Fact "%s" requires weighting_fact "%s" but it is missing from table for column %s' % \
                 (self.name, self.weighting_fact, column_fullname(column))
@@ -402,8 +402,8 @@ class Fact(Field):
         aggr = aggregation_to_sqla_func(self.aggregation)
         skip_aggr = False
 
-        ds_formula = column.sqlaw.field_map[self.name].get('ds_formula', None) \
-            if column.sqlaw.field_map[self.name] else None
+        ds_formula = column.zillion.field_map[self.name].get('ds_formula', None) \
+            if column.zillion.field_map[self.name] else None
         if ds_formula:
             if contains_aggregation(ds_formula):
                 warn('Datasource formula contains aggregation, skipping default logic!')
@@ -629,31 +629,31 @@ class Warehouse:
             adhoc_ds.clean_up()
 
     def ensure_metadata_info(self, ds):
-        '''Ensure that all sqlaw info are of proper type'''
+        '''Ensure that all zillion info are of proper type'''
         for table in ds.metadata.tables.values():
-            sqlaw_info = table.info.get('sqlaw', None)
-            if not sqlaw_info:
-                setattr(table, 'sqlaw', None)
+            zillion_info = table.info.get('zillion', None)
+            if not zillion_info:
+                setattr(table, 'zillion', None)
                 continue
 
-            table.info['sqlaw'] = TableInfo.create(sqlaw_info)
-            setattr(table, 'sqlaw', table.info['sqlaw'])
+            table.info['zillion'] = TableInfo.create(zillion_info)
+            setattr(table, 'zillion', table.info['zillion'])
 
             for column in table.c:
-                sqlaw_info = column.info.get('sqlaw', None)
-                if not sqlaw_info:
-                    if not table.info['sqlaw'].autocolumns:
-                        setattr(column, 'sqlaw', None)
+                zillion_info = column.info.get('zillion', None)
+                if not zillion_info:
+                    if not table.info['zillion'].autocolumns:
+                        setattr(column, 'zillion', None)
                         continue
                     else:
-                        sqlaw_info = {}
-                sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
-                column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
-                setattr(column, 'sqlaw', column.info['sqlaw'])
+                        zillion_info = {}
+                zillion_info['fields'] = zillion_info.get('fields', [field_safe_name(column_fullname(column))])
+                column.info['zillion'] = ColumnInfo.create(zillion_info)
+                setattr(column, 'zillion', column.info['zillion'])
 
                 if column.primary_key:
                     dim_count = 0
-                    for field in column.sqlaw.get_field_names():
+                    for field in column.zillion.get_field_names():
                         if field in self.dimensions or field not in self.facts:
                             dim_count += 1
                         assert dim_count < 2, 'Primary key column may only map to a single dimension: %s' % column
@@ -703,12 +703,12 @@ class Warehouse:
             if 'columns' in table_config:
                 del table_config['columns']
 
-            sqlaw_info = table.info.get('sqlaw', {})
+            zillion_info = table.info.get('zillion', {})
             # Config takes precendence over values on table objects
-            sqlaw_info.update(table_config)
-            table.info['sqlaw'] = TableInfo.create(sqlaw_info)
+            zillion_info.update(table_config)
+            table.info['zillion'] = TableInfo.create(zillion_info)
 
-            autocolumns = table.info['sqlaw'].autocolumns
+            autocolumns = table.info['zillion'].autocolumns
             if not autocolumns:
                 assert column_configs, ('Table %s.%s has autocolumns=False and no column configs' %
                                         (ds.name, table.fullname))
@@ -720,15 +720,15 @@ class Warehouse:
                     continue
 
                 column_config = column_configs[column.name]
-                sqlaw_info = column.info.get('sqlaw', {})
+                zillion_info = column.info.get('zillion', {})
                 # Config takes precendence over values on column objects
-                sqlaw_info.update(column_config)
-                sqlaw_info['fields'] = sqlaw_info.get('fields', [field_safe_name(column_fullname(column))])
-                column.info['sqlaw'] = ColumnInfo.create(sqlaw_info)
+                zillion_info.update(column_config)
+                zillion_info['fields'] = zillion_info.get('fields', [field_safe_name(column_fullname(column))])
+                column.info['zillion'] = ColumnInfo.create(zillion_info)
 
     def apply_config(self, config):
         '''
-        This will update or add sqlaw info to the schema item info dict if it
+        This will update or add zillion info to the schema item info dict if it
         appears in the datasource config
         '''
         self.apply_global_config(config)
@@ -746,16 +746,16 @@ class Warehouse:
 
     def populate_conversion_fields(self, ds):
         for table in ds.metadata.tables.values():
-            if not table.sqlaw:
+            if not table.zillion:
                 continue
 
             table_fields = get_table_fields(table)
             types_converted = set()
             for column in table.c:
-                if not column.sqlaw:
+                if not column.zillion:
                     continue
 
-                if not column.sqlaw.allow_type_conversions:
+                if not column.zillion.allow_type_conversions:
                     # TODO: could allow specifying certain allowable conversions
                     # instead of just on/off switch
                     continue
@@ -772,18 +772,18 @@ class Warehouse:
                             (field_name, column_fullname(column)))
                         continue
                     dbg('Adding conversion field %s for column %s' % (field_name, column_fullname(column)))
-                    column.sqlaw.add_field(dict(name=field_name, ds_formula=ds_formula))
+                    column.zillion.add_field(dict(name=field_name, ds_formula=ds_formula))
 
     def populate_table_field_map(self, ds):
         for table in ds.metadata.tables.values():
-            if not table.sqlaw:
+            if not table.zillion:
                 continue
 
             for column in table.c:
-                if not column.sqlaw:
+                if not column.zillion:
                     continue
 
-                for field in column.sqlaw.get_field_names():
+                for field in column.zillion.get_field_names():
                     assert not self.table_field_map[ds.name].get(table.fullname, {}).get(field, None),\
                         'Multiple columns for the same field in a single table not allowed'
                     self.table_field_map[ds.name].setdefault(table.fullname, {})[field] = column
@@ -875,9 +875,9 @@ class Warehouse:
     def get_primary_key_fields(self, primary_key):
         pk_fields = set()
         for col in primary_key:
-            pk_dims = [x for x in col.sqlaw.fields if isinstance(x, str) and x in self.dimensions]
+            pk_dims = [x for x in col.zillion.fields if isinstance(x, str) and x in self.dimensions]
             assert len(pk_dims) == 1, \
-                'Primary key column has multiple dimensions: %s/%s' % (col, col.sqlaw.fields)
+                'Primary key column has multiple dimensions: %s/%s' % (col, col.zillion.fields)
             pk_fields.add(pk_dims[0])
         return pk_fields
 
@@ -885,7 +885,7 @@ class Warehouse:
         neighbor_tables = []
         fields = get_table_fields(table)
 
-        if table.sqlaw.type == TableTypes.FACT:
+        if table.zillion.type == TableTypes.FACT:
             # Find dimension tables whose primary key is contained in the fact table
             for dim_table in self.dimension_tables[ds_name].values():
                 dt_pk_fields = self.get_primary_key_fields(dim_table.primary_key)
@@ -898,7 +898,7 @@ class Warehouse:
                     neighbor_tables.append(NeighborTable(dim_table, dt_pk_fields))
 
         # Add parent table if present
-        parent_name = table.sqlaw.parent
+        parent_name = table.zillion.parent
         if parent_name:
             parent = self.tables[ds_name][parent_name]
             pk_fields = self.get_primary_key_fields(parent.primary_key)
@@ -924,40 +924,40 @@ class Warehouse:
         del self.ds_graphs[ds.name]
 
     def add_table(self, ds, table):
-        if not table.sqlaw:
+        if not table.zillion:
             return
         self.tables[ds.name][table.fullname] = table
-        if table.sqlaw.type == TableTypes.FACT:
+        if table.zillion.type == TableTypes.FACT:
             self.add_fact_table(ds, table)
-        elif table.sqlaw.type == TableTypes.DIMENSION:
+        elif table.zillion.type == TableTypes.DIMENSION:
             self.add_dimension_table(ds, table)
         else:
-            assert False, 'Invalid table type: %s' % table.sqlaw.type
+            assert False, 'Invalid table type: %s' % table.zillion.type
 
     def remove_table(self, ds, table):
-        if table.sqlaw.type == TableTypes.FACT:
+        if table.zillion.type == TableTypes.FACT:
             self.remove_fact_table(ds, table)
-        elif table.sqlaw.type == TableTypes.DIMENSION:
+        elif table.zillion.type == TableTypes.DIMENSION:
             self.remove_dimension_table(ds, table)
         else:
-            assert False, 'Invalid table type: %s' % table.sqlaw.type
+            assert False, 'Invalid table type: %s' % table.zillion.type
         del self.tables[ds.name][table.fullname]
 
     def add_fact_table(self, ds, table):
         self.fact_tables[ds.name][table.fullname] = table
         for column in table.c:
-            if not column.sqlaw:
+            if not column.zillion:
                 continue
 
-            if not column.sqlaw.active:
+            if not column.zillion.active:
                 continue
 
-            for field in column.sqlaw.get_field_names():
+            for field in column.zillion.get_field_names():
                 if field in self.facts:
                     self.facts[field].add_column(ds, column)
                 elif field in self.dimensions:
                     self.dimensions[field].add_column(ds, column)
-                elif table.sqlaw.autocolumns:
+                elif table.zillion.autocolumns:
                     if is_probably_fact(column):
                         self.add_fact_column(ds, column, field)
                     else:
@@ -965,7 +965,7 @@ class Warehouse:
 
     def remove_fact_table(self, ds, table):
         for column in table.c:
-            for field in column.sqlaw.get_field_names():
+            for field in column.zillion.get_field_names():
                 if field in self.facts:
                     self.facts[field].remove_column(ds, column)
                 elif field in self.dimensions:
@@ -989,7 +989,7 @@ class Warehouse:
         count = 0
         for ds_name, columns in ds_dim_columns.items():
             for column in columns:
-                if column.table.sqlaw.type != TableTypes.DIMENSION:
+                if column.table.zillion.type != TableTypes.DIMENSION:
                     continue
                 ds_tables[ds_name].append(column.table)
                 count += 1
@@ -999,18 +999,18 @@ class Warehouse:
     def add_dimension_table(self, ds, table):
         self.dimension_tables[ds.name][table.fullname] = table
         for column in table.c:
-            if not column.sqlaw:
+            if not column.zillion:
                 continue
 
-            if not column.sqlaw.active:
+            if not column.zillion.active:
                 continue
 
-            for field in column.sqlaw.get_field_names():
+            for field in column.zillion.get_field_names():
                 if field in self.facts:
                     assert False, 'Dimension table has fact field: %s' % field
                 elif field in self.dimensions:
                     self.dimensions[field].add_column(ds, column)
-                elif table.sqlaw.autocolumns:
+                elif table.zillion.autocolumns:
                     self.add_dimension_column(ds, column, field)
 
     def add_fact(self, fact):

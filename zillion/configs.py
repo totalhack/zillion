@@ -5,28 +5,28 @@ from marshmallow import Schema, fields as mfields, ValidationError, validates_sc
 from tlbx import dbg, error, json, st
 import yaml
 
-from sqlaw.core import (TableTypes,
-                        AggregationTypes,
-                        TechnicalTypes,
-                        parse_technical_string,
-                        FIELD_ALLOWABLE_CHARS,
-                        FIELD_ALLOWABLE_CHARS_STR)
-from sqlaw.sql_utils import (type_string_to_sa_type,
-                             InvalidSQLAlchemyTypeString)
+from zillion.core import (TableTypes,
+                          AggregationTypes,
+                          TechnicalTypes,
+                          parse_technical_string,
+                          FIELD_ALLOWABLE_CHARS,
+                          FIELD_ALLOWABLE_CHARS_STR)
+from zillion.sql_utils import (type_string_to_sa_type,
+                               InvalidSQLAlchemyTypeString)
 
-def load_sqlaw_config():
-    sqlaw_config_fname = os.environ.get('SQLAW_CONFIG', None)
-    if not sqlaw_config_fname:
+def load_zillion_config():
+    zillion_config_fname = os.environ.get('ZILLION_CONFIG', None)
+    if not zillion_config_fname:
         return dict(DEBUG=False,
-                    SQLAW_DB_URL='sqlite:////tmp/sqlaw.db',
+                    ZILLION_DB_URL='sqlite:////tmp/zillion.db',
                     ADHOC_DATASOURCE_DIRECTORY='/tmp',
                     LOAD_TABLE_CHUNK_SIZE=5000,
                     IFNULL_PRETTY_VALUE='--',
                     DATASOURCE_QUERY_MODE='sequential',
                     DATASOURCE_QUERY_TIMEOUT=None)
-    return yaml.safe_load(open(sqlaw_config_fname))
+    return yaml.safe_load(open(zillion_config_fname))
 
-sqlaw_config = load_sqlaw_config()
+zillion_config = load_zillion_config()
 
 def parse_schema_file(filename, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file"""
@@ -167,7 +167,7 @@ class FactConfigSchema(BaseSchema):
     technical = TechnicalField(default=None, missing=None)
 
     @validates_schema(skip_on_field_errors=True)
-    def validate_object(self, data):
+    def validate_object(self, data, **kwargs):
         if (not data.get('type', None)) and (not data.get('formula', None)):
             raise ValidationError('Either type or formula must be specified for fact: %s' % data)
 

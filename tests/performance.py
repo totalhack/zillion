@@ -7,9 +7,9 @@ import time
 import climax
 from tlbx import dbg, st, Script, Arg
 
-from sqlaw.configs import load_warehouse_config
-from sqlaw.core import TableTypes
-from sqlaw.warehouse import DataSource, AdHocDataSource, Warehouse
+from zillion.configs import load_warehouse_config
+from zillion.core import TableTypes
+from zillion.warehouse import DataSource, AdHocDataSource, Warehouse
 from test_utils import TestBase, run_tests, create_adhoc_datatable, get_testdb_url
 
 TEST_CONFIG = load_warehouse_config('test_config.json')
@@ -84,7 +84,7 @@ def get_adhoc_ds(size):
     dbg('Created AdHocDataSource in %.3fs' % (time.time() - start))
     return facts, dimensions, adhoc_ds
 
-class TestSQLAWPerformance(TestBase):
+class TestZillionPerformance(TestBase):
     def setUp(self):
         self.datasources = init_datasources()
         self.config = copy.deepcopy(TEST_CONFIG)
@@ -96,7 +96,7 @@ class TestSQLAWPerformance(TestBase):
     def testPerformance(self):
         wh = Warehouse(self.datasources, config=self.config)
         facts, dimensions, adhoc_ds = get_adhoc_ds(1E5)
-        with profiled('sqlaw'):
+        with profiled('zillion'):
             result = wh.report(facts,
                                dimensions=dimensions,
                                adhoc_datasources=[adhoc_ds])
@@ -106,7 +106,7 @@ class TestSQLAWPerformance(TestBase):
         wh = Warehouse(self.datasources, config=self.config)
         facts, dimensions, adhoc_ds = get_adhoc_ds(1E5)
         rollup = 2
-        with profiled('sqlaw'):
+        with profiled('zillion'):
             result = wh.report(facts,
                                dimensions=dimensions,
                                rollup=rollup,
@@ -116,7 +116,7 @@ class TestSQLAWPerformance(TestBase):
 @Script(Arg('testnames', type=str, nargs='*', help='Names of tests to run'),
         Arg('--debug', action='store_true'))
 def main(testnames, debug):
-    run_tests(TestSQLAWPerformance, testnames, debug)
+    run_tests(TestZillionPerformance, testnames, debug)
 
 if __name__ == '__main__':
     main()

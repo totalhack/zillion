@@ -5,7 +5,7 @@ from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 import sqlparse as sp
 from tlbx import dbg, st, get_class_vars, get_string_format_args
 
-from sqlaw.core import AggregationTypes
+from zillion.core import AggregationTypes
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 

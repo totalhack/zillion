@@ -1,4 +1,4 @@
-PACKAGE := sqlaw
+PACKAGE := zillion
 ENV := /usr
 PIP := $(ENV)/bin/pip
 SETUP := $(ENV)/bin/python setup.py

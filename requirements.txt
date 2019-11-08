@@ -1,5 +1,5 @@
 climax
-marshmallow>=3.0.0rc1
+marshmallow
 mysqlclient
 networkx
 orderedset

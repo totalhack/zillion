@@ -4,7 +4,7 @@ import unittest
 
 from tlbx import st, dbg, random_string
 
-from sqlaw.warehouse import AdHocDataTable
+from zillion.warehouse import AdHocDataTable
 
 DEFAULT_TEST_DB = 'testdb1'
 

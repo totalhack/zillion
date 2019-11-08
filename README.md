@@ -1,2 +1,4 @@
-# sqlaw
-Data warehouse on top of sqlalchemy.
+Zillion: Make sense of it all
+=============================
+
+Documentation/etc. to follow when the project is more mature.

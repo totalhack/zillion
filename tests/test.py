@@ -1,18 +1,17 @@
 import copy
 import traceback
 
-import climax
 from tlbx import dbg, st, Script, Arg
 
-from sqlaw.configs import load_warehouse_config
-from sqlaw.core import (TableTypes,
-                        UnsupportedGrainException,
-                        InvalidFieldException)
-from sqlaw.sql_utils import contains_aggregation
-from sqlaw.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
-from sqlaw.warehouse import (DataSource,
-                             AdHocDataSource,
-                             Warehouse)
+from zillion.configs import load_warehouse_config
+from zillion.core import (TableTypes,
+                          UnsupportedGrainException,
+                          InvalidFieldException)
+from zillion.sql_utils import contains_aggregation
+from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
+from zillion.warehouse import (DataSource,
+                               AdHocDataSource,
+                               Warehouse)
 from test_utils import TestBase, run_tests, create_adhoc_datatable, get_testdb_url
 
 TEST_CONFIG = load_warehouse_config('test_config.json')
@@ -40,7 +39,7 @@ def get_adhoc_datasource():
     adhoc_ds = AdHocDataSource([dt])
     return adhoc_ds
 
-class TestSQLAW(TestBase):
+class TestZillion(TestBase):
     def setUp(self):
         self.datasources = init_datasources()
         self.ds_priority = [ds.name for ds in self.datasources]
@@ -62,9 +61,9 @@ class TestSQLAW(TestBase):
         wh = Warehouse(self.datasources)
         self.assertFalse(wh.dimensions)
 
-    def testWarehouseNoConfigHasSQLAWInfo(self):
+    def testWarehouseNoConfigHasZillionInfo(self):
         for table in self.datasources[0].metadata.tables.values():
-            table.info['sqlaw'] = {'type': 'fact', 'active': True, 'autocolumns':True}
+            table.info['zillion'] = {'type': 'fact', 'active': True, 'autocolumns':True}
         wh = Warehouse(self.datasources)
         self.assertTrue(wh.dimensions)
 
@@ -531,7 +530,7 @@ class TestSQLAW(TestBase):
 @Script(Arg('testnames', type=str, nargs='*', help='Names of tests to run'),
         Arg('--debug', action='store_true'))
 def main(testnames, debug):
-    run_tests(TestSQLAW, testnames, debug)
+    run_tests(TestZillion, testnames, debug)
 
 if __name__ == '__main__':
     main()

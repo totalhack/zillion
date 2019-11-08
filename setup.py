@@ -9,7 +9,7 @@ def get_readme_text():
     return text
 
 setup(
-    name='sqlaw',
+    name='zillion',
     long_description=get_readme_text(),
     author='totalhack',
     maintainer='totalhack',
