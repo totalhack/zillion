@@ -9,51 +9,60 @@ import networkx as nx
 from orderedset import OrderedSet
 import pandas as pd
 import sqlalchemy as sa
-from tlbx import (dbg,
-                  warn,
-                  st,
-                  rmfile,
-                  initializer,
-                  get_string_format_args,
-                  iter_or,
-                  powerset,
-                  PrintMixin,
-                  MappingMixin)
+from tlbx import (
+    dbg,
+    warn,
+    st,
+    rmfile,
+    initializer,
+    get_string_format_args,
+    iter_or,
+    powerset,
+    PrintMixin,
+    MappingMixin,
+)
 
-from zillion.configs import (AdHocFieldSchema,
-                             AdHocFactSchema,
-                             ColumnInfoSchema,
-                             TableInfoSchema,
-                             FactConfigSchema,
-                             TechnicalInfoSchema,
-                             DimensionConfigSchema,
-                             is_valid_field_name,
-                             zillion_config)
-from zillion.core import (DATASOURCE_ALLOWABLE_CHARS,
-                          UnsupportedGrainException,
-                          InvalidFieldException,
-                          MaxFormulaDepthException,
-                          AggregationTypes,
-                          TableTypes,
-                          parse_technical_string,
-                          field_safe_name)
+from zillion.configs import (
+    AdHocFieldSchema,
+    AdHocFactSchema,
+    ColumnInfoSchema,
+    TableInfoSchema,
+    FactConfigSchema,
+    TechnicalInfoSchema,
+    DimensionConfigSchema,
+    is_valid_field_name,
+    zillion_config,
+)
+from zillion.core import (
+    DATASOURCE_ALLOWABLE_CHARS,
+    UnsupportedGrainException,
+    InvalidFieldException,
+    MaxFormulaDepthException,
+    AggregationTypes,
+    TableTypes,
+    parse_technical_string,
+    field_safe_name,
+)
 from zillion.report import Report
-from zillion.sql_utils import (infer_aggregation_and_rounding,
-                               aggregation_to_sqla_func,
-                               contains_aggregation,
-                               type_string_to_sa_type,
-                               is_probably_fact,
-                               sqla_compile,
-                               get_dialect_type_conversions,
-                               column_fullname)
+from zillion.sql_utils import (
+    infer_aggregation_and_rounding,
+    aggregation_to_sqla_func,
+    contains_aggregation,
+    type_string_to_sa_type,
+    is_probably_fact,
+    sqla_compile,
+    get_dialect_type_conversions,
+    column_fullname,
+)
 
-if zillion_config['DEBUG']:
+if zillion_config["DEBUG"]:
     logging.getLogger().setLevel(logging.DEBUG)
 
 MAX_FORMULA_DEPTH = 3
 
+
 class DataSource(PrintMixin):
-    repr_attrs = ['name']
+    repr_attrs = ["name"]
 
     @initializer
     def __init__(self, name, url_or_metadata, reflect=False):
@@ -63,9 +72,13 @@ class DataSource(PrintMixin):
             self.metadata = sa.MetaData()
             self.metadata.bind = sa.create_engine(url_or_metadata)
         else:
-            assert isinstance(url_or_metadata, sa.MetaData), 'Invalid URL or MetaData object: %s' % url_or_metadata
+            assert isinstance(url_or_metadata, sa.MetaData), (
+                "Invalid URL or MetaData object: %s" % url_or_metadata
+            )
             self.metadata = url_or_metadata
-            assert self.metadata.bind, 'MetaData object must have a bind (engine) attribute specified'
+            assert (
+                self.metadata.bind
+            ), "MetaData object must have a bind (engine) attribute specified"
 
         if reflect:
             self.metadata.reflect()
@@ -75,73 +88,95 @@ class DataSource(PrintMixin):
 
     def get_params(self):
         return dict(
-            name=self.name,
-            url=str(self.metadata.bind.url),
-            reflect=self.reflect
+            name=self.name, url=str(self.metadata.bind.url), reflect=self.reflect
         )
 
     @classmethod
     def check_or_create_name(cls, name):
         if not name:
-            datestr = datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            name = 'zillion_ds_%s_%s' % (datestr, random.randint(0, 1E9))
+            datestr = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            name = "zillion_ds_%s_%s" % (datestr, random.randint(0, 1e9))
             return name
-        assert set(name) <= DATASOURCE_ALLOWABLE_CHARS,\
-            'DataSource name "%s" has invalid characters. Allowed: %s' % (name, DATASOURCE_ALLOWABLE_CHARS)
+        assert set(name) <= DATASOURCE_ALLOWABLE_CHARS, (
+            'DataSource name "%s" has invalid characters. Allowed: %s'
+            % (name, DATASOURCE_ALLOWABLE_CHARS)
+        )
         return name
 
+
 class AdHocDataTable(PrintMixin):
-    repr_attrs = ['name', 'type', 'primary_key']
+    repr_attrs = ["name", "type", "primary_key"]
 
     @initializer
-    def __init__(self, name, type, primary_key, data, columns=None, parent=None, autocolumns=True):
+    def __init__(
+        self, name, type, primary_key, data, columns=None, parent=None, autocolumns=True
+    ):
         self.columns = columns or {}
         self.column_names = self.columns.keys() or None
 
+
 class AdHocDataSource(DataSource):
-    def __init__(self, datatables, name=None, coerce_float=True, if_exists='fail'):
+    def __init__(self, datatables, name=None, coerce_float=True, if_exists="fail"):
         self.table_configs = {}
         ds_name = self.check_or_create_name(name)
-        conn_url = 'sqlite:///%s' % self.get_datasource_filename(ds_name)
+        conn_url = "sqlite:///%s" % self.get_datasource_filename(ds_name)
         engine = sa.create_engine(conn_url, echo=False)
         for dt in datatables:
-            df = pd.DataFrame.from_records(dt.data, dt.primary_key, columns=dt.column_names, coerce_float=coerce_float)
-            size = int(1E3) # This hits limits in allowed sqlite params if chunks are too large
-            df.to_sql(dt.name, engine, if_exists=if_exists, method='multi', chunksize=size)
-            self.table_configs[dt.name] = dict(type=dt.type, parent=dt.parent, columns=dt.columns,
-                                               autocolumns=dt.autocolumns)
+            df = pd.DataFrame.from_records(
+                dt.data,
+                dt.primary_key,
+                columns=dt.column_names,
+                coerce_float=coerce_float,
+            )
+            size = int(
+                1e3
+            )  # This hits limits in allowed sqlite params if chunks are too large
+            df.to_sql(
+                dt.name, engine, if_exists=if_exists, method="multi", chunksize=size
+            )
+            self.table_configs[dt.name] = dict(
+                type=dt.type,
+                parent=dt.parent,
+                columns=dt.columns,
+                autocolumns=dt.autocolumns,
+            )
         super(AdHocDataSource, self).__init__(ds_name, conn_url, reflect=True)
 
     def get_datasource_filename(self, ds_name):
-        return '%s/%s.db' % (zillion_config['ADHOC_DATASOURCE_DIRECTORY'], ds_name)
+        return "%s/%s.db" % (zillion_config["ADHOC_DATASOURCE_DIRECTORY"], ds_name)
 
     def clean_up(self):
         filename = self.get_datasource_filename(self.name)
-        dbg('Removing %s' % filename)
+        dbg("Removing %s" % filename)
         rmfile(filename)
+
 
 class ZillionInfo(MappingMixin):
     schema = None
 
     @initializer
     def __init__(self, **kwargs):
-        assert self.schema, 'ZillionInfo subclass must have a schema defined'
+        assert self.schema, "ZillionInfo subclass must have a schema defined"
         self.schema().load(self)
 
     @classmethod
     def create(cls, zillion_info):
         if isinstance(zillion_info, cls):
             return zillion_info
-        assert isinstance(zillion_info, dict), 'Raw info must be a dict: %s' % zillion_info
+        assert isinstance(zillion_info, dict), (
+            "Raw info must be a dict: %s" % zillion_info
+        )
         zillion_info = cls.schema().load(zillion_info)
         return cls(**zillion_info)
 
+
 class TableInfo(ZillionInfo, PrintMixin):
-    repr_attrs = ['type', 'active', 'autocolumns', 'parent']
+    repr_attrs = ["type", "active", "autocolumns", "parent"]
     schema = TableInfoSchema
 
+
 class ColumnInfo(ZillionInfo, PrintMixin):
-    repr_attrs = ['fields', 'active']
+    repr_attrs = ["fields", "active"]
     schema = ColumnInfoSchema
 
     def __init__(self, **kwargs):
@@ -157,7 +192,7 @@ class ColumnInfo(ZillionInfo, PrintMixin):
         if isinstance(field, str):
             self.field_map[field] = None
         else:
-            self.field_map[field['name']] = field
+            self.field_map[field["name"]] = field
 
     def add_field(self, field):
         self.fields.append(field)
@@ -166,8 +201,9 @@ class ColumnInfo(ZillionInfo, PrintMixin):
     def get_field_names(self):
         return self.field_map.keys()
 
+
 class TableSet(PrintMixin):
-    repr_attrs = ['ds_name', 'join', 'grain', 'target_fields']
+    repr_attrs = ["ds_name", "join", "grain", "target_fields"]
 
     @initializer
     def __init__(self, ds_name, ds_table, join, grain, target_fields):
@@ -186,26 +222,30 @@ class TableSet(PrintMixin):
             return 1
         return len(self.join.table_names)
 
+
 class NeighborTable(PrintMixin):
-    repr_attrs = ['table_name', 'join_fields']
+    repr_attrs = ["table_name", "join_fields"]
 
     @initializer
     def __init__(self, table, join_fields):
         self.table_name = table.fullname
 
+
 class JoinPart(PrintMixin):
-    repr_attrs = ['ds_name', 'table_names', 'join_fields']
+    repr_attrs = ["ds_name", "table_names", "join_fields"]
 
     @initializer
     def __init__(self, ds_name, table_names, join_fields):
         pass
 
+
 class Join(PrintMixin):
-    '''
+    """
     Join is a group of join parts that would be used together.
     field_map represents the requested fields this join list is meant to satisfy
-    '''
-    repr_attrs = ['table_names', 'field_map']
+    """
+
+    repr_attrs = ["table_names", "field_map"]
 
     @initializer
     def __init__(self, join_parts, field_map):
@@ -215,8 +255,10 @@ class Join(PrintMixin):
             if not self.ds_name:
                 self.ds_name = join_part.ds_name
             else:
-                assert join_part.ds_name == self.ds_name, \
-                    'Can not form %s using join_parts from different datasources' % self.__class__
+                assert join_part.ds_name == self.ds_name, (
+                    "Can not form %s using join_parts from different datasources"
+                    % self.__class__
+                )
             for table_name in join_part.table_names:
                 self.table_names.add(table_name)
 
@@ -234,7 +276,7 @@ class Join(PrintMixin):
 
     # TODO: should this perhaps be storing the ds_name in the first place?
     def get_covered_fields(self, warehouse):
-        '''Generate a list of all possible fields this can cover'''
+        """Generate a list of all possible fields this can cover"""
         fields = set()
         for table_name in self.table_names:
             table = warehouse.tables[self.ds_name][table_name]
@@ -243,7 +285,7 @@ class Join(PrintMixin):
         return fields
 
     def add_field(self, warehouse, field):
-        assert field not in self.field_map, 'Field %s is already in field map' % field
+        assert field not in self.field_map, "Field %s is already in field map" % field
         for table_name in self.table_names:
             table = warehouse.tables[self.ds_name][table_name]
             covered_fields = get_table_fields(table)
@@ -251,12 +293,16 @@ class Join(PrintMixin):
                 column = get_table_field_column(table, field)
                 self.field_map[field] = column
                 return
-        assert False, 'Field %s is not in any join tables: %s' % (field, self.table_names)
+        assert False, "Field %s is not in any join tables: %s" % (
+            field,
+            self.table_names,
+        )
 
     def add_fields(self, warehouse, fields):
         for field in fields:
             if field not in self.field_map:
                 self.add_field(warehouse, field)
+
 
 def joins_from_path(ds_name, ds_graph, path, field_map=None):
     join_parts = []
@@ -268,11 +314,12 @@ def joins_from_path(ds_name, ds_graph, path, field_map=None):
         for i, node in enumerate(path):
             if i == (len(path) - 1):
                 break
-            start, end = path[i], path[i+1]
+            start, end = path[i], path[i + 1]
             edge = ds_graph.edges[start, end]
-            join_part = JoinPart(ds_name, [start, end], edge['join_fields'])
+            join_part = JoinPart(ds_name, [start, end], edge["join_fields"])
             join_parts.append(join_part)
     return Join(join_parts, field_map=field_map)
+
 
 def get_table_fields(table):
     fields = set()
@@ -281,12 +328,14 @@ def get_table_fields(table):
             fields.add(field)
     return fields
 
+
 def get_table_field_column(table, field_name):
     for col in table.c:
         for field in col.zillion.get_field_names():
             if field == field_name:
                 return col
-    assert False, 'Field %s is not present in table %s' % (field_name, table.fullname)
+    assert False, "Field %s is not present in table %s" % (field_name, table.fullname)
+
 
 def get_table_facts(warehouse, table):
     facts = set()
@@ -296,6 +345,7 @@ def get_table_facts(warehouse, table):
                 facts.add(field)
     return facts
 
+
 def get_table_dimensions(warehouse, table):
     dims = set()
     for col in table.c:
@@ -304,8 +354,9 @@ def get_table_dimensions(warehouse, table):
                 dims.add(field)
     return dims
 
+
 class Technical(MappingMixin, PrintMixin):
-    repr_attrs = ['type', 'window', 'min_periods']
+    repr_attrs = ["type", "window", "min_periods"]
 
     @initializer
     def __init__(self, **kwargs):
@@ -317,13 +368,14 @@ class Technical(MappingMixin, PrintMixin):
             return info
         if isinstance(info, str):
             info = parse_technical_string(info)
-        assert isinstance(info, dict), 'Raw info must be a dict: %s' % info
+        assert isinstance(info, dict), "Raw info must be a dict: %s" % info
         info = TechnicalInfoSchema().load(info)
         return cls(**info)
 
+
 class Field(PrintMixin):
-    repr_attrs = ['name']
-    ifnull_value = zillion_config['IFNULL_PRETTY_VALUE']
+    repr_attrs = ["name"]
+    ifnull_value = zillion_config["IFNULL_PRETTY_VALUE"]
 
     @initializer
     def __init__(self, name, type, **kwargs):
@@ -336,7 +388,10 @@ class Field(PrintMixin):
         current_cols = [column_fullname(col) for col in self.column_map[ds.name]]
         fullname = column_fullname(column)
         if fullname in current_cols:
-            warn('Column %s.%s is already mapped to field %s' % (ds.name, fullname, self.name))
+            warn(
+                "Column %s.%s is already mapped to field %s"
+                % (ds.name, fullname, self.name)
+            )
             return
         self.column_map[ds.name].append(column)
 
@@ -356,8 +411,11 @@ class Field(PrintMixin):
         return []
 
     def get_ds_expression(self, column):
-        ds_formula = column.zillion.field_map[self.name].get('ds_formula', None) \
-            if column.zillion.field_map[self.name] else None
+        ds_formula = (
+            column.zillion.field_map[self.name].get("ds_formula", None)
+            if column.zillion.field_map[self.name]
+            else None
+        )
         if not ds_formula:
             return sa.func.ifnull(column, self.ifnull_value).label(self.name)
         return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
@@ -375,18 +433,36 @@ class Field(PrintMixin):
     def __eq__(self, other):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
+
 class Fact(Field):
-    def __init__(self, name, type, aggregation=AggregationTypes.SUM, rounding=None,
-                 weighting_fact=None, technical=None, **kwargs):
+    def __init__(
+        self,
+        name,
+        type,
+        aggregation=AggregationTypes.SUM,
+        rounding=None,
+        weighting_fact=None,
+        technical=None,
+        **kwargs
+    ):
         if weighting_fact:
-            assert aggregation == AggregationTypes.AVG,\
-                'Weighting facts are only supported for "%s" aggregation type' % AggregationTypes.AVG
+            assert aggregation == AggregationTypes.AVG, (
+                'Weighting facts are only supported for "%s" aggregation type'
+                % AggregationTypes.AVG
+            )
 
         if technical:
             technical = Technical.create(technical)
 
-        super(Fact, self).__init__(name, type, aggregation=aggregation, rounding=rounding,
-                                   weighting_fact=weighting_fact, technical=technical, **kwargs)
+        super(Fact, self).__init__(
+            name,
+            type,
+            aggregation=aggregation,
+            rounding=rounding,
+            weighting_fact=weighting_fact,
+            technical=technical,
+            **kwargs
+        )
 
     def add_column(self, ds, column):
         super(Fact, self).add_column(ds, column)
@@ -394,26 +470,34 @@ class Fact(Field):
             for col in column.table.c:
                 if self.weighting_fact in col.zillion.get_field_names():
                     return
-            assert False, 'Fact "%s" requires weighting_fact "%s" but it is missing from table for column %s' % \
-                (self.name, self.weighting_fact, column_fullname(column))
+            assert False, (
+                'Fact "%s" requires weighting_fact "%s" but it is missing from table for column %s'
+                % (self.name, self.weighting_fact, column_fullname(column))
+            )
 
     def get_ds_expression(self, column):
         expr = column
         aggr = aggregation_to_sqla_func(self.aggregation)
         skip_aggr = False
 
-        ds_formula = column.zillion.field_map[self.name].get('ds_formula', None) \
-            if column.zillion.field_map[self.name] else None
+        ds_formula = (
+            column.zillion.field_map[self.name].get("ds_formula", None)
+            if column.zillion.field_map[self.name]
+            else None
+        )
         if ds_formula:
             if contains_aggregation(ds_formula):
-                warn('Datasource formula contains aggregation, skipping default logic!')
+                warn("Datasource formula contains aggregation, skipping default logic!")
                 skip_aggr = True
             expr = sa.literal_column(ds_formula)
 
         if not skip_aggr:
-            if self.aggregation in [AggregationTypes.COUNT, AggregationTypes.COUNT_DISTINCT]:
+            if self.aggregation in [
+                AggregationTypes.COUNT,
+                AggregationTypes.COUNT_DISTINCT,
+            ]:
                 if self.rounding:
-                    warn('Ignoring rounding for count field: %s' % self.name)
+                    warn("Ignoring rounding for count field: %s" % self.name)
                 return aggr(expr).label(self.name)
 
             if self.weighting_fact:
@@ -421,7 +505,9 @@ class Fact(Field):
                 w_column_name = column_fullname(w_column)
                 # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
                 # to integer values improperly by some database dialects such as sqlite
-                expr = sa.func.sum(sa.text('1.0') * expr * sa.text(w_column_name)) / sa.func.sum(sa.text(w_column_name))
+                expr = sa.func.sum(
+                    sa.text("1.0") * expr * sa.text(w_column_name)
+                ) / sa.func.sum(sa.text(w_column_name))
             else:
                 expr = aggr(expr)
 
@@ -430,8 +516,10 @@ class Fact(Field):
     def get_final_select_clause(self, *args, **kwargs):
         return self.name
 
+
 class Dimension(Field):
     pass
+
 
 class FormulaField(Field):
     def __init__(self, name, formula, **kwargs):
@@ -450,17 +538,21 @@ class FormulaField(Field):
             field = warehouse.get_field(field_name)
             if isinstance(field, FormulaFact):
                 try:
-                    sub_fields, sub_formula = field.get_formula_fields(warehouse, depth=depth+1)
+                    sub_fields, sub_formula = field.get_formula_fields(
+                        warehouse, depth=depth + 1
+                    )
                 except MaxFormulaDepthException:
                     if depth != 0:
                         raise
-                    raise MaxFormulaDepthException('Maximum formula recursion depth exceeded for %s: %s' %
-                                                   (self.name, self.formula))
+                    raise MaxFormulaDepthException(
+                        "Maximum formula recursion depth exceeded for %s: %s"
+                        % (self.name, self.formula)
+                    )
                 for sub_field in sub_fields:
                     raw_fields.add(sub_field)
-                field_formula_map[field_name] = '(' + sub_formula + ')'
+                field_formula_map[field_name] = "(" + sub_formula + ")"
             else:
-                field_formula_map[field_name] = '{' + field_name + '}'
+                field_formula_map[field_name] = "{" + field_name + "}"
                 raw_fields.add(field_name)
 
         raw_formula = self.formula.format(**field_formula_map)
@@ -472,76 +564,104 @@ class FormulaField(Field):
             warehouse.get_field(field)
 
     def get_ds_expression(self, column):
-        assert False, 'Formula-based Fields do not support get_ds_expression'
+        assert False, "Formula-based Fields do not support get_ds_expression"
 
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
-        format_args = {k:k for k in formula_fields}
+        format_args = {k: k for k in formula_fields}
         clause = sa.text(raw_formula.format(**format_args))
         return sqla_compile(clause)
 
-class FormulaFact(FormulaField):
-    repr_atts = ['name', 'formula', 'technical']
 
-    def __init__(self, name, formula, aggregation=AggregationTypes.SUM, rounding=None, weighting_fact=None,
-                 technical=None, **kwargs):
+class FormulaFact(FormulaField):
+    repr_atts = ["name", "formula", "technical"]
+
+    def __init__(
+        self,
+        name,
+        formula,
+        aggregation=AggregationTypes.SUM,
+        rounding=None,
+        weighting_fact=None,
+        technical=None,
+        **kwargs
+    ):
         if technical:
             technical = Technical.create(technical)
 
-        super(FormulaFact, self).__init__(name, formula, aggregation=aggregation, rounding=rounding,
-                                          weighting_fact=weighting_fact, technical=technical, **kwargs)
+        super(FormulaFact, self).__init__(
+            name,
+            formula,
+            aggregation=aggregation,
+            rounding=rounding,
+            weighting_fact=weighting_fact,
+            technical=technical,
+            **kwargs
+        )
 
     def get_final_select_clause(self, warehouse):
         formula_fields, raw_formula = self.get_formula_fields(warehouse)
-        format_args = {k:k for k in formula_fields}
+        format_args = {k: k for k in formula_fields}
         clause = sa.text(raw_formula.format(**format_args))
         return sqla_compile(clause)
+
 
 class AdHocField(FormulaField):
     @classmethod
     def create(cls, obj):
         schema = AdHocFieldSchema()
         field_def = schema.load(obj)
-        return cls(field_def['name'], field_def['formula'])
+        return cls(field_def["name"], field_def["formula"])
+
 
 class AdHocFact(FormulaFact):
     def __init__(self, name, formula, technical=None, rounding=None):
-        super(AdHocFact, self).__init__(name, formula, technical=technical, rounding=rounding)
+        super(AdHocFact, self).__init__(
+            name, formula, technical=technical, rounding=rounding
+        )
 
     @classmethod
     def create(cls, obj):
         schema = AdHocFactSchema()
         field_def = schema.load(obj)
-        return cls(field_def['name'], field_def['formula'], technical=field_def['technical'],
-                   rounding=field_def['rounding'])
+        return cls(
+            field_def["name"],
+            field_def["formula"],
+            technical=field_def["technical"],
+            rounding=field_def["rounding"],
+        )
+
 
 class AdHocDimension(AdHocField):
     pass
 
+
 def create_fact(fact_def):
-    if fact_def['formula']:
+    if fact_def["formula"]:
         fact = FormulaFact(
-            fact_def['name'],
-            fact_def['formula'],
-            aggregation=fact_def['aggregation'],
-            rounding=fact_def['rounding'],
-            weighting_fact=fact_def['weighting_fact'],
-            technical=fact_def['technical']
+            fact_def["name"],
+            fact_def["formula"],
+            aggregation=fact_def["aggregation"],
+            rounding=fact_def["rounding"],
+            weighting_fact=fact_def["weighting_fact"],
+            technical=fact_def["technical"],
         )
     else:
         fact = Fact(
-            fact_def['name'],
-            fact_def['type'],
-            aggregation=fact_def['aggregation'],
-            rounding=fact_def['rounding'],
-            weighting_fact=fact_def['weighting_fact'],
-            technical=fact_def['technical']
+            fact_def["name"],
+            fact_def["type"],
+            aggregation=fact_def["aggregation"],
+            rounding=fact_def["rounding"],
+            weighting_fact=fact_def["weighting_fact"],
+            technical=fact_def["technical"],
         )
     return fact
 
+
 def create_dimension(dim_def):
-    dim = Dimension(dim_def['name'], dim_def['type'])
+    dim = Dimension(dim_def["name"], dim_def["type"])
     return dim
+
 
 class Warehouse:
     def __init__(self, datasources, config=None, ds_priority=None):
@@ -551,10 +671,15 @@ class Warehouse:
         self.ds_priority = ds_priority
         if ds_priority:
             ds_names = {ds.name for ds in datasources}
-            assert isinstance(ds_priority, list),\
-                'Invalid format for ds_priority, must be list of datesource names: %s' % ds_priority
+            assert isinstance(ds_priority, list), (
+                "Invalid format for ds_priority, must be list of datesource names: %s"
+                % ds_priority
+            )
             for ds_name in ds_priority:
-                assert ds_name in ds_names, 'Datasource %s is in ds_priority but not in datasource map' % ds_name
+                assert ds_name in ds_names, (
+                    "Datasource %s is in ds_priority but not in datasource map"
+                    % ds_name
+                )
         self.tables = defaultdict(dict)
         self.fact_tables = defaultdict(dict)
         self.dimension_tables = defaultdict(dict)
@@ -571,7 +696,7 @@ class Warehouse:
             self.add_datasource(ds)
 
     def __repr__(self):
-        return 'Datasources: %s' % (self.ds_graphs.keys())
+        return "Datasources: %s" % (self.ds_graphs.keys())
 
     def get_datasource_names(self):
         return self.ds_graphs.keys()
@@ -603,7 +728,7 @@ class Warehouse:
             del self.dimension_tables[ds.name]
 
     def add_datasource(self, ds):
-        dbg('Adding datasource %s' % ds.name)
+        dbg("Adding datasource %s" % ds.name)
         self.ensure_metadata_info(ds)
         self.populate_conversion_fields(ds)
         self.populate_table_field_map(ds)
@@ -611,7 +736,7 @@ class Warehouse:
         self.add_ds_graph(ds)
 
     def remove_datasource(self, ds):
-        dbg('Removing datasource %s' % ds.name)
+        dbg("Removing datasource %s" % ds.name)
         self.remove_table_field_map(ds)
         self.remove_datasource_tables(ds)
         self.remove_ds_graph(ds)
@@ -629,46 +754,52 @@ class Warehouse:
             adhoc_ds.clean_up()
 
     def ensure_metadata_info(self, ds):
-        '''Ensure that all zillion info are of proper type'''
+        """Ensure that all zillion info are of proper type"""
         for table in ds.metadata.tables.values():
-            zillion_info = table.info.get('zillion', None)
+            zillion_info = table.info.get("zillion", None)
             if not zillion_info:
-                setattr(table, 'zillion', None)
+                setattr(table, "zillion", None)
                 continue
 
-            table.info['zillion'] = TableInfo.create(zillion_info)
-            setattr(table, 'zillion', table.info['zillion'])
+            table.info["zillion"] = TableInfo.create(zillion_info)
+            setattr(table, "zillion", table.info["zillion"])
 
             for column in table.c:
-                zillion_info = column.info.get('zillion', None)
+                zillion_info = column.info.get("zillion", None)
                 if not zillion_info:
-                    if not table.info['zillion'].autocolumns:
-                        setattr(column, 'zillion', None)
+                    if not table.info["zillion"].autocolumns:
+                        setattr(column, "zillion", None)
                         continue
                     else:
                         zillion_info = {}
-                zillion_info['fields'] = zillion_info.get('fields', [field_safe_name(column_fullname(column))])
-                column.info['zillion'] = ColumnInfo.create(zillion_info)
-                setattr(column, 'zillion', column.info['zillion'])
+                zillion_info["fields"] = zillion_info.get(
+                    "fields", [field_safe_name(column_fullname(column))]
+                )
+                column.info["zillion"] = ColumnInfo.create(zillion_info)
+                setattr(column, "zillion", column.info["zillion"])
 
                 if column.primary_key:
                     dim_count = 0
                     for field in column.zillion.get_field_names():
                         if field in self.dimensions or field not in self.facts:
                             dim_count += 1
-                        assert dim_count < 2, 'Primary key column may only map to a single dimension: %s' % column
+                        assert dim_count < 2, (
+                            "Primary key column may only map to a single dimension: %s"
+                            % column
+                        )
 
     def apply_global_config(self, config):
         formula_facts = []
 
-        for fact_def in config.get('facts', []):
+        for fact_def in config.get("facts", []):
             if isinstance(fact_def, dict):
                 schema = FactConfigSchema()
                 fact_def = schema.load(fact_def)
                 fact = create_fact(fact_def)
             else:
-                assert isinstance(fact_def, Fact),\
-                    'Fact definition must be a dict-like object or a Fact object'
+                assert isinstance(
+                    fact_def, Fact
+                ), "Fact definition must be a dict-like object or a Fact object"
                 fact = fact_def
 
             if isinstance(fact, FormulaFact):
@@ -677,14 +808,15 @@ class Warehouse:
             else:
                 self.add_fact(fact)
 
-        for dim_def in config.get('dimensions', []):
+        for dim_def in config.get("dimensions", []):
             if isinstance(dim_def, dict):
                 schema = DimensionConfigSchema()
                 dim_def = schema.load(dim_def)
                 dim = create_dimension(dim_def)
             else:
-                assert isinstance(dim_def, Dimension),\
-                    'Dimension definition must be a dict-like object or a Dimension object'
+                assert isinstance(
+                    dim_def, Dimension
+                ), "Dimension definition must be a dict-like object or a Dimension object"
                 dim = dim_def
             self.add_dimension(dim)
 
@@ -695,23 +827,25 @@ class Warehouse:
 
     def apply_datasource_config(self, ds_config, ds):
         for table in ds.metadata.tables.values():
-            if table.fullname not in ds_config['tables']:
+            if table.fullname not in ds_config["tables"]:
                 continue
 
-            table_config = copy.deepcopy(ds_config['tables'][table.fullname])
-            column_configs = table_config.get('columns', None)
-            if 'columns' in table_config:
-                del table_config['columns']
+            table_config = copy.deepcopy(ds_config["tables"][table.fullname])
+            column_configs = table_config.get("columns", None)
+            if "columns" in table_config:
+                del table_config["columns"]
 
-            zillion_info = table.info.get('zillion', {})
+            zillion_info = table.info.get("zillion", {})
             # Config takes precendence over values on table objects
             zillion_info.update(table_config)
-            table.info['zillion'] = TableInfo.create(zillion_info)
+            table.info["zillion"] = TableInfo.create(zillion_info)
 
-            autocolumns = table.info['zillion'].autocolumns
+            autocolumns = table.info["zillion"].autocolumns
             if not autocolumns:
-                assert column_configs, ('Table %s.%s has autocolumns=False and no column configs' %
-                                        (ds.name, table.fullname))
+                assert column_configs, (
+                    "Table %s.%s has autocolumns=False and no column configs"
+                    % (ds.name, table.fullname)
+                )
             if not column_configs:
                 continue
 
@@ -720,28 +854,28 @@ class Warehouse:
                     continue
 
                 column_config = column_configs[column.name]
-                zillion_info = column.info.get('zillion', {})
+                zillion_info = column.info.get("zillion", {})
                 # Config takes precendence over values on column objects
                 zillion_info.update(column_config)
-                zillion_info['fields'] = zillion_info.get('fields', [field_safe_name(column_fullname(column))])
-                column.info['zillion'] = ColumnInfo.create(zillion_info)
+                zillion_info["fields"] = zillion_info.get(
+                    "fields", [field_safe_name(column_fullname(column))]
+                )
+                column.info["zillion"] = ColumnInfo.create(zillion_info)
 
     def apply_config(self, config):
-        '''
+        """
         This will update or add zillion info to the schema item info dict if it
         appears in the datasource config
-        '''
+        """
         self.apply_global_config(config)
 
-        for ds_name in config.get('datasources', {}):
+        for ds_name in config.get("datasources", {}):
             ds = self.get_datasource(ds_name)
-            ds_config = config['datasources'][ds.name]
+            ds_config = config["datasources"][ds.name]
             self.apply_datasource_config(ds_config, ds)
 
     def apply_adhoc_config(self, adhoc_ds):
-        ds_config = {
-            'tables': adhoc_ds.table_configs
-        }
+        ds_config = {"tables": adhoc_ds.table_configs}
         self.apply_datasource_config(ds_config, adhoc_ds)
 
     def populate_conversion_fields(self, ds):
@@ -762,17 +896,26 @@ class Warehouse:
 
                 convs = get_dialect_type_conversions(ds.get_dialect_name(), column)
                 if convs:
-                    assert not type(column.type) in types_converted, \
-                        'Table %s has multiple columns of same type allowing conversions' % table.fullname
+                    assert not type(column.type) in types_converted, (
+                        "Table %s has multiple columns of same type allowing conversions"
+                        % table.fullname
+                    )
                     types_converted.add(type(column.type))
 
                 for field_name, ds_formula in convs:
                     if field_name in table_fields:
-                        dbg('Skipping conversion field %s for column %s, already in table',
-                            (field_name, column_fullname(column)))
+                        dbg(
+                            "Skipping conversion field %s for column %s, already in table",
+                            (field_name, column_fullname(column)),
+                        )
                         continue
-                    dbg('Adding conversion field %s for column %s' % (field_name, column_fullname(column)))
-                    column.zillion.add_field(dict(name=field_name, ds_formula=ds_formula))
+                    dbg(
+                        "Adding conversion field %s for column %s"
+                        % (field_name, column_fullname(column))
+                    )
+                    column.zillion.add_field(
+                        dict(name=field_name, ds_formula=ds_formula)
+                    )
 
     def populate_table_field_map(self, ds):
         for table in ds.metadata.tables.values():
@@ -784,9 +927,14 @@ class Warehouse:
                     continue
 
                 for field in column.zillion.get_field_names():
-                    assert not self.table_field_map[ds.name].get(table.fullname, {}).get(field, None),\
-                        'Multiple columns for the same field in a single table not allowed'
-                    self.table_field_map[ds.name].setdefault(table.fullname, {})[field] = column
+                    assert (
+                        not self.table_field_map[ds.name]
+                        .get(table.fullname, {})
+                        .get(field, None)
+                    ), "Multiple columns for the same field in a single table not allowed"
+                    self.table_field_map[ds.name].setdefault(table.fullname, {})[
+                        field
+                    ] = column
 
     def remove_table_field_map(self, ds):
         del self.table_field_map[ds.name]
@@ -807,35 +955,39 @@ class Warehouse:
         if isinstance(obj, dict):
             return AdHocField.create(obj)
 
-        raise InvalidFieldException('Invalid field object: %s' % obj)
+        raise InvalidFieldException("Invalid field object: %s" % obj)
 
     def get_fact(self, obj):
         if isinstance(obj, str):
             if obj not in self.facts:
-                raise InvalidFieldException('Invalid fact name: %s' % obj)
+                raise InvalidFieldException("Invalid fact name: %s" % obj)
             return self.facts[obj]
 
         if isinstance(obj, dict):
             fact = AdHocFact.create(obj)
-            assert fact.name not in self.facts, 'AdHocFact can not use name of an existing fact: %s' % fact.name
+            assert fact.name not in self.facts, (
+                "AdHocFact can not use name of an existing fact: %s" % fact.name
+            )
             fact.check_formula_fields(self)
             return fact
 
-        raise InvalidFieldException('Invalid fact object: %s' % obj)
+        raise InvalidFieldException("Invalid fact object: %s" % obj)
 
     def get_dimension(self, obj):
         if isinstance(obj, str):
             if obj not in self.dimensions:
-                raise InvalidFieldException('Invalid dimension name: %s' % obj)
+                raise InvalidFieldException("Invalid dimension name: %s" % obj)
             return self.dimensions[obj]
 
         if isinstance(obj, dict):
             dim = AdHocDimension.create(obj)
-            assert dim.name not in self.dimensions, \
-                'AdHocDimension can not use name of an existing dimension: %s' % dim.name
+            assert dim.name not in self.dimensions, (
+                "AdHocDimension can not use name of an existing dimension: %s"
+                % dim.name
+            )
             return dim
 
-        raise InvalidFieldException('Invalid fact object: %s' % obj)
+        raise InvalidFieldException("Invalid fact object: %s" % obj)
 
     def get_supported_dimensions_for_fact(self, fact, use_cache=True):
         dims = set()
@@ -853,13 +1005,17 @@ class Warehouse:
 
             for ds_table in ds_tables:
                 if ds_table.fullname not in used_tables:
-                    dims |= get_table_dimensions(self, self.tables[ds_name][ds_table.fullname])
+                    dims |= get_table_dimensions(
+                        self, self.tables[ds_name][ds_table.fullname]
+                    )
                     used_tables.add(ds_table.fullname)
 
                 desc_tables = nx.descendants(ds_graph, ds_table.fullname)
                 for desc_table in desc_tables:
                     if desc_table not in used_tables:
-                        dims |= get_table_dimensions(self, self.tables[ds_name][desc_table])
+                        dims |= get_table_dimensions(
+                            self, self.tables[ds_name][desc_table]
+                        )
                         used_tables.add(desc_table)
 
         self.supported_dimension_cache[fact] = dims
@@ -875,9 +1031,15 @@ class Warehouse:
     def get_primary_key_fields(self, primary_key):
         pk_fields = set()
         for col in primary_key:
-            pk_dims = [x for x in col.zillion.fields if isinstance(x, str) and x in self.dimensions]
-            assert len(pk_dims) == 1, \
-                'Primary key column has multiple dimensions: %s/%s' % (col, col.zillion.fields)
+            pk_dims = [
+                x
+                for x in col.zillion.fields
+                if isinstance(x, str) and x in self.dimensions
+            ]
+            assert len(pk_dims) == 1, (
+                "Primary key column has multiple dimensions: %s/%s"
+                % (col, col.zillion.fields)
+            )
             pk_fields.add(pk_dims[0])
         return pk_fields
 
@@ -903,13 +1065,17 @@ class Warehouse:
             parent = self.tables[ds_name][parent_name]
             pk_fields = self.get_primary_key_fields(parent.primary_key)
             for pk_field in pk_fields:
-                assert pk_field in fields, ('Table %s is parent of %s but primary key %s is not in both' %
-                                            (parent.fullname, table.fullname, pk_fields))
+                assert pk_field in fields, (
+                    "Table %s is parent of %s but primary key %s is not in both"
+                    % (parent.fullname, table.fullname, pk_fields)
+                )
             neighbor_tables.append(NeighborTable(parent, pk_fields))
         return neighbor_tables
 
     def add_ds_graph(self, ds):
-        assert not (ds.name in self.ds_graphs), 'Datasource %s already has a graph' % ds.name
+        assert not (ds.name in self.ds_graphs), (
+            "Datasource %s already has a graph" % ds.name
+        )
         graph = nx.DiGraph()
         self.ds_graphs[ds.name] = graph
         tables = self.tables[ds.name].values()
@@ -918,7 +1084,11 @@ class Warehouse:
             neighbors = self.find_neighbor_tables(ds.name, table)
             for neighbor in neighbors:
                 graph.add_node(neighbor.table.fullname)
-                graph.add_edge(table.fullname, neighbor.table.fullname, join_fields=neighbor.join_fields)
+                graph.add_edge(
+                    table.fullname,
+                    neighbor.table.fullname,
+                    join_fields=neighbor.join_fields,
+                )
 
     def remove_ds_graph(self, ds):
         del self.ds_graphs[ds.name]
@@ -932,7 +1102,7 @@ class Warehouse:
         elif table.zillion.type == TableTypes.DIMENSION:
             self.add_dimension_table(ds, table)
         else:
-            assert False, 'Invalid table type: %s' % table.zillion.type
+            assert False, "Invalid table type: %s" % table.zillion.type
 
     def remove_table(self, ds, table):
         if table.zillion.type == TableTypes.FACT:
@@ -940,7 +1110,7 @@ class Warehouse:
         elif table.zillion.type == TableTypes.DIMENSION:
             self.remove_dimension_table(ds, table)
         else:
-            assert False, 'Invalid table type: %s' % table.zillion.type
+            assert False, "Invalid table type: %s" % table.zillion.type
         del self.tables[ds.name][table.fullname]
 
     def add_fact_table(self, ds, table):
@@ -980,7 +1150,10 @@ class Warehouse:
             for column in columns:
                 ds_tables[ds_name].append(column.table)
             count += 1
-        dbg('found %d datasources, %d columns for fact %s' % (len(ds_tables), count, fact))
+        dbg(
+            "found %d datasources, %d columns for fact %s"
+            % (len(ds_tables), count, fact)
+        )
         return ds_tables
 
     def get_ds_dim_tables_with_dim(self, dim):
@@ -993,7 +1166,9 @@ class Warehouse:
                     continue
                 ds_tables[ds_name].append(column.table)
                 count += 1
-        dbg('found %d datasources, %d columns for dim %s' % (len(ds_tables), count, dim))
+        dbg(
+            "found %d datasources, %d columns for dim %s" % (len(ds_tables), count, dim)
+        )
         return ds_tables
 
     def add_dimension_table(self, ds, table):
@@ -1007,7 +1182,7 @@ class Warehouse:
 
             for field in column.zillion.get_field_names():
                 if field in self.facts:
-                    assert False, 'Dimension table has fact field: %s' % field
+                    assert False, "Dimension table has fact field: %s" % field
                 elif field in self.dimensions:
                     self.dimensions[field].add_column(ds, column)
                 elif table.zillion.autocolumns:
@@ -1015,13 +1190,16 @@ class Warehouse:
 
     def add_fact(self, fact):
         if fact.name in self.facts:
-            warn('Fact %s is already in warehouse facts' % fact.name)
+            warn("Fact %s is already in warehouse facts" % fact.name)
             return
         self.facts[fact.name] = fact
 
     def add_fact_column(self, ds, column, field):
         if field not in self.facts:
-            dbg('Adding fact %s from column %s.%s' % (field, ds.name, column_fullname(column)))
+            dbg(
+                "Adding fact %s from column %s.%s"
+                % (field, ds.name, column_fullname(column))
+            )
             aggregation, rounding = infer_aggregation_and_rounding(column)
             fact = Fact(field, column.type, aggregation=aggregation, rounding=rounding)
             self.add_fact(fact)
@@ -1033,13 +1211,16 @@ class Warehouse:
 
     def add_dimension(self, dimension):
         if dimension.name in self.dimensions:
-            warn('Dimension %s is already in warehouse dimensions' % dimension.name)
+            warn("Dimension %s is already in warehouse dimensions" % dimension.name)
             return
         self.dimensions[dimension.name] = dimension
 
     def add_dimension_column(self, ds, column, field):
         if field not in self.dimensions:
-            dbg('Adding dimension %s from column %s.%s' % (field, ds.name, column_fullname(column)))
+            dbg(
+                "Adding dimension %s from column %s.%s"
+                % (field, ds.name, column_fullname(column))
+            )
             dimension = Dimension(field, column.type)
             self.add_dimension(dimension)
         self.dimensions[field].add_column(ds, column)
@@ -1053,13 +1234,15 @@ class Warehouse:
         joins = []
 
         dim_columns = self.dimensions[dimension].get_columns(ds_name)
-        dim_column_table_map = {c.table.fullname:c for c in dim_columns}
+        dim_column_table_map = {c.table.fullname: c for c in dim_columns}
         for column in dim_columns:
             if column.table == table:
                 paths = [[table.fullname]]
             else:
                 # TODO: consider caching with larger graphs, or precomputing
-                paths = nx.all_simple_paths(ds_graph, table.fullname, column.table.fullname)
+                paths = nx.all_simple_paths(
+                    ds_graph, table.fullname, column.table.fullname
+                )
 
             if not paths:
                 continue
@@ -1073,39 +1256,45 @@ class Warehouse:
                         field_map = {dimension: dim_column_table_map[table_name]}
                         break
 
-                assert field_map, 'Could not map dimension %s to column' % dimension
+                assert field_map, "Could not map dimension %s to column" % dimension
                 join = joins_from_path(ds_name, ds_graph, path, field_map=field_map)
                 joins.append(join)
 
-        dbg('Found joins to dim %s for table %s:' % (dimension, table.fullname))
+        dbg("Found joins to dim %s for table %s:" % (dimension, table.fullname))
         dbg(joins)
         return joins
 
     def get_possible_joins(self, ds_name, table, grain):
-        '''This takes a given table (usually a fact table) and tries to find one or
+        """This takes a given table (usually a fact table) and tries to find one or
         more joins to each dimension of the grain. It's possible some of these
         joins satisfy other parts of the grain too which leaves room for
         consolidation, but it's also possible to have it generate independent,
         non-overlapping joins to meet the grain.
-        '''
-        assert table.fullname in self.tables[ds_name],\
-            'Could not find table %s in datasource %s' % (table.fullname, ds_name)
+        """
+        assert (
+            table.fullname in self.tables[ds_name]
+        ), "Could not find table %s in datasource %s" % (table.fullname, ds_name)
 
         if not grain:
-            dbg('No grain specified, ignoring joins')
+            dbg("No grain specified, ignoring joins")
             return None
 
         possible_dim_joins = {}
         for dimension in grain:
             dim_joins = self.find_joins_to_dimension(ds_name, table, dimension)
             if not dim_joins:
-                dbg('table %s can not satisfy dimension %s' % (table.fullname, dimension))
+                dbg(
+                    "table %s can not satisfy dimension %s"
+                    % (table.fullname, dimension)
+                )
                 return None
 
             possible_dim_joins[dimension] = dim_joins
 
-        possible_joins = self.consolidate_field_joins(ds_name, grain, possible_dim_joins)
-        dbg('possible joins:')
+        possible_joins = self.consolidate_field_joins(
+            ds_name, grain, possible_dim_joins
+        )
+        dbg("possible joins:")
         dbg(possible_joins)
         return possible_joins
 
@@ -1115,15 +1304,18 @@ class Warehouse:
             if (not grain) or grain.issubset(get_table_fields(field_table)):
                 table_set = TableSet(ds_name, field_table, None, grain, set([field]))
                 table_sets.append(table_set)
-                dbg('full grain (%s) covered in %s' % (grain, field_table.fullname))
+                dbg("full grain (%s) covered in %s" % (grain, field_table.fullname))
                 continue
 
             joins = self.get_possible_joins(ds_name, field_table, grain)
             if not joins:
-                dbg('table %s can not join at grain %s' % (field_table.fullname, grain))
+                dbg("table %s can not join at grain %s" % (field_table.fullname, grain))
                 continue
 
-            dbg('adding %d possible join(s) to table %s' % (len(joins), field_table.fullname))
+            dbg(
+                "adding %d possible join(s) to table %s"
+                % (len(joins), field_table.fullname)
+            )
             for join, covered_dims in joins.items():
                 table_set = TableSet(ds_name, field_table, join, grain, set([field]))
                 table_sets.append(table_set)
@@ -1131,10 +1323,12 @@ class Warehouse:
         return table_sets
 
     def get_ds_table_sets(self, ds_tables, field, grain):
-        '''Returns all table sets that can satisfy grain in each datasource'''
+        """Returns all table sets that can satisfy grain in each datasource"""
         ds_table_sets = {}
         for ds_name, ds_tables_with_field in ds_tables.items():
-            possible_table_sets = self.find_possible_table_sets(ds_name, ds_tables_with_field, field, grain)
+            possible_table_sets = self.find_possible_table_sets(
+                ds_name, ds_tables_with_field, field, grain
+            )
             if not possible_table_sets:
                 continue
             ds_table_sets[ds_name] = possible_table_sets
@@ -1150,35 +1344,45 @@ class Warehouse:
         # TODO: eventually it would be nice to choose a datasource if:
         #  A) Its historically been faster
         #  B) All of the requested data can be pulled from one datasource
-        warn('No datasource priorities established, picking random option')
-        assert ds_names, 'No datasource names provided'
+        warn("No datasource priorities established, picking random option")
+        assert ds_names, "No datasource names provided"
         return random.choice(ds_names)
 
     def choose_best_table_set(self, ds_table_sets):
         ds_name = self.choose_best_data_source(list(ds_table_sets.keys()))
         if len(ds_table_sets[ds_name]) > 1:
             # TODO: establish table set priorities based on expected query performance?
-            warn('Picking smallest of %d available table sets' % len(ds_table_sets[ds_name]))
+            warn(
+                "Picking smallest of %d available table sets"
+                % len(ds_table_sets[ds_name])
+            )
         return sorted(ds_table_sets[ds_name], key=lambda x: len(x))[0]
 
     def generate_unsupported_grain_msg(self, grain, fact):
-        '''
+        """
         This assumes you are in a situation where you are sure the fact can not
         meet the grain and want to generate a helpful message pinpointing the
         issue.  If the fact actually supports all dimensions, the conclusion
         is that it just doesn't support them all in a single datasource and
         thus can't meet the grain.
-        '''
+        """
         supported = self.get_supported_dimensions_for_fact(fact)
         unsupported = grain - supported
         if unsupported:
-            msg = ('fact %s can not meet grain %s due to unsupported dimensions: %s' % (fact, grain, unsupported))
+            msg = "fact %s can not meet grain %s due to unsupported dimensions: %s" % (
+                fact,
+                grain,
+                unsupported,
+            )
         else:
-            msg = ('fact %s can not meet grain %s in any single datasource' % (fact, grain))
+            msg = "fact %s can not meet grain %s in any single datasource" % (
+                fact,
+                grain,
+            )
         return msg
 
     def get_fact_table_set(self, fact, grain):
-        dbg('fact:%s grain:%s' % (fact, grain))
+        dbg("fact:%s grain:%s" % (fact, grain))
         ds_fact_tables = self.get_ds_tables_with_fact(fact)
         ds_table_sets = self.get_ds_table_sets(ds_fact_tables, fact, grain)
         if not ds_table_sets:
@@ -1188,12 +1392,12 @@ class Warehouse:
         return table_set
 
     def get_dimension_table_set(self, grain):
-        '''
+        """
         This is meant to be used in cases where no facts are requested. We only
         allow it to look at dim tables since the assumption is joining to a fact
         table to explore dimensions doesn't make sense and would have poor performance.
-        '''
-        dbg('grain:%s' % grain)
+        """
+        dbg("grain:%s" % grain)
 
         table_set = None
         for dim_name in grain:
@@ -1205,16 +1409,18 @@ class Warehouse:
             break
 
         if not table_set:
-            raise UnsupportedGrainException('No dimension table set found to meet grain: %s' % grain)
+            raise UnsupportedGrainException(
+                "No dimension table set found to meet grain: %s" % grain
+            )
         return table_set
 
     def invert_field_joins(self, field_joins):
-        '''Take a map of fields to relevant joins and invert it'''
+        """Take a map of fields to relevant joins and invert it"""
         join_fields = defaultdict(set)
         for field, joins in field_joins.items():
             for join in joins:
                 if join in join_fields:
-                    dbg('join %s already used, adding field %s' % (join, field))
+                    dbg("join %s already used, adding field %s" % (join, field))
                 join_fields[join].add(field)
         return join_fields
 
@@ -1233,7 +1439,10 @@ class Warehouse:
             if join in joins_to_delete:
                 continue
 
-            dbg('Finding redundant joins for %s / %s' % (join.table_names, covered_fields))
+            dbg(
+                "Finding redundant joins for %s / %s"
+                % (join.table_names, covered_fields)
+            )
             for other_join, other_covered_fields in sorted_join_fields:
                 if join == other_join or join in joins_to_delete:
                     continue
@@ -1241,11 +1450,17 @@ class Warehouse:
                 is_superset = join.table_names.issubset(other_join.table_names)
                 has_unique_fields = other_covered_fields - covered_fields
                 if is_superset and not has_unique_fields:
-                    dbg('Removing redundant join %s / %s' % (other_join.table_names, other_covered_fields))
+                    dbg(
+                        "Removing redundant join %s / %s"
+                        % (other_join.table_names, other_covered_fields)
+                    )
                     joins_to_delete.add(other_join)
 
-        sorted_join_fields = [(join, fields) for join, fields in sorted_join_fields
-                              if join not in joins_to_delete]
+        sorted_join_fields = [
+            (join, fields)
+            for join, fields in sorted_join_fields
+            if join not in joins_to_delete
+        ]
         return sorted_join_fields
 
     def find_join_combinations(self, sorted_join_fields, grain):
@@ -1283,14 +1498,16 @@ class Warehouse:
                     if other_joins.issubset(joins):
                         skip = True
                 if skip:
-                    dbg('Skipping subset join list combination')
+                    dbg("Skipping subset join list combination")
                     continue
                 candidates.append(join_combo)
 
         return candidates
 
     def choose_best_join_combination(self, candidates):
-        ordered = sorted(candidates, key=lambda x: len(iter_or([y[0].table_names for y in x])))
+        ordered = sorted(
+            candidates, key=lambda x: len(iter_or([y[0].table_names for y in x]))
+        )
         chosen = ordered[0]
         join_fields = {}
         for join, covered_fields in chosen:
@@ -1299,40 +1516,49 @@ class Warehouse:
         return join_fields
 
     def consolidate_field_joins(self, ds_name, grain, field_joins):
-        '''This takes a mapping of fields to joins that satisfy that field
+        """This takes a mapping of fields to joins that satisfy that field
         and returns a minimized map of joins to fields satisfied by that join.
-        '''
+        """
 
         # Some preliminary shuffling of the inputs to support later logic
         join_fields = self.invert_field_joins(field_joins)
         self.populate_max_join_field_coverage(join_fields, grain)
 
         # Sort by number of dims covered desc, number of tables involved asc
-        sorted_join_fields = sorted(join_fields.items(),
-                                    key=lambda kv: (len(kv[1]), -len(kv[0])),
-                                    reverse=True)
+        sorted_join_fields = sorted(
+            join_fields.items(), key=lambda kv: (len(kv[1]), -len(kv[0])), reverse=True
+        )
 
         if len(sorted_join_fields[0][1]) == len(grain):
             # Single join covers entire grain. It should be ~optimal based on sorting.
             join = sorted_join_fields[0][0]
             covered_fields = sorted_join_fields[0][1]
             join.add_fields(self, covered_fields)
-            return {join:covered_fields}
+            return {join: covered_fields}
 
         sorted_join_fields = self.eliminate_redundant_joins(sorted_join_fields)
         candidates = self.find_join_combinations(sorted_join_fields, grain)
         join_fields = self.choose_best_join_combination(candidates)
         return join_fields
 
-    def build_report(self, facts=None, dimensions=None, criteria=None, row_filters=None,
-                     rollup=None, pivot=None):
-        return Report(self,
-                      facts=facts,
-                      dimensions=dimensions,
-                      criteria=criteria,
-                      row_filters=row_filters,
-                      rollup=rollup,
-                      pivot=pivot)
+    def build_report(
+        self,
+        facts=None,
+        dimensions=None,
+        criteria=None,
+        row_filters=None,
+        rollup=None,
+        pivot=None,
+    ):
+        return Report(
+            self,
+            facts=facts,
+            dimensions=dimensions,
+            criteria=criteria,
+            row_filters=row_filters,
+            rollup=rollup,
+            pivot=pivot,
+        )
 
     def load_report(self, report_id):
         report = Report.load(self, report_id)
@@ -1343,22 +1569,32 @@ class Warehouse:
     #     report.save()
     #     return report
 
-    def execute(self, facts=None, dimensions=None, criteria=None, row_filters=None, rollup=None,
-                pivot=None, adhoc_datasources=None):
+    def execute(
+        self,
+        facts=None,
+        dimensions=None,
+        criteria=None,
+        row_filters=None,
+        rollup=None,
+        pivot=None,
+        adhoc_datasources=None,
+    ):
         start = time.time()
         adhoc_datasources = adhoc_datasources or []
         self.add_adhoc_datasources(adhoc_datasources)
 
-        report = self.build_report(facts=facts,
-                                   dimensions=dimensions,
-                                   criteria=criteria,
-                                   row_filters=row_filters,
-                                   rollup=rollup,
-                                   pivot=pivot)
+        report = self.build_report(
+            facts=facts,
+            dimensions=dimensions,
+            criteria=criteria,
+            row_filters=row_filters,
+            rollup=rollup,
+            pivot=pivot,
+        )
         result = report.execute()
 
         self.remove_adhoc_datasources(adhoc_datasources)
-        dbg('warehouse report took %.3fs' % (time.time() - start))
+        dbg("warehouse report took %.3fs" % (time.time() - start))
         return result
 
     def execute_id(self, report_id, adhoc_datasources=None):
@@ -1370,5 +1606,5 @@ class Warehouse:
         result = report.execute()
 
         self.remove_adhoc_datasources(adhoc_datasources)
-        dbg('warehouse report took %.3fs' % (time.time() - start))
+        dbg("warehouse report took %.3fs" % (time.time() - start))
         return result

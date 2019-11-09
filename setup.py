@@ -42,15 +42,7 @@ for repo in git_requires:
 
 
 extras_require = {
-    "dev": [
-        "black",
-        "pre-commit",
-        "pylint",
-        "pytest",
-        "sphinx",
-        "twine",
-        "wheel",
-    ],
+    "dev": ["black", "pre-commit", "pylint", "pytest", "sphinx", "twine", "wheel"]
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
 
@@ -73,7 +65,9 @@ setup(
         "Programming Language :: Python :: 3",
     ],
     python_requires=">=3.6",
-    scripts=find_deploy_scripts("zillion", ["\\*.py", "\\*.sh", "\\*.sql"], ["__init__"]),
+    scripts=find_deploy_scripts(
+        "zillion", ["\\*.py", "\\*.sh", "\\*.sql"], ["__init__"]
+    ),
     packages=find_packages(exclude=["tests.*", "tests"]),
     include_package_data=True,
     install_requires=non_git_requires,
