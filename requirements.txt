@@ -1,7 +1,9 @@
 climax
+m2r
 marshmallow
 mysqlclient
 networkx
+numpydoc
 orderedset
 pandas
 pylint
@@ -10,4 +12,3 @@ simplejson
 sqlalchemy
 sqlparse
 tlbx
-wheel
