@@ -905,8 +905,8 @@ class Warehouse:
                 for field_name, ds_formula in convs:
                     if field_name in table_fields:
                         dbg(
-                            "Skipping conversion field %s for column %s, already in table",
-                            (field_name, column_fullname(column)),
+                            "Skipping conversion field %s for column %s, already in table"
+                            % (field_name, column_fullname(column))
                         )
                         continue
                     dbg(

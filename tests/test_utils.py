@@ -1,36 +1,22 @@
 import copy
 import random
-import unittest
 
 from tlbx import st, dbg, random_string
 
-from zillion.warehouse import AdHocDataTable
+from zillion.configs import load_warehouse_config
+from zillion.core import TableTypes
+from zillion.warehouse import DataSource, AdHocDataSource, AdHocDataTable, Warehouse
+
 
 DEFAULT_TEST_DB = "testdb1"
+TEST_CONFIG = load_warehouse_config("test_config.json")
 
 
-class TestBase(unittest.TestCase):
-    DEBUG = False
-
-    def run(self, result=None):
-        if self.DEBUG and (result.failures or result.errors):
-            if result.failures:
-                dbg(result.failures)
-            if result.errors:
-                dbg(result.errors)
-            st()
-        super(TestBase, self).run(result)
-
-
-def run_tests(testclass, testnames, debug=False):
-    testclass.DEBUG = debug
-    if testnames:
-        suite = unittest.TestSuite()
-        for testname in testnames:
-            suite.addTest(testclass(testname))
-    else:
-        suite = unittest.TestLoader().loadTestsFromTestCase(testclass)
-    unittest.TextTestRunner(verbosity=2).run(suite)
+def init_datasources():
+    ds1 = DataSource("testdb1", get_testdb_url("testdb1"), reflect=True)
+    ds2 = DataSource("testdb2", get_testdb_url("testdb2"), reflect=True)
+    # ds2 will end up with a higher priority
+    return [ds2, ds1]
 
 
 def create_adhoc_data(column_defs, size):
@@ -53,6 +39,20 @@ def create_adhoc_data(column_defs, size):
         data.append(row)
 
     return data
+
+
+def get_adhoc_datasource():
+    column_defs = {
+        "partner_name": {"fields": ["partner_name"], "type": str},
+        "adhoc_fact": {"fields": ["adhoc_fact"], "type": float},
+    }
+
+    size = 10
+    dt = create_adhoc_datatable(
+        "adhoc_table1", TableTypes.FACT, column_defs, ["partner_name"], size
+    )
+    adhoc_ds = AdHocDataSource([dt])
+    return adhoc_ds
 
 
 def create_adhoc_datatable(
