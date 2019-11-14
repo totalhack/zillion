@@ -1,4 +1,4 @@
-ENV := $(HOME)/env/zillion
+ENV := $(HOME)/venvs/zillion
 TEST_ENV := /tmp/zillion_pip_test/
 PACKAGE_NAME := 'zillion'
 VERSION := $(shell python setup.py --version)
