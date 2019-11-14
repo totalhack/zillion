@@ -17,12 +17,12 @@ class MaxFormulaDepthException(Exception):
 
 class FieldTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = "dimension"
-    FACT = "fact"
+    METRIC = "metric"
 
 
 class TableTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = "dimension"
-    FACT = "fact"
+    METRIC = "metric"
 
 
 class AggregationTypes(metaclass=ClassValueContainsMeta):

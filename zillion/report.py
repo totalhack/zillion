@@ -65,12 +65,12 @@ zillion_metadata.create_all(zillion_engine)
 
 
 class DataSourceQuery(PrintMixin):
-    repr_attrs = ["facts", "dimensions", "criteria"]
+    repr_attrs = ["metrics", "dimensions", "criteria"]
 
     @initializer
-    def __init__(self, warehouse, facts, dimensions, criteria, table_set):
+    def __init__(self, warehouse, metrics, dimensions, criteria, table_set):
         self.field_map = {}
-        self.facts = orderedsetify(facts) if facts else []
+        self.metrics = orderedsetify(metrics) if metrics else []
         self.dimensions = orderedsetify(dimensions) if dimensions else []
         self.select = self.build_select()
 
@@ -124,8 +124,8 @@ class DataSourceQuery(PrintMixin):
         for dimension in self.dimensions:
             select = select.column(self.get_field_expression(dimension))
 
-        for fact in self.facts:
-            select = select.column(self.get_field_expression(fact))
+        for metric in self.metrics:
+            select = select.column(self.get_field_expression(metric))
 
         select = self.add_where(select)
         select = self.add_group_by(select)
@@ -207,8 +207,8 @@ class DataSourceQuery(PrintMixin):
             order_func = sa.desc
         return select.order_by(*[order_func(sa.text(x)) for x in self.dimensions])
 
-    def covers_fact(self, fact):
-        if fact in self.table_set.get_covered_facts(self.warehouse):
+    def covers_metric(self, metric):
+        if metric in self.table_set.get_covered_metrics(self.warehouse):
             return True
         return False
 
@@ -217,12 +217,14 @@ class DataSourceQuery(PrintMixin):
             return True
         return False
 
-    def add_fact(self, fact):
-        assert self.covers_fact(fact), "Fact %s can not be covered by query" % fact
-        # TODO: improve the way we maintain targeted facts/dims
-        self.table_set.target_fields.add(fact)
-        self.facts.add(fact)
-        self.select = self.select.column(self.get_field_expression(fact))
+    def add_metric(self, metric):
+        assert self.covers_metric(metric), (
+            "Metric %s can not be covered by query" % metric
+        )
+        # TODO: improve the way we maintain targeted metrics/dims
+        self.table_set.target_fields.add(metric)
+        self.metrics.add(metric)
+        self.select = self.select.column(self.get_field_expression(metric))
 
 
 class DataSourceQuerySummary(PrintMixin):
@@ -230,7 +232,7 @@ class DataSourceQuerySummary(PrintMixin):
 
     def __init__(self, query, data, duration):
         self.datasource_name = query.get_datasource_name()
-        self.facts = query.facts
+        self.metrics = query.metrics
         self.dimensions = query.dimensions
         self.select = query.select
         self.duration = round(duration, 4)
@@ -244,7 +246,7 @@ class DataSourceQuerySummary(PrintMixin):
         parts = [
             "%d rows in %.4f seconds" % (self.rowcount, self.duration),
             "Datasource: %s" % self.datasource_name,
-            "Facts: %s" % list(self.facts),
+            "Metrics: %s" % list(self.metrics),
             "Dimensions: %s" % list(self.dimensions),
             "\n%s" % sql,
             # TODO: Explain of query plan
@@ -273,7 +275,7 @@ class BaseCombinedResult:
         self.primary_ds_dimensions = (
             orderedsetify(primary_ds_dimensions) if primary_ds_dimensions else []
         )
-        self.ds_dimensions, self.ds_facts = self.get_fields()
+        self.ds_dimensions, self.ds_metrics = self.get_fields()
         self.create_table()
         self.load_table()
 
@@ -292,7 +294,7 @@ class BaseCombinedResult:
     def clean_up(self):
         raise NotImplementedError
 
-    def get_final_result(self, facts, dimensions, row_filters, rollup, pivot):
+    def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
         raise NotImplementedError
 
     def get_row_hash(self, row):
@@ -300,7 +302,7 @@ class BaseCombinedResult:
 
     def get_fields(self):
         dimensions = OrderedDict()
-        facts = OrderedDict()
+        metrics = OrderedDict()
 
         for qr in self.ds_query_results:
             for dim_name in qr.query.dimensions:
@@ -309,17 +311,17 @@ class BaseCombinedResult:
                 dim = self.warehouse.get_dimension(dim_name)
                 dimensions[dim_name] = dim
 
-            for fact_name in qr.query.facts:
-                if fact_name in facts:
+            for metric_name in qr.query.metrics:
+                if metric_name in metrics:
                     continue
-                fact = self.warehouse.get_fact(fact_name)
-                facts[fact_name] = fact
+                metric = self.warehouse.get_metric(metric_name)
+                metrics[metric_name] = metric
 
-        return dimensions, facts
+        return dimensions, metrics
 
     def get_field_names(self):
-        dims, facts = self.get_fields()
-        return list(dims.keys()) + list(facts.keys())
+        dims, metrics = self.get_fields()
+        return list(dims.keys()) + list(metrics.keys())
 
 
 class SQLiteMemoryCombinedResult(BaseCombinedResult):
@@ -339,7 +341,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             clause = "%s %s NOT NULL" % (field_name, type_str)
             column_clauses.append(clause)
 
-        for field_name, field in self.ds_facts.items():
+        for field_name, field in self.ds_metrics.items():
             type_str = str(to_sqlite_type(field.type))
             clause = "%s %s DEFAULT NULL" % (field_name, type_str)
             column_clauses.append(clause)
@@ -417,11 +419,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         dbgsql(sql)
         return sql
 
-    def apply_row_filters(self, df, row_filters, facts, dimensions):
+    def apply_row_filters(self, df, row_filters, metrics, dimensions):
         filter_parts = []
         for row_filter in row_filters:
             field, op, value = row_filter
-            assert (field in facts) or (field in dimensions), (
+            assert (field in metrics) or (field in dimensions), (
                 'Row filter field "%s" is not in result table' % field
             )
             assert op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op
@@ -441,8 +443,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
             grouped = df.groupby(level=list(range(0, level + 1)))
             level_aggr = grouped.agg(aggrs, skipna=True)
-            for fact_name, weighting_fact in wavgs:
-                level_aggr[fact_name] = wavg(fact_name, weighting_fact)
+            for metric_name, weighting_metric in wavgs:
+                level_aggr[metric_name] = wavg(metric_name, weighting_metric)
 
             # for the remaining levels, set index cols to ROLLUP_INDEX_LABEL
             if level != (len(dimensions) - 1):
@@ -458,7 +460,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         df.sort_index(inplace=True)
         return df
 
-    def apply_rollup(self, df, rollup, facts, dimensions):
+    def apply_rollup(self, df, rollup, metrics, dimensions):
         assert dimensions, "Can not rollup without dimensions"
 
         aggrs = {}
@@ -472,20 +474,20 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             except ZeroDivisionError:
                 return d.mean()  # Return mean if there are no weights
 
-        for fact_name in facts:
-            fact = self.warehouse.get_fact(fact_name)
-            if fact.weighting_fact:
-                wavgs.append((fact.name, fact.weighting_fact))
+        for metric_name in metrics:
+            metric = self.warehouse.get_metric(metric_name)
+            if metric.weighting_metric:
+                wavgs.append((metric.name, metric.weighting_metric))
                 continue
             else:
                 aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
-                    fact.aggregation, fact.aggregation
+                    metric.aggregation, metric.aggregation
                 )
-            aggrs[fact.name] = aggr_func
+            aggrs[metric.name] = aggr_func
 
         aggr = df.agg(aggrs, skipna=True)
-        for fact_name, weighting_fact in wavgs:
-            aggr[fact_name] = wavg(fact_name, weighting_fact)
+        for metric_name, weighting_metric in wavgs:
+            aggr[metric_name] = wavg(metric_name, weighting_metric)
 
         apply_totals = True
         if rollup != ROLLUP_TOTALS:
@@ -505,24 +507,24 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         return df
 
     def apply_technicals(self, df, technicals, rounding):
-        for fact, tech in technicals.items():
-            rolling = df[fact].rolling(
+        for metric, tech in technicals.items():
+            rolling = df[metric].rolling(
                 tech.window, min_periods=tech.min_periods, center=tech.center
             )
             if tech.type == TechnicalTypes.MA:
-                df[fact] = rolling.mean()
+                df[metric] = rolling.mean()
             elif tech.type == TechnicalTypes.SUM:
-                df[fact] = rolling.sum()
+                df[metric] = rolling.sum()
             elif tech.type == TechnicalTypes.BOLL:
                 ma = rolling.mean()
                 std = rolling.std()
-                upper = fact + "_upper"
-                lower = fact + "_lower"
-                if fact in rounding:
+                upper = metric + "_upper"
+                lower = metric + "_lower"
+                if metric in rounding:
                     # This adds some extra columns for the bounds, so we use the same rounding
-                    # as the root fact if applicable.
-                    df[upper] = round(ma + 2 * std, rounding[fact])
-                    df[lower] = round(ma - 2 * std, rounding[fact])
+                    # as the root metric if applicable.
+                    df[upper] = round(ma + 2 * std, rounding[metric])
+                    df[lower] = round(ma - 2 * std, rounding[metric])
                 else:
                     df[upper] = ma + 2 * std
                     df[lower] = ma - 2 * std
@@ -530,7 +532,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 assert False, "Invalid technical type: %s" % tech.type
         return df
 
-    def get_final_result(self, facts, dimensions, row_filters, rollup, pivot):
+    def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
         columns = []
         dimension_aliases = []
 
@@ -544,15 +546,15 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         technicals = {}
         rounding = {}
-        for fact_name in facts:
-            fact_def = self.warehouse.get_fact(fact_name)
-            if fact_def.technical:
-                technicals[fact_def.name] = fact_def.technical
-            if fact_def.rounding is not None:
-                rounding[fact_def.name] = fact_def.rounding
+        for metric_name in metrics:
+            metric_def = self.warehouse.get_metric(metric_name)
+            if metric_def.technical:
+                technicals[metric_def.name] = metric_def.technical
+            if metric_def.rounding is not None:
+                rounding[metric_def.name] = metric_def.rounding
             columns.append(
                 "%s as %s"
-                % (fact_def.get_final_select_clause(self.warehouse), fact_def.name)
+                % (metric_def.get_final_select_clause(self.warehouse), metric_def.name)
             )
 
         sql = self.get_final_select_sql(columns, dimension_aliases)
@@ -560,13 +562,13 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
         if row_filters:
-            df = self.apply_row_filters(df, row_filters, facts, dimensions)
+            df = self.apply_row_filters(df, row_filters, metrics, dimensions)
 
         if technicals:
             df = self.apply_technicals(df, technicals, rounding)
 
         if rollup:
-            df = self.apply_rollup(df, rollup, facts, dimensions)
+            df = self.apply_rollup(df, rollup, metrics, dimensions)
 
         if rounding:
             df = df.round(rounding)
@@ -588,7 +590,7 @@ class Report:
     def __init__(
         self,
         warehouse,
-        facts=None,
+        metrics=None,
         dimensions=None,
         criteria=None,
         row_filters=None,
@@ -597,11 +599,11 @@ class Report:
     ):
         start = time.time()
         self.id = None
-        self.facts = self.facts or []
+        self.metrics = self.metrics or []
         self.dimensions = self.dimensions or []
         assert (
-            self.facts or self.dimensions
-        ), "One of facts or dimensions must be specified for Report"
+            self.metrics or self.dimensions
+        ), "One of metrics or dimensions must be specified for Report"
         self.criteria = self.criteria or []
         self.row_filters = self.row_filters or []
 
@@ -619,11 +621,11 @@ class Report:
                 set(self.dimensions)
             ), "Pivot columms must be a subset of dimensions"
 
-        self.ds_facts = OrderedSet()
+        self.ds_metrics = OrderedSet()
         self.ds_dimensions = OrderedSet()
 
-        for fact_name in self.facts:
-            self.add_ds_fields(fact_name, FieldTypes.FACT)
+        for metric_name in self.metrics:
+            self.add_ds_fields(metric_name, FieldTypes.METRIC)
 
         for dim_name in self.dimensions:
             self.add_ds_fields(dim_name, FieldTypes.DIMENSION)
@@ -638,7 +640,7 @@ class Report:
         datasources = [ds.get_params() for ds in self.warehouse.datasources]
         return dict(
             kwargs=dict(
-                facts=self.facts,
+                metrics=self.metrics,
                 dimensions=self.dimensions,
                 criteria=self.criteria,
                 row_filters=self.row_filters,
@@ -686,9 +688,18 @@ class Report:
         result = cls.from_params(warehouse, params)
         return result
 
+    @classmethod
+    def delete(cls, report_id):
+        s = Reports.delete().where(Reports.c.id == report_id)
+        conn = zillion_engine.connect()
+        try:
+            result = conn.execute(s)
+        finally:
+            conn.close()
+
     def add_ds_fields(self, field_name, field_type):
-        if field_type == FieldTypes.FACT:
-            field = self.warehouse.get_fact(field_name)
+        if field_type == FieldTypes.METRIC:
+            field = self.warehouse.get_metric(field_name)
         elif field_type == FieldTypes.DIMENSION:
             field = self.warehouse.get_dimension(field_name)
         else:
@@ -699,15 +710,16 @@ class Report:
             None,
         )
 
-        if field_type == FieldTypes.FACT and field.weighting_fact:
-            assert field.weighting_fact in self.warehouse.facts, (
-                "Could not find weighting fact %s in warehouse" % field.weighting_fact
+        if field_type == FieldTypes.METRIC and field.weighting_metric:
+            assert field.weighting_metric in self.warehouse.metrics, (
+                "Could not find weighting metric %s in warehouse"
+                % field.weighting_metric
             )
-            self.ds_facts.add(field.weighting_fact)
+            self.ds_metrics.add(field.weighting_metric)
 
         for formula_field in formula_fields:
-            if formula_field in self.warehouse.facts:
-                self.ds_facts.add(formula_field)
+            if formula_field in self.warehouse.metrics:
+                self.ds_metrics.add(formula_field)
             elif formula_field in self.warehouse.dimensions:
                 self.ds_dimensions.add(formula_field)
             else:
@@ -765,7 +777,7 @@ class Report:
         try:
             start = time.time()
             final_result = cr.get_final_result(
-                self.facts, self.dimensions, self.row_filters, self.rollup, self.pivot
+                self.metrics, self.dimensions, self.row_filters, self.rollup, self.pivot
             )
             dbg(final_result)
             dbg("Final result took %.3fs" % (time.time() - start))
@@ -791,38 +803,38 @@ class Report:
         grain_errors = []
         queries = []
 
-        def fact_covered_in_queries(fact):
+        def metric_covered_in_queries(metric):
             for query in queries:
-                if query.covers_fact(fact):
-                    query.add_fact(fact)
+                if query.covers_metric(metric):
+                    query.add_metric(metric)
                     return query
             return False
 
-        for fact in self.ds_facts:
-            existing_query = fact_covered_in_queries(fact)
+        for metric in self.ds_metrics:
+            existing_query = metric_covered_in_queries(metric)
             if existing_query:
                 # TODO: we could do a single consolidation at the end instead
                 # and that might get more optimal results
-                dbg("Fact %s is covered by existing query" % fact)
+                dbg("Metric %s is covered by existing query" % metric)
                 continue
 
             try:
-                table_set = self.warehouse.get_fact_table_set(fact, grain)
+                table_set = self.warehouse.get_metric_table_set(metric, grain)
             except UnsupportedGrainException as e:
                 # Gather all grain errors to be raised in one exception
                 grain_errors.append(str(e))
                 continue
 
             query = DataSourceQuery(
-                self.warehouse, [fact], self.ds_dimensions, self.criteria, table_set
+                self.warehouse, [metric], self.ds_dimensions, self.criteria, table_set
             )
             queries.append(query)
 
         if grain_errors:
             raise UnsupportedGrainException(grain_errors)
 
-        if not self.ds_facts:
-            dbg("No facts requested, getting dimension table sets")
+        if not self.ds_metrics:
+            dbg("No metrics requested, getting dimension table sets")
             table_set = self.warehouse.get_dimension_table_set(grain)
             query = DataSourceQuery(
                 self.warehouse, None, self.ds_dimensions, self.criteria, table_set

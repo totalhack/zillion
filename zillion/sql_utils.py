@@ -180,7 +180,7 @@ def aggregation_to_sqla_func(aggregation):
     return AGGREGATION_SQLA_FUNC_MAP[aggregation]
 
 
-def is_probably_fact(column):
+def is_probably_metric(column):
     if type(column.type) not in NUMERIC_SA_TYPES:
         return False
     if column.primary_key:

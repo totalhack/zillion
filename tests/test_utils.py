@@ -44,12 +44,12 @@ def create_adhoc_data(column_defs, size):
 def get_adhoc_datasource():
     column_defs = {
         "partner_name": {"fields": ["partner_name"], "type": str},
-        "adhoc_fact": {"fields": ["adhoc_fact"], "type": float},
+        "adhoc_metric": {"fields": ["adhoc_metric"], "type": float},
     }
 
     size = 10
     dt = create_adhoc_datatable(
-        "adhoc_table1", TableTypes.FACT, column_defs, ["partner_name"], size
+        "adhoc_table1", TableTypes.METRIC, column_defs, ["partner_name"], size
     )
     adhoc_ds = AdHocDataSource([dt])
     return adhoc_ds

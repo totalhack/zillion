@@ -140,7 +140,7 @@ class AdHocFieldSchema(BaseSchema):
     formula = mfields.String(required=True)
 
 
-class AdHocFactSchema(AdHocFieldSchema):
+class AdHocMetricSchema(AdHocFieldSchema):
     technical = TechnicalField(default=None, missing=None)
     rounding = mfields.Integer(default=None, missing=None)
 
@@ -189,7 +189,7 @@ class DataSourceConfigSchema(BaseSchema):
     tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
 
 
-class FactConfigSchema(BaseSchema):
+class MetricConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
     type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
     aggregation = mfields.String(
@@ -198,7 +198,7 @@ class FactConfigSchema(BaseSchema):
         validate=is_valid_aggregation,
     )
     rounding = mfields.Integer(default=None, missing=None)
-    weighting_fact = mfields.Str(default=None, missing=None)
+    weighting_metric = mfields.Str(default=None, missing=None)
     formula = mfields.String(default=None, missing=None)
     technical = TechnicalField(default=None, missing=None)
 
@@ -206,12 +206,12 @@ class FactConfigSchema(BaseSchema):
     def validate_object(self, data, **kwargs):
         if (not data.get("type", None)) and (not data.get("formula", None)):
             raise ValidationError(
-                "Either type or formula must be specified for fact: %s" % data
+                "Either type or formula must be specified for metric: %s" % data
             )
 
-        if data["weighting_fact"] and not data["aggregation"] == AggregationTypes.AVG:
+        if data["weighting_metric"] and not data["aggregation"] == AggregationTypes.AVG:
             raise ValidationError(
-                'only "%s" aggregation type is allowed with weighting facts: %s'
+                'only "%s" aggregation type is allowed with weighting metrics: %s'
                 % (AggregationTypes.AVG, data)
             )
 
@@ -223,7 +223,7 @@ class DimensionConfigSchema(BaseSchema):
 
 
 class WarehouseConfigSchema(BaseSchema):
-    facts = mfields.List(mfields.Nested(FactConfigSchema))
+    metrics = mfields.List(mfields.Nested(MetricConfigSchema))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     datasources = mfields.Dict(
         keys=mfields.Str(), values=mfields.Nested(DataSourceConfigSchema), required=True

@@ -24,10 +24,10 @@ from tlbx import (
 
 from zillion.configs import (
     AdHocFieldSchema,
-    AdHocFactSchema,
+    AdHocMetricSchema,
     ColumnInfoSchema,
     TableInfoSchema,
-    FactConfigSchema,
+    MetricConfigSchema,
     TechnicalInfoSchema,
     DimensionConfigSchema,
     is_valid_field_name,
@@ -49,7 +49,7 @@ from zillion.sql_utils import (
     aggregation_to_sqla_func,
     contains_aggregation,
     type_string_to_sa_type,
-    is_probably_fact,
+    is_probably_metric,
     sqla_compile,
     get_dialect_type_conversions,
     column_fullname,
@@ -209,9 +209,9 @@ class TableSet(PrintMixin):
     def __init__(self, ds_name, ds_table, join, grain, target_fields):
         pass
 
-    def get_covered_facts(self, warehouse):
-        covered_facts = get_table_facts(warehouse, self.ds_table)
-        return covered_facts
+    def get_covered_metrics(self, warehouse):
+        covered_metrics = get_table_metrics(warehouse, self.ds_table)
+        return covered_metrics
 
     def get_covered_fields(self):
         covered_fields = get_table_fields(self.ds_table)
@@ -337,13 +337,13 @@ def get_table_field_column(table, field_name):
     assert False, "Field %s is not present in table %s" % (field_name, table.fullname)
 
 
-def get_table_facts(warehouse, table):
-    facts = set()
+def get_table_metrics(warehouse, table):
+    metrics = set()
     for col in table.c:
         for field in col.zillion.get_field_names():
-            if field in warehouse.facts:
-                facts.add(field)
-    return facts
+            if field in warehouse.metrics:
+                metrics.add(field)
+    return metrics
 
 
 def get_table_dimensions(warehouse, table):
@@ -434,45 +434,45 @@ class Field(PrintMixin):
         return isinstance(self, type(other)) and self.__key() == other.__key()
 
 
-class Fact(Field):
+class Metric(Field):
     def __init__(
         self,
         name,
         type,
         aggregation=AggregationTypes.SUM,
         rounding=None,
-        weighting_fact=None,
+        weighting_metric=None,
         technical=None,
         **kwargs
     ):
-        if weighting_fact:
+        if weighting_metric:
             assert aggregation == AggregationTypes.AVG, (
-                'Weighting facts are only supported for "%s" aggregation type'
+                'Weighting metrics are only supported for "%s" aggregation type'
                 % AggregationTypes.AVG
             )
 
         if technical:
             technical = Technical.create(technical)
 
-        super(Fact, self).__init__(
+        super(Metric, self).__init__(
             name,
             type,
             aggregation=aggregation,
             rounding=rounding,
-            weighting_fact=weighting_fact,
+            weighting_metric=weighting_metric,
             technical=technical,
             **kwargs
         )
 
     def add_column(self, ds, column):
-        super(Fact, self).add_column(ds, column)
-        if self.weighting_fact:
+        super(Metric, self).add_column(ds, column)
+        if self.weighting_metric:
             for col in column.table.c:
-                if self.weighting_fact in col.zillion.get_field_names():
+                if self.weighting_metric in col.zillion.get_field_names():
                     return
             assert False, (
-                'Fact "%s" requires weighting_fact "%s" but it is missing from table for column %s'
-                % (self.name, self.weighting_fact, column_fullname(column))
+                'Metric "%s" requires weighting_metric "%s" but it is missing from table for column %s'
+                % (self.name, self.weighting_metric, column_fullname(column))
             )
 
     def get_ds_expression(self, column):
@@ -500,8 +500,8 @@ class Fact(Field):
                     warn("Ignoring rounding for count field: %s" % self.name)
                 return aggr(expr).label(self.name)
 
-            if self.weighting_fact:
-                w_column = get_table_field_column(column.table, self.weighting_fact)
+            if self.weighting_metric:
+                w_column = get_table_field_column(column.table, self.weighting_metric)
                 w_column_name = column_fullname(w_column)
                 # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
                 # to integer values improperly by some database dialects such as sqlite
@@ -536,7 +536,7 @@ class FormulaField(Field):
 
         for field_name in formula_fields:
             field = warehouse.get_field(field_name)
-            if isinstance(field, FormulaFact):
+            if isinstance(field, FormulaMetric):
                 try:
                     sub_fields, sub_formula = field.get_formula_fields(
                         warehouse, depth=depth + 1
@@ -573,7 +573,7 @@ class FormulaField(Field):
         return sqla_compile(clause)
 
 
-class FormulaFact(FormulaField):
+class FormulaMetric(FormulaField):
     repr_atts = ["name", "formula", "technical"]
 
     def __init__(
@@ -582,19 +582,19 @@ class FormulaFact(FormulaField):
         formula,
         aggregation=AggregationTypes.SUM,
         rounding=None,
-        weighting_fact=None,
+        weighting_metric=None,
         technical=None,
         **kwargs
     ):
         if technical:
             technical = Technical.create(technical)
 
-        super(FormulaFact, self).__init__(
+        super(FormulaMetric, self).__init__(
             name,
             formula,
             aggregation=aggregation,
             rounding=rounding,
-            weighting_fact=weighting_fact,
+            weighting_metric=weighting_metric,
             technical=technical,
             **kwargs
         )
@@ -614,15 +614,15 @@ class AdHocField(FormulaField):
         return cls(field_def["name"], field_def["formula"])
 
 
-class AdHocFact(FormulaFact):
+class AdHocMetric(FormulaMetric):
     def __init__(self, name, formula, technical=None, rounding=None):
-        super(AdHocFact, self).__init__(
+        super(AdHocMetric, self).__init__(
             name, formula, technical=technical, rounding=rounding
         )
 
     @classmethod
     def create(cls, obj):
-        schema = AdHocFactSchema()
+        schema = AdHocMetricSchema()
         field_def = schema.load(obj)
         return cls(
             field_def["name"],
@@ -636,26 +636,26 @@ class AdHocDimension(AdHocField):
     pass
 
 
-def create_fact(fact_def):
-    if fact_def["formula"]:
-        fact = FormulaFact(
-            fact_def["name"],
-            fact_def["formula"],
-            aggregation=fact_def["aggregation"],
-            rounding=fact_def["rounding"],
-            weighting_fact=fact_def["weighting_fact"],
-            technical=fact_def["technical"],
+def create_metric(metric_def):
+    if metric_def["formula"]:
+        metric = FormulaMetric(
+            metric_def["name"],
+            metric_def["formula"],
+            aggregation=metric_def["aggregation"],
+            rounding=metric_def["rounding"],
+            weighting_metric=metric_def["weighting_metric"],
+            technical=metric_def["technical"],
         )
     else:
-        fact = Fact(
-            fact_def["name"],
-            fact_def["type"],
-            aggregation=fact_def["aggregation"],
-            rounding=fact_def["rounding"],
-            weighting_fact=fact_def["weighting_fact"],
-            technical=fact_def["technical"],
+        metric = Metric(
+            metric_def["name"],
+            metric_def["type"],
+            aggregation=metric_def["aggregation"],
+            rounding=metric_def["rounding"],
+            weighting_metric=metric_def["weighting_metric"],
+            technical=metric_def["technical"],
         )
-    return fact
+    return metric
 
 
 def create_dimension(dim_def):
@@ -681,9 +681,9 @@ class Warehouse:
                     % ds_name
                 )
         self.tables = defaultdict(dict)
-        self.fact_tables = defaultdict(dict)
+        self.metric_tables = defaultdict(dict)
         self.dimension_tables = defaultdict(dict)
-        self.facts = defaultdict(dict)
+        self.metrics = defaultdict(dict)
         self.dimensions = defaultdict(dict)
         self.table_field_map = defaultdict(dict)
         self.ds_graphs = {}
@@ -722,8 +722,8 @@ class Warehouse:
         for table in ds.metadata.tables.values():
             self.remove_table(ds, table)
         del self.tables[ds.name]
-        if ds.name in self.fact_tables:
-            del self.fact_tables[ds.name]
+        if ds.name in self.metric_tables:
+            del self.metric_tables[ds.name]
         if ds.name in self.dimension_tables:
             del self.dimension_tables[ds.name]
 
@@ -781,7 +781,7 @@ class Warehouse:
                 if column.primary_key:
                     dim_count = 0
                     for field in column.zillion.get_field_names():
-                        if field in self.dimensions or field not in self.facts:
+                        if field in self.dimensions or field not in self.metrics:
                             dim_count += 1
                         assert dim_count < 2, (
                             "Primary key column may only map to a single dimension: %s"
@@ -789,24 +789,24 @@ class Warehouse:
                         )
 
     def apply_global_config(self, config):
-        formula_facts = []
+        formula_metrics = []
 
-        for fact_def in config.get("facts", []):
-            if isinstance(fact_def, dict):
-                schema = FactConfigSchema()
-                fact_def = schema.load(fact_def)
-                fact = create_fact(fact_def)
+        for metric_def in config.get("metrics", []):
+            if isinstance(metric_def, dict):
+                schema = MetricConfigSchema()
+                metric_def = schema.load(metric_def)
+                metric = create_metric(metric_def)
             else:
                 assert isinstance(
-                    fact_def, Fact
-                ), "Fact definition must be a dict-like object or a Fact object"
-                fact = fact_def
+                    metric_def, Metric
+                ), "Metric definition must be a dict-like object or a Metric object"
+                metric = metric_def
 
-            if isinstance(fact, FormulaFact):
+            if isinstance(metric, FormulaMetric):
                 # These get added later
-                formula_facts.append(fact)
+                formula_metrics.append(metric)
             else:
-                self.add_fact(fact)
+                self.add_metric(metric)
 
         for dim_def in config.get("dimensions", []):
             if isinstance(dim_def, dict):
@@ -820,10 +820,10 @@ class Warehouse:
                 dim = dim_def
             self.add_dimension(dim)
 
-        # Defer formula facts so params can be checked against existing fields
-        for fact in formula_facts:
-            fact.check_formula_fields(self)
-            self.add_fact(fact)
+        # Defer formula metrics so params can be checked against existing fields
+        for metric in formula_metrics:
+            metric.check_formula_fields(self)
+            self.add_metric(metric)
 
     def apply_datasource_config(self, ds_config, ds):
         for table in ds.metadata.tables.values():
@@ -940,14 +940,14 @@ class Warehouse:
         del self.table_field_map[ds.name]
 
     def field_exists(self, field):
-        if field in self.dimensions or field in self.facts:
+        if field in self.dimensions or field in self.metrics:
             return True
         return False
 
     def get_field(self, obj):
         if isinstance(obj, str):
-            if obj in self.facts:
-                return self.facts[obj]
+            if obj in self.metrics:
+                return self.metrics[obj]
             if obj in self.dimensions:
                 return self.dimensions[obj]
             assert False, 'Field "%s" does not exist' % obj
@@ -957,21 +957,21 @@ class Warehouse:
 
         raise InvalidFieldException("Invalid field object: %s" % obj)
 
-    def get_fact(self, obj):
+    def get_metric(self, obj):
         if isinstance(obj, str):
-            if obj not in self.facts:
-                raise InvalidFieldException("Invalid fact name: %s" % obj)
-            return self.facts[obj]
+            if obj not in self.metrics:
+                raise InvalidFieldException("Invalid metric name: %s" % obj)
+            return self.metrics[obj]
 
         if isinstance(obj, dict):
-            fact = AdHocFact.create(obj)
-            assert fact.name not in self.facts, (
-                "AdHocFact can not use name of an existing fact: %s" % fact.name
+            metric = AdHocMetric.create(obj)
+            assert metric.name not in self.metrics, (
+                "AdHocMetric can not use name of an existing metric: %s" % metric.name
             )
-            fact.check_formula_fields(self)
-            return fact
+            metric.check_formula_fields(self)
+            return metric
 
-        raise InvalidFieldException("Invalid fact object: %s" % obj)
+        raise InvalidFieldException("Invalid metric object: %s" % obj)
 
     def get_dimension(self, obj):
         if isinstance(obj, str):
@@ -987,19 +987,19 @@ class Warehouse:
             )
             return dim
 
-        raise InvalidFieldException("Invalid fact object: %s" % obj)
+        raise InvalidFieldException("Invalid metric object: %s" % obj)
 
-    def get_supported_dimensions_for_fact(self, fact, use_cache=True):
+    def get_supported_dimensions_for_metric(self, metric, use_cache=True):
         dims = set()
-        fact = self.get_fact(fact)
+        metric = self.get_metric(metric)
 
-        if use_cache and fact.name in self.supported_dimension_cache:
-            return self.supported_dimension_cache[fact]
+        if use_cache and metric.name in self.supported_dimension_cache:
+            return self.supported_dimension_cache[metric]
 
         ds_names = self.get_datasource_names()
 
         for ds_name in ds_names:
-            ds_tables = self.get_tables_with_fact(ds_name, fact.name)
+            ds_tables = self.get_tables_with_metric(ds_name, metric.name)
             ds_graph = self.ds_graphs[ds_name]
             used_tables = set()
 
@@ -1018,13 +1018,13 @@ class Warehouse:
                         )
                         used_tables.add(desc_table)
 
-        self.supported_dimension_cache[fact] = dims
+        self.supported_dimension_cache[metric] = dims
         return dims
 
-    def get_supported_dimensions(self, facts):
+    def get_supported_dimensions(self, metrics):
         dims = set()
-        for fact in facts:
-            supported_dims = self.get_supported_dimensions_for_fact(fact)
+        for metric in metrics:
+            supported_dims = self.get_supported_dimensions_for_metric(metric)
             dims = (dims & supported_dims) if len(dims) else supported_dims
         return dims
 
@@ -1047,8 +1047,8 @@ class Warehouse:
         neighbor_tables = []
         fields = get_table_fields(table)
 
-        if table.zillion.type == TableTypes.FACT:
-            # Find dimension tables whose primary key is contained in the fact table
+        if table.zillion.type == TableTypes.METRIC:
+            # Find dimension tables whose primary key is contained in the metric table
             for dim_table in self.dimension_tables[ds_name].values():
                 dt_pk_fields = self.get_primary_key_fields(dim_table.primary_key)
                 can_join = True
@@ -1097,24 +1097,24 @@ class Warehouse:
         if not table.zillion:
             return
         self.tables[ds.name][table.fullname] = table
-        if table.zillion.type == TableTypes.FACT:
-            self.add_fact_table(ds, table)
+        if table.zillion.type == TableTypes.METRIC:
+            self.add_metric_table(ds, table)
         elif table.zillion.type == TableTypes.DIMENSION:
             self.add_dimension_table(ds, table)
         else:
             assert False, "Invalid table type: %s" % table.zillion.type
 
     def remove_table(self, ds, table):
-        if table.zillion.type == TableTypes.FACT:
-            self.remove_fact_table(ds, table)
+        if table.zillion.type == TableTypes.METRIC:
+            self.remove_metric_table(ds, table)
         elif table.zillion.type == TableTypes.DIMENSION:
             self.remove_dimension_table(ds, table)
         else:
             assert False, "Invalid table type: %s" % table.zillion.type
         del self.tables[ds.name][table.fullname]
 
-    def add_fact_table(self, ds, table):
-        self.fact_tables[ds.name][table.fullname] = table
+    def add_metric_table(self, ds, table):
+        self.metric_tables[ds.name][table.fullname] = table
         for column in table.c:
             if not column.zillion:
                 continue
@@ -1123,36 +1123,36 @@ class Warehouse:
                 continue
 
             for field in column.zillion.get_field_names():
-                if field in self.facts:
-                    self.facts[field].add_column(ds, column)
+                if field in self.metrics:
+                    self.metrics[field].add_column(ds, column)
                 elif field in self.dimensions:
                     self.dimensions[field].add_column(ds, column)
                 elif table.zillion.autocolumns:
-                    if is_probably_fact(column):
-                        self.add_fact_column(ds, column, field)
+                    if is_probably_metric(column):
+                        self.add_metric_column(ds, column, field)
                     else:
                         self.add_dimension_column(ds, column, field)
 
-    def remove_fact_table(self, ds, table):
+    def remove_metric_table(self, ds, table):
         for column in table.c:
             for field in column.zillion.get_field_names():
-                if field in self.facts:
-                    self.facts[field].remove_column(ds, column)
+                if field in self.metrics:
+                    self.metrics[field].remove_column(ds, column)
                 elif field in self.dimensions:
                     self.dimensions[field].remove_column(ds, column)
-        del self.fact_tables[ds.name][table.fullname]
+        del self.metric_tables[ds.name][table.fullname]
 
-    def get_ds_tables_with_fact(self, fact):
+    def get_ds_tables_with_metric(self, metric):
         ds_tables = defaultdict(list)
-        ds_fact_columns = self.facts[fact].column_map
+        ds_metric_columns = self.metrics[metric].column_map
         count = 0
-        for ds_name, columns in ds_fact_columns.items():
+        for ds_name, columns in ds_metric_columns.items():
             for column in columns:
                 ds_tables[ds_name].append(column.table)
             count += 1
         dbg(
-            "found %d datasources, %d columns for fact %s"
-            % (len(ds_tables), count, fact)
+            "found %d datasources, %d columns for metric %s"
+            % (len(ds_tables), count, metric)
         )
         return ds_tables
 
@@ -1181,32 +1181,34 @@ class Warehouse:
                 continue
 
             for field in column.zillion.get_field_names():
-                if field in self.facts:
-                    assert False, "Dimension table has fact field: %s" % field
+                if field in self.metrics:
+                    assert False, "Dimension table has metric field: %s" % field
                 elif field in self.dimensions:
                     self.dimensions[field].add_column(ds, column)
                 elif table.zillion.autocolumns:
                     self.add_dimension_column(ds, column, field)
 
-    def add_fact(self, fact):
-        if fact.name in self.facts:
-            warn("Fact %s is already in warehouse facts" % fact.name)
+    def add_metric(self, metric):
+        if metric.name in self.metrics:
+            warn("Metric %s is already in warehouse metrics" % metric.name)
             return
-        self.facts[fact.name] = fact
+        self.metrics[metric.name] = metric
 
-    def add_fact_column(self, ds, column, field):
-        if field not in self.facts:
+    def add_metric_column(self, ds, column, field):
+        if field not in self.metrics:
             dbg(
-                "Adding fact %s from column %s.%s"
+                "Adding metric %s from column %s.%s"
                 % (field, ds.name, column_fullname(column))
             )
             aggregation, rounding = infer_aggregation_and_rounding(column)
-            fact = Fact(field, column.type, aggregation=aggregation, rounding=rounding)
-            self.add_fact(fact)
-        self.facts[field].add_column(ds, column)
+            metric = Metric(
+                field, column.type, aggregation=aggregation, rounding=rounding
+            )
+            self.add_metric(metric)
+        self.metrics[field].add_column(ds, column)
 
-    def get_tables_with_fact(self, ds_name, fact_name):
-        columns = self.facts[fact_name].get_columns(ds_name)
+    def get_tables_with_metric(self, ds_name, metric_name):
+        columns = self.metrics[metric_name].get_columns(ds_name)
         return {x.table for x in columns}
 
     def add_dimension(self, dimension):
@@ -1265,7 +1267,7 @@ class Warehouse:
         return joins
 
     def get_possible_joins(self, ds_name, table, grain):
-        """This takes a given table (usually a fact table) and tries to find one or
+        """This takes a given table (usually a metric table) and tries to find one or
         more joins to each dimension of the grain. It's possible some of these
         joins satisfy other parts of the grain too which leaves room for
         consolidation, but it's also possible to have it generate independent,
@@ -1358,43 +1360,42 @@ class Warehouse:
             )
         return sorted(ds_table_sets[ds_name], key=lambda x: len(x))[0]
 
-    def generate_unsupported_grain_msg(self, grain, fact):
+    def generate_unsupported_grain_msg(self, grain, metric):
         """
-        This assumes you are in a situation where you are sure the fact can not
+        This assumes you are in a situation where you are sure the metric can not
         meet the grain and want to generate a helpful message pinpointing the
-        issue.  If the fact actually supports all dimensions, the conclusion
+        issue.  If the metric actually supports all dimensions, the conclusion
         is that it just doesn't support them all in a single datasource and
         thus can't meet the grain.
         """
-        supported = self.get_supported_dimensions_for_fact(fact)
+        supported = self.get_supported_dimensions_for_metric(metric)
         unsupported = grain - supported
         if unsupported:
-            msg = "fact %s can not meet grain %s due to unsupported dimensions: %s" % (
-                fact,
-                grain,
-                unsupported,
+            msg = (
+                "metric %s can not meet grain %s due to unsupported dimensions: %s"
+                % (metric, grain, unsupported)
             )
         else:
-            msg = "fact %s can not meet grain %s in any single datasource" % (
-                fact,
+            msg = "metric %s can not meet grain %s in any single datasource" % (
+                metric,
                 grain,
             )
         return msg
 
-    def get_fact_table_set(self, fact, grain):
-        dbg("fact:%s grain:%s" % (fact, grain))
-        ds_fact_tables = self.get_ds_tables_with_fact(fact)
-        ds_table_sets = self.get_ds_table_sets(ds_fact_tables, fact, grain)
+    def get_metric_table_set(self, metric, grain):
+        dbg("metric:%s grain:%s" % (metric, grain))
+        ds_metric_tables = self.get_ds_tables_with_metric(metric)
+        ds_table_sets = self.get_ds_table_sets(ds_metric_tables, metric, grain)
         if not ds_table_sets:
-            msg = self.generate_unsupported_grain_msg(grain, fact)
+            msg = self.generate_unsupported_grain_msg(grain, metric)
             raise UnsupportedGrainException(msg)
         table_set = self.choose_best_table_set(ds_table_sets)
         return table_set
 
     def get_dimension_table_set(self, grain):
         """
-        This is meant to be used in cases where no facts are requested. We only
-        allow it to look at dim tables since the assumption is joining to a fact
+        This is meant to be used in cases where no metrics are requested. We only
+        allow it to look at dim tables since the assumption is joining to a metric
         table to explore dimensions doesn't make sense and would have poor performance.
         """
         dbg("grain:%s" % grain)
@@ -1543,7 +1544,7 @@ class Warehouse:
 
     def build_report(
         self,
-        facts=None,
+        metrics=None,
         dimensions=None,
         criteria=None,
         row_filters=None,
@@ -1552,7 +1553,7 @@ class Warehouse:
     ):
         return Report(
             self,
-            facts=facts,
+            metrics=metrics,
             dimensions=dimensions,
             criteria=criteria,
             row_filters=row_filters,
@@ -1564,6 +1565,10 @@ class Warehouse:
         report = Report.load(self, report_id)
         return report
 
+    def delete_report(self, report_id):
+        report = Report.delete(report_id)
+        return report
+
     # def save_report(self, **kwargs):
     #     report = self.build_report(**kwargs)
     #     report.save()
@@ -1571,7 +1576,7 @@ class Warehouse:
 
     def execute(
         self,
-        facts=None,
+        metrics=None,
         dimensions=None,
         criteria=None,
         row_filters=None,
@@ -1584,7 +1589,7 @@ class Warehouse:
         self.add_adhoc_datasources(adhoc_datasources)
 
         report = self.build_report(
-            facts=facts,
+            metrics=metrics,
             dimensions=dimensions,
             criteria=criteria,
             row_filters=row_filters,

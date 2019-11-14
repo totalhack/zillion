@@ -1,5 +1,5 @@
 {
-    "facts": [
+    "metrics": [
         {
             "name": "rpl",
             "aggregation": "avg",
@@ -11,7 +11,7 @@
             "aggregation": "avg",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_fact": "sales_quantity"
+            "weighting_metric": "sales_quantity"
         },
         {
             "name": "rpl_squared",
@@ -70,14 +70,14 @@
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2,
-            "weighting_fact": "sales_quantity"
+            "weighting_metric": "sales_quantity"
         },
         {
             "name": "revenue_avg_ds_weighted",
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2,
-            "weighting_fact": "sales_quantity"
+            "weighting_metric": "sales_quantity"
         },
         {
             "name": "leads",
@@ -136,7 +136,7 @@
                 },
 
                 "leads": {
-                    "type": "fact",
+                    "type": "metric",
                     "autocolumns": true,
                     "columns": {
                         "id": {
@@ -155,7 +155,7 @@
                 },
                 
                 "sales": {
-                    "type": "fact",
+                    "type": "metric",
                     "autocolumns": true,
                     "parent": "leads",
                     "columns": {
@@ -221,7 +221,7 @@
                 },
 
                 "aggregated_stats": {
-                    "type": "fact",
+                    "type": "metric",
                     "autocolumns": true,
                     "columns": {
                         "partner_id": {
