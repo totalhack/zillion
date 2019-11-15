@@ -42,7 +42,16 @@ for repo in git_requires:
 
 
 extras_require = {
-    "dev": ["black", "pre-commit", "pylint", "pytest", "sphinx", "twine", "wheel"]
+    "dev": [
+        "black",
+        "pre-commit",
+        "pylint",
+        "pytest",
+        "twine",
+        "wheel",
+        "sphinx",
+        "sphinx-rtd-theme",
+    ]
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
 
