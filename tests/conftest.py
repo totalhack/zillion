@@ -24,11 +24,5 @@ def config():
 
 
 @pytest.fixture(scope="function")
-def datasources():
-    return init_datasources()
-
-
-@pytest.fixture(scope="function")
-def wh(datasources, config):
-    ds_priority = [ds.name for ds in datasources]
-    return Warehouse(datasources, config=config, ds_priority=ds_priority)
+def wh(config):
+    return Warehouse(config=config)

@@ -26,13 +26,13 @@ from tlbx import (
 
 from zillion.configs import zillion_config
 from zillion.core import (
+    UnsupportedGrainException,
     AggregationTypes,
     DataSourceQueryModes,
     FieldTypes,
     TechnicalTypes,
-    UnsupportedGrainException,
-    ROW_FILTER_OPS,
 )
+from zillion.field import get_table_fields, get_table_field_column
 from zillion.sql_utils import sqla_compile, get_sqla_clause, to_sqlite_type
 
 if zillion_config["DEBUG"]:
@@ -43,6 +43,8 @@ if zillion_config["DEBUG"]:
 ROLLUP_INDEX_LABEL = chr(1114111)
 ROLLUP_INDEX_PRETTY_LABEL = "::"
 ROLLUP_TOTALS = "totals"
+
+ROW_FILTER_OPS = [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.AVG: "mean",
@@ -75,16 +77,15 @@ class DataSourceQuery(PrintMixin):
         self.select = self.build_select()
 
     def get_datasource_name(self):
-        return self.table_set.ds_name
+        return self.table_set.datasource.name
 
     def get_datasource(self):
-        return self.warehouse.get_datasource(self.get_datasource_name())
+        return self.table_set.datasource
 
     def get_bind(self):
         ds = self.get_datasource()
         assert ds.metadata.bind, (
-            'Datasource "%s" does not have metadata.bind set'
-            % self.get_datasource_name()
+            'Datasource "%s" does not have metadata.bind set' % ds.name
         )
         return ds.metadata.bind
 
@@ -133,18 +134,21 @@ class DataSourceQuery(PrintMixin):
 
     def column_for_field(self, field, table=None):
         ts = self.table_set
+
         if table is not None:
-            column = self.warehouse.table_field_map[ts.ds_name][table.fullname][field]
+            column = get_table_field_column(
+                ts.datasource.get_table(table.fullname), field
+            )
         else:
             if ts.join and field in ts.join.field_map:
                 column = ts.join.field_map[field]
-            elif (
-                field
-                in self.warehouse.table_field_map[ts.ds_name][ts.ds_table.fullname]
+            elif field in get_table_fields(
+                ts.datasource.get_table(ts.ds_table.fullname)
             ):
                 column = self.column_for_field(field, table=ts.ds_table)
             else:
                 assert False, "Could not determine column for field %s" % field
+
         self.field_map[field] = column
         return column
 
@@ -163,7 +167,8 @@ class DataSourceQuery(PrintMixin):
 
         for join_part in ts.join.join_parts:
             for table_name in join_part.table_names:
-                table = self.warehouse.tables[ts.ds_name][table_name]
+                table = ts.datasource.get_table(table_name)
+
                 if sqla_join is None:
                     sqla_join = table
                     last_table = table
@@ -213,7 +218,7 @@ class DataSourceQuery(PrintMixin):
         return False
 
     def covers_field(self, field):
-        if field in self.table_set.get_covered_fields(self.warehouse):
+        if field in self.table_set.get_covered_fields():
             return True
         return False
 
@@ -586,7 +591,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
 
 class Report:
-    @initializer
     def __init__(
         self,
         warehouse,
@@ -596,17 +600,20 @@ class Report:
         row_filters=None,
         rollup=None,
         pivot=None,
+        adhoc_datasources=None,
     ):
         start = time.time()
         self.id = None
-        self.metrics = self.metrics or []
-        self.dimensions = self.dimensions or []
+        self.warehouse = warehouse
+        self.metrics = metrics or []
+        self.dimensions = dimensions or []
         assert (
             self.metrics or self.dimensions
         ), "One of metrics or dimensions must be specified for Report"
-        self.criteria = self.criteria or []
-        self.row_filters = self.row_filters or []
+        self.criteria = criteria or []
+        self.row_filters = row_filters or []
 
+        self.rollup = None
         if rollup is not None:
             assert dimensions, "Must specify dimensions in order to use rollup"
             if rollup != ROLLUP_TOTALS:
@@ -615,11 +622,13 @@ class Report:
                 )
                 self.rollup = int(rollup)
 
-        self.pivot = self.pivot or []
+        self.pivot = pivot or []
         if pivot:
             assert set(self.pivot).issubset(
                 set(self.dimensions)
             ), "Pivot columms must be a subset of dimensions"
+
+        self.adhoc_datasources = adhoc_datasources or []
 
         self.ds_metrics = OrderedSet()
         self.ds_dimensions = OrderedSet()
@@ -684,7 +693,9 @@ class Report:
     @classmethod
     def load(cls, warehouse, report_id):
         params = cls.load_params(report_id)
-        # XXX TODO: if build fails, check whether its because expected datasources are missing
+        # XXX TODO: if build fails, check whether its because expected
+        # datasources are missing
+        st()
         result = cls.from_params(warehouse, params)
         return result
 
@@ -697,13 +708,20 @@ class Report:
         finally:
             conn.close()
 
-    def add_ds_fields(self, field_name, field_type):
+    def add_ds_fields(self, field_name, field_type, adhoc_datasources=None):
         if field_type == FieldTypes.METRIC:
+            # field = self.warehouse.get_metric(field_name, adhoc_datasources=adhoc_datasources)
             field = self.warehouse.get_metric(field_name)
         elif field_type == FieldTypes.DIMENSION:
+            # field = self.warehouse.get_dimension(field_name, adhoc_datasources=adhoc_datasources)
             field = self.warehouse.get_dimension(field_name)
         else:
             assert False, "Invalid field_type: %s" % field_type
+
+        # formula_fields, _ = field.get_formula_fields(self.warehouse, adhoc_datasources=adhoc_datasources) or (
+        #    [field_name],
+        #    None,
+        # )
 
         formula_fields, _ = field.get_formula_fields(self.warehouse) or (
             [field_name],
@@ -711,16 +729,12 @@ class Report:
         )
 
         if field_type == FieldTypes.METRIC and field.weighting_metric:
-            assert field.weighting_metric in self.warehouse.metrics, (
-                "Could not find weighting metric %s in warehouse"
-                % field.weighting_metric
-            )
             self.ds_metrics.add(field.weighting_metric)
 
         for formula_field in formula_fields:
-            if formula_field in self.warehouse.metrics:
+            if self.warehouse.has_metric(formula_field):
                 self.ds_metrics.add(formula_field)
-            elif formula_field in self.warehouse.dimensions:
+            elif self.warehouse.has_dimension(formula_field):
                 self.ds_dimensions.add(formula_field)
             else:
                 assert False, "Could not find field %s in warehouse" % formula_field

@@ -11,7 +11,7 @@
             "aggregation": "avg",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_metric": "sales_quantity"
+            "weighting_metric": "sales.quantity"
         },
         {
             "name": "rpl_squared",
@@ -95,15 +95,29 @@
         {
             "name": "partner_name",
             "type": "String(32)"
-        },
-        {
-            "name": "revenue_decile",
-            "type": "Integer"
         }
     ],
     
     "datasources": {
         "testdb1": {
+            "url": "sqlite:///testdb1",
+            "metrics": [
+                {
+                    "name": "ds_sales",
+                    "type": "Integer",
+                    "aggregation": "sum"
+                }
+            ],
+            "dimensions": [
+                {
+                    "name": "ds_partner_name",
+                    "type": "String(32)"
+                },
+                {
+                    "name": "revenue_decile",
+                    "type": "Integer"
+                }
+            ],
             "tables": {
                 "partners": {
                     "type": "dimension",
@@ -113,7 +127,7 @@
                             "fields": ["partner_id"]
                         },
                         "name": {
-                            "fields": ["partner_name"]
+                            "fields": ["partner_name", "ds_partner_name"]
                         }
                     }
                 },
@@ -142,7 +156,7 @@
                         "id": {
                             "fields": [
                                 "lead_id",
-                                {"name":"leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
+                                {"name": "leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
                             ]
                         },
                         "created_at": {
@@ -162,11 +176,13 @@
                         "id": {
                             "fields": [
                                 "sale_id",
-                                {"name":"sales", "ds_formula": "COUNT(DISTINCT sales.id)"}
+                                {"name":"sales", "ds_formula": "COUNT(DISTINCT sales.id)"},
+                                {"name":"ds_sales", "ds_formula": "COUNT(DISTINCT sales.id)"}
                             ]
                         },
                         "created_at": {
-                            "allow_type_conversions": true
+                            "allow_type_conversions": true,
+                            "type_conversion_prefix": "sale_"
                         },
                         "lead_id": {
                             "fields": ["lead_id"]
@@ -188,60 +204,6 @@
             }
         },
 
-        "testdb2": {
-            "tables": {
-                "partners": {
-                    "type": "dimension",
-                    "autocolumns": true,
-                    "columns": {
-                        "id": {
-                            "fields": ["partner_id"]
-                        },
-                        "name": {
-                            "fields": ["partner_name"]
-                        }
-                    }
-                },
-                
-                "campaigns": {
-                    "type": "dimension",
-                    "autocolumns": true,
-                    "parent": "partners",
-                    "columns": {
-                        "id": {
-                            "fields": ["campaign_id"]
-                        },
-                        "name": {
-                            "fields": ["campaign_name"]
-                        },
-                        "partner_id": {
-                            "fields": ["partner_id"]
-                        }
-                    }
-                },
-
-                "aggregated_stats": {
-                    "type": "metric",
-                    "autocolumns": true,
-                    "columns": {
-                        "partner_id": {
-                            "fields": ["partner_id"]
-                        },
-                        "campaign_id": {
-                            "fields": ["campaign_id"]
-                        },
-                        "leads": {
-                            "fields": ["leads"]
-                        },
-                        "sales": {
-                            "fields": ["sales"]
-                        },
-                        "revenue": {
-                            "fields": ["revenue"]
-                        }
-                    }
-                }
-            }
-        }
+        "testdb2": "test_datasource_config.json"
     }
 }

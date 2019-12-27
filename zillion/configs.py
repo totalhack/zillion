@@ -1,19 +1,64 @@
 from collections import OrderedDict
 import os
+import string
 
-from marshmallow import Schema, fields as mfields, ValidationError, validates_schema
-from tlbx import dbg, error, json, st
+from marshmallow import (
+    Schema,
+    fields as mfields,
+    ValidationError,
+    validates_schema,
+    pre_load,
+)
+from pandas.io.common import get_filepath_or_buffer
+from tlbx import dbg, error, json, st, initializer, MappingMixin, PrintMixin
 import yaml
 
-from zillion.core import (
-    TableTypes,
-    AggregationTypes,
-    TechnicalTypes,
-    parse_technical_string,
-    FIELD_ALLOWABLE_CHARS,
-    FIELD_ALLOWABLE_CHARS_STR,
+from zillion.core import FieldTypes, TableTypes, AggregationTypes, TechnicalTypes
+from zillion.sql_utils import (
+    column_fullname,
+    type_string_to_sa_type,
+    InvalidSQLAlchemyTypeString,
 )
-from zillion.sql_utils import type_string_to_sa_type, InvalidSQLAlchemyTypeString
+
+
+FIELD_ALLOWABLE_CHARS_STR = (
+    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"  # "_.-"
+)
+FIELD_ALLOWABLE_CHARS = set(FIELD_ALLOWABLE_CHARS_STR)
+
+DATASOURCE_ALLOWABLE_CHARS_STR = (
+    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"  # "_.-"
+)
+DATASOURCE_ALLOWABLE_CHARS = set(DATASOURCE_ALLOWABLE_CHARS_STR)
+
+
+def field_safe_name(name):
+    for char in name:
+        if char not in FIELD_ALLOWABLE_CHARS:
+            name = name.replace(char, "_")
+    return name
+
+
+def default_field_name(column):
+    return field_safe_name(column_fullname(column))
+
+
+def parse_technical_string(val):
+    min_period = None
+    center = None
+    parts = val.split("-")
+
+    if len(parts) == 2:
+        ttype, window = parts
+    elif len(parts) == 3:
+        ttype, window, min_period = parts
+
+    val = dict(type=ttype, window=window)
+    if min_period is not None:
+        val["min_period"] = min_period
+    if center is not None:
+        val["center"] = center
+    return val
 
 
 def load_zillion_config():
@@ -41,8 +86,11 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
     f.close()
     try:
         # This does the schema check, but has a bug in object_pairs_hook so order is not preserved
-        result = schema.loads(raw)
-        result = json.loads(raw, object_pairs_hook=object_pairs_hook)
+        if object_pairs_hook:
+            assert False, "Needs to support marshmallow pre_load behavior somehow"
+            result = json.loads(raw, object_pairs_hook=object_pairs_hook)
+        else:
+            result = schema.loads(raw)
     except ValidationError as e:
         error("Schema Validation Error: %s" % schema)
         print(json.dumps(str(e), indent=2))
@@ -116,6 +164,14 @@ def is_valid_technical(val):
     return True
 
 
+def is_valid_datasource_config(val):
+    if not isinstance(val, dict):
+        raise ValidationError("Invalid datasource config: %s" % val)
+    schema = DataSourceConfigSchema()
+    val = schema.load(val)
+    return True
+
+
 class BaseSchema(Schema):
     class Meta:
         # Use the json module as imported from tlbx
@@ -132,7 +188,7 @@ class TechnicalInfoSchema(BaseSchema):
 class TechnicalField(mfields.Field):
     def _validate(self, value):
         is_valid_technical(value)
-        super(TechnicalField, self)._validate(value)
+        super()._validate(value)
 
 
 class AdHocFieldSchema(BaseSchema):
@@ -153,12 +209,13 @@ class ColumnFieldConfigSchema(BaseSchema):
 class ColumnFieldConfigField(mfields.Field):
     def _validate(self, value):
         is_valid_column_field_config(value)
-        super(ColumnFieldConfigField, self)._validate(value)
+        super()._validate(value)
 
 
 class ColumnInfoSchema(BaseSchema):
     fields = mfields.List(ColumnFieldConfigField())
     allow_type_conversions = mfields.Boolean(default=False, missing=False)
+    type_conversion_prefix = mfields.String(default=None, missing=None)
     active = mfields.Boolean(default=True, missing=True)
 
 
@@ -169,7 +226,7 @@ class ColumnConfigSchema(ColumnInfoSchema):
 class TableTypeField(mfields.Field):
     def _validate(self, value):
         is_valid_table_type(value)
-        super(TableTypeField, self)._validate(value)
+        super()._validate(value)
 
 
 class TableInfoSchema(BaseSchema):
@@ -183,10 +240,6 @@ class TableConfigSchema(TableInfoSchema):
     columns = mfields.Dict(
         keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema)
     )
-
-
-class DataSourceConfigSchema(BaseSchema):
-    tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
 
 
 class MetricConfigSchema(BaseSchema):
@@ -222,9 +275,113 @@ class DimensionConfigSchema(BaseSchema):
     formula = mfields.String(default=None, missing=None)
 
 
+class DataSourceConfigSchema(BaseSchema):
+    url = mfields.String()
+    metrics = mfields.List(mfields.Nested(MetricConfigSchema))
+    dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
+    tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
+
+
+class DataSourceConfigField(mfields.Field):
+    def _validate(self, value):
+        is_valid_datasource_config(value)
+        super()._validate(value)
+
+
 class WarehouseConfigSchema(BaseSchema):
     metrics = mfields.List(mfields.Nested(MetricConfigSchema))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     datasources = mfields.Dict(
-        keys=mfields.Str(), values=mfields.Nested(DataSourceConfigSchema), required=True
+        keys=mfields.Str(), values=DataSourceConfigField, required=True
     )
+
+    @pre_load
+    def check_ds_refs(self, data, **kwargs):
+        for ds_name, ds_config in data.get("datasources", {}).items():
+            if not isinstance(ds_config, str):
+                continue
+
+            f, _, _, should_close = get_filepath_or_buffer(ds_config)
+            close = False or should_close
+            if isinstance(f, str):
+                f = open(f, "r")
+                close = True
+
+            try:
+                raw = f.read()
+            finally:
+                if close:
+                    try:
+                        f.close()
+                    except ValueError:
+                        pass
+
+            json_config = json.loads(raw)
+            schema = DataSourceConfigSchema()
+            config = schema.load(json_config)
+            data["datasources"][ds_name] = config
+
+        return data
+
+
+class ZillionInfo(MappingMixin):
+    schema = None
+
+    @initializer
+    def __init__(self, **kwargs):
+        assert self.schema, "ZillionInfo subclass must have a schema defined"
+        self.schema().load(self)
+
+    @classmethod
+    def create(cls, zillion_info):
+        if isinstance(zillion_info, cls):
+            return zillion_info
+        assert isinstance(zillion_info, dict), (
+            "Raw info must be a dict: %s" % zillion_info
+        )
+        zillion_info = cls.schema().load(zillion_info)
+        return cls(**zillion_info)
+
+
+class TableInfo(ZillionInfo, PrintMixin):
+    repr_attrs = ["type", "active", "autocolumns", "parent"]
+    schema = TableInfoSchema
+
+
+class ColumnInfo(ZillionInfo, PrintMixin):
+    repr_attrs = ["fields", "active"]
+    schema = ColumnInfoSchema
+
+    def __init__(self, **kwargs):
+        super(ColumnInfo, self).__init__(**kwargs)
+        self.field_map = OrderedDict()
+        for field in self.fields:
+            self.add_field_to_map(field)
+
+    def has_field(self, field):
+        if not isinstance(field, str):
+            field = field["name"]
+        if field in self.field_map:
+            return True
+        return False
+
+    def add_field_to_map(self, field):
+        assert not self.has_field(field), "Field %s is already added" % field
+        if isinstance(field, str):
+            self.field_map[field] = None
+        else:
+            # TODO: FieldInfoSchema?
+            assert isinstance(field, dict) and "name" in field, (
+                "Invalid field config: %s" % field
+            )
+            self.field_map[field["name"]] = field
+
+    def add_field(self, field):
+        self.add_field_to_map(field)
+        self.fields.append(field)
+
+    def get_fields(self):
+        return {k: v for k, v in self.field_map.items()}
+
+    def get_field_names(self):
+        return self.field_map.keys()

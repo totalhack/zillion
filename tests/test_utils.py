@@ -1,22 +1,19 @@
 import copy
+import logging
 import random
 
 from tlbx import st, dbg, random_string
 
 from zillion.configs import load_warehouse_config
 from zillion.core import TableTypes
-from zillion.warehouse import DataSource, AdHocDataSource, AdHocDataTable, Warehouse
+from zillion.datasource import DataSource, AdHocDataSource, AdHocDataTable
+from zillion.warehouse import Warehouse
 
 
 DEFAULT_TEST_DB = "testdb1"
 TEST_CONFIG = load_warehouse_config("test_config.json")
 
-
-def init_datasources():
-    ds1 = DataSource("testdb1", get_testdb_url("testdb1"), reflect=True)
-    ds2 = DataSource("testdb2", get_testdb_url("testdb2"), reflect=True)
-    # ds2 will end up with a higher priority
-    return [ds2, ds1]
+logging.getLogger().setLevel(logging.INFO)
 
 
 def create_adhoc_data(column_defs, size):

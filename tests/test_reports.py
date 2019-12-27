@@ -1,13 +1,13 @@
 import pytest
 
-from tlbx import dbg, st
+from tlbx import dbg, info, st
 
 from .test_utils import *
 from zillion.core import UnsupportedGrainException, InvalidFieldException
 from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 
 
-def test_report(wh):
+def test_basic_report(wh):
     metrics = ["revenue", "sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
@@ -20,7 +20,7 @@ def test_report(wh):
         row_filters=row_filters,
         rollup=rollup,
     )
-    dbg(result)
+    info(result.df)
     assert result
 
 
@@ -367,8 +367,8 @@ def test_report_save_and_load(wh):
     metrics = ["revenue", "leads", "sales"]
     dimensions = ["partner_name"]
     report = wh.build_report(metrics=metrics, dimensions=dimensions)
+    report_id = report.save()
     try:
-        report_id = report.save()
         result = wh.execute_id(report_id)
         assert result
     finally:
@@ -381,23 +381,24 @@ def test_report_adhoc_datasource_save_and_load(wh):
     adhoc_ds = get_adhoc_datasource()
     wh.add_adhoc_datasources([adhoc_ds])
     report = wh.build_report(metrics=metrics, dimensions=dimensions)
+    report_id = report.save()
     try:
-        report_id = report.save()
         result = wh.execute_id(report_id)
         assert result
     finally:
         wh.delete_report(report_id)
 
 
-# TODO: this is failing, doesnt seem to be loading adhoc DS correctly
-# def test_report_missing_adhoc_datasource_save_and_load(wh):
-#     metrics = ['revenue', 'leads', 'adhoc_metric']
-#     dimensions = ['partner_name']
-#     adhoc_ds = get_adhoc_datasource()
-#     wh.add_adhoc_datasources([adhoc_ds])
-#     report = wh.build_report(metrics=metrics, dimensions=dimensions)
-#     report_id = report.save()
-#     wh.remove_adhoc_datasources([adhoc_ds])
-#     result = wh.execute_id(report_id)
-#     # TODO: should clean up report IDs when done
-#     assert result
+def test_report_missing_adhoc_datasource_save_and_load(wh):
+    metrics = ["revenue", "leads", "adhoc_metric"]
+    dimensions = ["partner_name"]
+    adhoc_ds = get_adhoc_datasource()
+    wh.add_adhoc_datasources([adhoc_ds])
+    report = wh.build_report(metrics=metrics, dimensions=dimensions)
+    report_id = report.save()
+    try:
+        wh.remove_adhoc_datasources([adhoc_ds])
+        result = wh.execute_id(report_id)
+        assert result
+    finally:
+        wh.delete_report(report_id)

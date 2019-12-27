@@ -1,0 +1,56 @@
+{
+    "url": "sqlite:///testdb2",
+    "tables": {
+        "partners": {
+            "type": "dimension",
+            "autocolumns": true,
+            "columns": {
+                "id": {
+                    "fields": ["partner_id"]
+                },
+                "name": {
+                    "fields": ["partner_name"]
+                }
+            }
+        },
+        
+        "campaigns": {
+            "type": "dimension",
+            "autocolumns": true,
+            "parent": "partners",
+            "columns": {
+                "id": {
+                    "fields": ["campaign_id"]
+                },
+                "name": {
+                    "fields": ["campaign_name"]
+                },
+                "partner_id": {
+                    "fields": ["partner_id"]
+                }
+            }
+        },
+
+        "aggregated_stats": {
+            "type": "metric",
+            "autocolumns": true,
+            "columns": {
+                "partner_id": {
+                    "fields": ["partner_id"]
+                },
+                "campaign_id": {
+                    "fields": ["campaign_id"]
+                },
+                "leads": {
+                    "fields": ["leads"]
+                },
+                "sales": {
+                    "fields": ["sales"]
+                },
+                "revenue": {
+                    "fields": ["revenue"]
+                }
+            }
+        }
+    }
+}

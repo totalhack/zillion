@@ -67,7 +67,7 @@ DIALECT_DATE_CONVERSIONS = {
         "unix_timestamp": "strftime('%s', {})",
     },
     #'mysql': {
-    # TODO
+    #   TODO
     # }
 }
 
@@ -109,6 +109,7 @@ def get_dialect_type_conversions(dialect, column):
     results = []
     allowed = conv_info["allowed_conversions"]
     convs = conv_info["dialect_conversions"]
+
     for field in allowed:
         conv = convs[dialect].get(field, None)
         if not conv:
@@ -180,7 +181,9 @@ def aggregation_to_sqla_func(aggregation):
     return AGGREGATION_SQLA_FUNC_MAP[aggregation]
 
 
-def is_probably_metric(column):
+def is_probably_metric(column, formula=None):
+    if formula and contains_aggregation(formula):
+        return True
     if type(column.type) not in NUMERIC_SA_TYPES:
         return False
     if column.primary_key:
@@ -198,8 +201,11 @@ def printexpr(expr):
     print(sqla_compile(expr))
 
 
-def column_fullname(column):
-    return "%s.%s" % (column.table.fullname, column.name)
+def column_fullname(column, prefix=None):
+    name = "%s.%s" % (column.table.fullname, column.name)
+    if prefix:
+        name = prefix + "." + name
+    return name
 
 
 def get_sqla_clause(column, criterion, negate=False):

@@ -1,18 +1,4 @@
-import string
-
 from tlbx import ClassValueContainsMeta
-
-
-class UnsupportedGrainException(Exception):
-    pass
-
-
-class InvalidFieldException(Exception):
-    pass
-
-
-class MaxFormulaDepthException(Exception):
-    pass
 
 
 class FieldTypes(metaclass=ClassValueContainsMeta):
@@ -45,39 +31,17 @@ class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     MULTITHREADED = "multithreaded"
 
 
-def parse_technical_string(val):
-    min_period = None
-    center = None
-    parts = val.split("-")
-
-    if len(parts) == 2:
-        ttype, window = parts
-    elif len(parts) == 3:
-        ttype, window, min_period = parts
-
-    val = dict(type=ttype, window=window)
-    if min_period is not None:
-        val["min_period"] = min_period
-    if center is not None:
-        val["center"] = center
-    return val
+class UnsupportedGrainException(Exception):
+    pass
 
 
-ROW_FILTER_OPS = [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
-
-FIELD_ALLOWABLE_CHARS_STR = (
-    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
-)
-FIELD_ALLOWABLE_CHARS = set(FIELD_ALLOWABLE_CHARS_STR)
-
-DATASOURCE_ALLOWABLE_CHARS_STR = (
-    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
-)
-DATASOURCE_ALLOWABLE_CHARS = set(DATASOURCE_ALLOWABLE_CHARS_STR)
+class WarehouseException(Exception):
+    pass
 
 
-def field_safe_name(name):
-    for char in name:
-        if char not in FIELD_ALLOWABLE_CHARS:
-            name = name.replace(char, "_")
-    return name
+class InvalidFieldException(Exception):
+    pass
+
+
+class MaxFormulaDepthException(Exception):
+    pass
