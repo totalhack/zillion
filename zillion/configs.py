@@ -22,12 +22,12 @@ from zillion.sql_utils import (
 
 
 FIELD_ALLOWABLE_CHARS_STR = (
-    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"  # "_.-"
+    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
 )
 FIELD_ALLOWABLE_CHARS = set(FIELD_ALLOWABLE_CHARS_STR)
 
 DATASOURCE_ALLOWABLE_CHARS_STR = (
-    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"  # "_.-"
+    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
 )
 DATASOURCE_ALLOWABLE_CHARS = set(DATASOURCE_ALLOWABLE_CHARS_STR)
 

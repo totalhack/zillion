@@ -5,8 +5,9 @@ import random
 from tlbx import st, dbg, random_string
 
 from zillion.configs import load_warehouse_config
-from zillion.core import TableTypes
+from zillion.core import TableTypes, AggregationTypes
 from zillion.datasource import DataSource, AdHocDataSource, AdHocDataTable
+from zillion.report import Report
 from zillion.warehouse import Warehouse
 
 
@@ -16,7 +17,7 @@ TEST_CONFIG = load_warehouse_config("test_config.json")
 logging.getLogger().setLevel(logging.INFO)
 
 
-def create_adhoc_data(column_defs, size):
+def create_adhoc_data(column_types, size):
     data = []
 
     def get_random_value(coltype):
@@ -31,39 +32,52 @@ def create_adhoc_data(column_defs, size):
 
     for i in range(0, int(size)):
         row = dict()
-        for column_name, column_def in column_defs.items():
-            row[column_name] = get_random_value(column_def.get("type", str))
+        for column_name, column_type in column_types.items():
+            row[column_name] = get_random_value(column_type)
         data.append(row)
 
     return data
 
 
 def get_adhoc_datasource():
-    column_defs = {
-        "partner_name": {"fields": ["partner_name"], "type": str},
-        "adhoc_metric": {"fields": ["adhoc_metric"], "type": float},
+    table_config = {
+        "type": TableTypes.METRIC,
+        "autocolumns": False,
+        "columns": {
+            "partner_name": {"fields": ["partner_name"]},
+            "adhoc_metric": {"fields": ["adhoc_metric"]},
+        },
     }
 
+    name = "adhoc_table1"
+    primary_key = ["partner_name"]
     size = 10
-    dt = create_adhoc_datatable(
-        "adhoc_table1", TableTypes.METRIC, column_defs, ["partner_name"], size
-    )
-    adhoc_ds = AdHocDataSource([dt])
+    column_types = dict(partner_name=str, adhoc_metric=float)
+
+    dt = create_adhoc_datatable(name, table_config, primary_key, column_types, size)
+
+    config = {
+        "metrics": [
+            {
+                "name": "adhoc_metric",
+                "type": "Numeric(10,2)",
+                "aggregation": AggregationTypes.SUM,
+            }
+        ],
+        "dimensions": [{"name": "partner_name", "type": "String(32)"}],
+    }
+
+    adhoc_ds = AdHocDataSource([dt], config=config)
     return adhoc_ds
 
 
-def create_adhoc_datatable(
-    name, table_type, column_defs, primary_key, size, parent=None
-):
-    data = create_adhoc_data(column_defs, size)
-    column_defs = copy.deepcopy(column_defs)
-    for column_name, column_def in column_defs.items():
-        if "type" in column_def:
-            # The column schema doesn't allow this column
-            del column_def["type"]
-    dt = AdHocDataTable(
-        name, table_type, primary_key, data, columns=column_defs, parent=parent
-    )
+def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
+    assert (
+        table_config["columns"].keys() == column_types.keys()
+    ), "Mismatch between table_config columns and column_types"
+
+    data = create_adhoc_data(column_types, size)
+    dt = AdHocDataTable(name, data, primary_key, table_config)
     return dt
 
 

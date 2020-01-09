@@ -1,7 +1,10 @@
 from collections import defaultdict
 import copy
+import datetime
 from pprint import pformat
+import random
 
+import pandas as pd
 import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
@@ -11,6 +14,7 @@ from zillion.configs import (
     DATASOURCE_ALLOWABLE_CHARS,
     TableInfo,
     ColumnInfo,
+    TableConfigSchema,
     MetricConfigSchema,
     DimensionConfigSchema,
     default_field_name,
@@ -44,14 +48,22 @@ class TableSet(PrintMixin):
 
     @initializer
     def __init__(self, datasource, ds_table, join, grain, target_fields):
-        pass
+        self.adhoc_datasources = []
+        if isinstance(self.datasource, AdHocDataSource):
+            self.adhoc_datasources = [self.datasource]
 
     def get_covered_metrics(self, wh):
-        covered_metrics = get_table_metrics(wh, self.ds_table)
+        # Note: we pass in WH instead of DS here since the metric/dim may only
+        # be defined at the WH level even if it exists in the DS
+        covered_metrics = get_table_metrics(
+            wh, self.ds_table, adhoc_fms=self.adhoc_datasources
+        )
         return covered_metrics
 
     def get_covered_fields(self):
-        covered_fields = get_table_fields(self.ds_table)
+        covered_fields = get_table_fields(
+            self.ds_table, adhoc_fms=self.adhoc_datasources
+        )
         return covered_fields
 
     def __len__(self):
@@ -235,7 +247,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return self.metadata.bind.dialect.name
 
     def get_params(self):
-        assert False, "Do we need to store configs as well?"
+        # TODO: does this need to store more information, entire config?
         return dict(
             name=self.name, url=str(self.metadata.bind.url), reflect=self.reflect
         )
@@ -780,43 +792,49 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
 
 class AdHocDataTable(PrintMixin):
-    repr_attrs = ["name", "type", "primary_key"]
+    repr_attrs = ["name", "primary_key", "table_config"]
 
     @initializer
-    def __init__(
-        self, name, type, primary_key, data, columns=None, parent=None, autocolumns=True
-    ):
-        self.columns = columns or {}
-        self.column_names = self.columns.keys() or None
+    def __init__(self, name, data, primary_key, table_config, coerce_float=True):
+        self.table_config = TableConfigSchema().load(table_config)
+
+        # TODO: support URLs/file paths too?
+
+        if not isinstance(data, pd.DataFrame):
+            self.data = pd.DataFrame.from_records(
+                data,
+                primary_key,
+                columns=self.table_config["columns"].keys(),
+                coerce_float=coerce_float,
+            )
+
+    def to_sql(self, engine, if_exists="fail", method="multi", chunksize=int(1e3)):
+        # This hits limits in allowed sqlite params if chunks are too large
+        self.data.to_sql(
+            self.name, engine, if_exists=if_exists, method=method, chunksize=chunksize
+        )
 
 
 class AdHocDataSource(DataSource):
-    def __init__(self, datatables, name=None, coerce_float=True, if_exists="fail"):
-        self.table_configs = {}
-
+    def __init__(
+        self, datatables, name=None, config=None, coerce_float=True, if_exists="fail"
+    ):
+        config = config or dict(tables={})
         ds_name = self.check_or_create_name(name)
+
         conn_url = "sqlite:///%s" % self.get_datasource_filename(ds_name)
         engine = sa.create_engine(conn_url, echo=False)
 
         for dt in datatables:
-            df = pd.DataFrame.from_records(
-                dt.data,
-                dt.primary_key,
-                columns=dt.column_names,
-                coerce_float=coerce_float,
-            )
-            # This hits limits in allowed sqlite params if chunks are too large
-            size = int(1e3)
-            df.to_sql(
-                dt.name, engine, if_exists=if_exists, method="multi", chunksize=size
-            )
-            self.table_configs[dt.name] = dict(
-                type=dt.type,
-                parent=dt.parent,
-                columns=dt.columns,
-                autocolumns=dt.autocolumns,
-            )
-        super(AdHocDataSource, self).__init__(ds_name, conn_url, reflect=True)
+            dt.to_sql(engine)
+            config.setdefault("tables", {})[dt.name] = dt.table_config
+
+        metadata = sa.MetaData()
+        metadata.bind = engine
+
+        super(AdHocDataSource, self).__init__(
+            ds_name, metadata=metadata, config=config, reflect=True
+        )
 
     def get_datasource_filename(self, ds_name):
         return "%s/%s.db" % (zillion_config["ADHOC_DATASOURCE_DIRECTORY"], ds_name)

@@ -1,5 +1,13 @@
 import sqlalchemy as sa
-from tlbx import MappingMixin, PrintMixin, initializer, warn, st, get_string_format_args
+from tlbx import (
+    MappingMixin,
+    PrintMixin,
+    initializer,
+    warn,
+    info,
+    st,
+    get_string_format_args,
+)
 from zillion.configs import (
     MetricConfigSchema,
     TechnicalInfoSchema,
@@ -15,6 +23,7 @@ from zillion.core import (
     MaxFormulaDepthException,
     AggregationTypes,
     TableTypes,
+    FieldTypes,
 )
 from zillion.sql_utils import (
     aggregation_to_sqla_func,
@@ -50,6 +59,7 @@ class Technical(MappingMixin, PrintMixin):
 class Field(PrintMixin):
     repr_attrs = ["name"]
     ifnull_value = zillion_config["IFNULL_PRETTY_VALUE"]
+    field_type = None
 
     @initializer
     def __init__(self, name, type, **kwargs):
@@ -57,8 +67,8 @@ class Field(PrintMixin):
         if isinstance(type, str):
             self.type = type_string_to_sa_type(type)
 
-    def get_formula_fields(self, warehouse, depth=0):
-        return []
+    def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
+        return None, None
 
     def get_ds_expression(self, column):
         ds_formula = (
@@ -85,6 +95,8 @@ class Field(PrintMixin):
 
 
 class Metric(Field):
+    field_type = FieldTypes.METRIC
+
     def __init__(
         self,
         name,
@@ -126,7 +138,7 @@ class Metric(Field):
         )
         if ds_formula:
             if contains_aggregation(ds_formula):
-                warn("Datasource formula contains aggregation, skipping default logic!")
+                info("Datasource formula contains aggregation, skipping default logic!")
                 skip_aggr = True
             expr = sa.literal_column(ds_formula)
 
@@ -136,7 +148,7 @@ class Metric(Field):
                 AggregationTypes.COUNT_DISTINCT,
             ]:
                 if self.rounding:
-                    warn("Ignoring rounding for count field: %s" % self.name)
+                    info("Ignoring rounding for count field: %s" % self.name)
                 return aggr(expr).label(self.name)
 
             if self.weighting_metric:
@@ -157,14 +169,14 @@ class Metric(Field):
 
 
 class Dimension(Field):
-    pass
+    field_type = FieldTypes.DIMENSION
 
 
 class FormulaField(Field):
     def __init__(self, name, formula, **kwargs):
         super(FormulaField, self).__init__(name, None, formula=formula, **kwargs)
 
-    def get_formula_fields(self, warehouse, depth=0):
+    def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         if depth > MAX_FORMULA_DEPTH:
             raise MaxFormulaDepthException
 
@@ -174,11 +186,11 @@ class FormulaField(Field):
         field_formula_map = {}
 
         for field_name in formula_fields:
-            field = warehouse.get_field(field_name)
+            field = warehouse.get_field(field_name, adhoc_fms=adhoc_fms)
             if isinstance(field, FormulaMetric):
                 try:
                     sub_fields, sub_formula = field.get_formula_fields(
-                        warehouse, depth=depth + 1
+                        warehouse, depth=depth + 1, adhoc_fms=adhoc_fms
                     )
                 except MaxFormulaDepthException:
                     if depth != 0:
@@ -197,16 +209,18 @@ class FormulaField(Field):
         raw_formula = self.formula.format(**field_formula_map)
         return raw_fields, raw_formula
 
-    def check_formula_fields(self, warehouse):
-        fields, _ = self.get_formula_fields(warehouse)
+    def check_formula_fields(self, warehouse, adhoc_fms=None):
+        fields, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
         for field in fields:
-            warehouse.get_field(field)
+            warehouse.get_field(field, adhoc_fms=adhoc_fms)
 
     def get_ds_expression(self, column):
         assert False, "Formula-based Fields do not support get_ds_expression"
 
-    def get_final_select_clause(self, warehouse):
-        formula_fields, raw_formula = self.get_formula_fields(warehouse)
+    def get_final_select_clause(self, warehouse, adhoc_fms=None):
+        formula_fields, raw_formula = self.get_formula_fields(
+            warehouse, adhoc_fms=adhoc_fms
+        )
         format_args = {k: k for k in formula_fields}
         clause = sa.text(raw_formula.format(**format_args))
         return sqla_compile(clause)
@@ -214,6 +228,7 @@ class FormulaField(Field):
 
 class FormulaMetric(FormulaField):
     repr_atts = ["name", "formula", "technical"]
+    field_type = FieldTypes.METRIC
 
     def __init__(
         self,
@@ -238,8 +253,10 @@ class FormulaMetric(FormulaField):
             **kwargs
         )
 
-    def get_final_select_clause(self, warehouse):
-        formula_fields, raw_formula = self.get_formula_fields(warehouse)
+    def get_final_select_clause(self, warehouse, adhoc_fms=None):
+        formula_fields, raw_formula = self.get_formula_fields(
+            warehouse, adhoc_fms=adhoc_fms
+        )
         format_args = {k: k for k in formula_fields}
         clause = sa.text(raw_formula.format(**format_args))
         return sqla_compile(clause)
@@ -272,7 +289,7 @@ class AdHocMetric(FormulaMetric):
 
 
 class AdHocDimension(AdHocField):
-    pass
+    field_type = FieldTypes.DIMENSION
 
 
 def create_metric(metric_def):
@@ -310,6 +327,9 @@ class FieldManagerMixin:
     def get_child_field_managers(self):
         return []
 
+    def get_field_managers(self, adhoc_fms=None):
+        return self.get_child_field_managers() + (adhoc_fms or [])
+
     def _directly_has_metric(self, name):
         return name in getattr(self, self.metrics_attr)
 
@@ -321,65 +341,61 @@ class FieldManagerMixin:
             self, self.dimensions_attr
         )
 
-    def has_metric(self, name):
+    def has_metric(self, name, adhoc_fms=None):
         if self._directly_has_metric(name):
             return True
-        for fm in self.get_child_field_managers():
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm.has_metric(name):
                 return True
         return False
 
-    def has_dimension(self, name):
+    def has_dimension(self, name, adhoc_fms=None):
         if self._directly_has_dimension(name):
             return True
-        for fm in self.get_child_field_managers():
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm.has_dimension(name):
                 return True
         return False
 
-    def has_field(self, name):
+    def has_field(self, name, adhoc_fms=None):
         if self._directly_has_field(name):
             return True
-        for fm in self.get_child_field_managers():
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm.has_field(name):
                 return True
         return False
 
-    def get_metric(self, obj, adhoc_datasources=None):
-        # TODO: handle adhoc DSes?
-
+    def get_metric(self, obj, adhoc_fms=None):
         if isinstance(obj, str):
             if self._directly_has_metric(obj):
                 return getattr(self, self.metrics_attr)[obj]
-            elif self.has_metric(obj):
-                for fm in self.get_child_field_managers():
-                    if fm.has_metric(obj):
-                        return fm.get_metric(obj)
+            for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
+                if fm.has_metric(obj):
+                    return fm.get_metric(obj)
             raise InvalidFieldException("Invalid metric name: %s" % obj)
 
         if isinstance(obj, dict):
             metric = AdHocMetric.create(obj)
-            assert not self.has_metric(metric.name), (
+            assert not self.has_metric(metric.name, adhoc_fms=adhoc_fms), (
                 "AdHocMetric can not use name of an existing metric: %s" % metric.name
             )
-            metric.check_formula_fields(self)
+            metric.check_formula_fields(self, adhoc_fms=adhoc_fms)
             return metric
 
         raise InvalidFieldException("Invalid metric object: %s" % obj)
 
-    def get_dimension(self, obj, adhoc_datasources=None):
+    def get_dimension(self, obj, adhoc_fms=None):
         if isinstance(obj, str):
             if self._directly_has_dimension(obj):
                 return getattr(self, self.dimensions_attr)[obj]
-            elif self.has_dimension(obj):
-                for fm in self.get_child_field_managers():
-                    if fm.has_dimension(obj):
-                        return fm.get_dimension(obj)
+            for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
+                if fm.has_dimension(obj):
+                    return fm.get_dimension(obj)
             raise InvalidFieldException("Invalid dimension name: %s" % obj)
 
         if isinstance(obj, dict):
             dim = AdHocDimension.create(obj)
-            assert not self.has_dimension(dim.name), (
+            assert not self.has_dimension(dim.name, adhoc_fms=adhoc_fms), (
                 "AdHocDimension can not use name of an existing dimension: %s"
                 % dim.name
             )
@@ -387,44 +403,44 @@ class FieldManagerMixin:
 
         raise InvalidFieldException("Invalid dimension object: %s" % obj)
 
-    def get_field(self, obj):
+    def get_field(self, obj, adhoc_fms=None):
         if isinstance(obj, str):
-            if self.has_metric(obj):
-                return self.get_metric(obj)
-            if self.has_dimension(obj):
-                return self.get_dimension(obj)
+            if self.has_metric(obj, adhoc_fms=adhoc_fms):
+                return self.get_metric(obj, adhoc_fms=adhoc_fms)
+            if self.has_dimension(obj, adhoc_fms=adhoc_fms):
+                return self.get_dimension(obj, adhoc_fms=adhoc_fms)
             raise InvalidFieldException("Invalid field name: %s" % obj)
 
         if isinstance(obj, dict):
             field = AdHocField.create(obj)
-            assert not self.has_field(field.name), (
+            assert not self.has_field(field.name, adhoc_fms=adhoc_fms), (
                 "AdHocField can not use name of an existing field: %s" % field.name
             )
             return field
 
         raise InvalidFieldException("Invalid field object: %s" % obj)
 
-    def get_metrics(self):
+    def get_metrics(self, adhoc_fms=None):
         metrics = {}
         metrics.update(getattr(self, self.metrics_attr))
-        for fm in self.get_child_field_managers():
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             fm_metrics = fm.get_metrics()
             metrics.update(fm_metrics)
         return metrics
 
-    def get_dimensions(self):
+    def get_dimensions(self, adhoc_fms=None):
         dimensions = {}
         dimensions.update(getattr(self, self.dimensions_attr))
-        for fm in self.get_child_field_managers():
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             fm_dimensions = fm.get_dimensions()
             dimensions.update(fm_dimensions)
         return dimensions
 
-    def get_fields(self):
+    def get_fields(self, adhoc_fms=None):
         fields = {}
         fields.update(getattr(self, self.metrics_attr))
         fields.update(getattr(self, self.dimensions_attr))
-        for fm in self.get_child_field_managers():
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             fm_fields = fm.get_fields()
             fields.update(fm_fields)
         return fields
@@ -487,34 +503,35 @@ class FieldManagerMixin:
             metric.check_formula_fields(self)
             self.add_metric(metric, force=force)
 
-    def find_field_sources(self, field):
+    def find_field_sources(self, field, adhoc_fms=None):
         sources = []
         if self._directly_has_field(field):
             sources.append(self)
-        for fm in self.get_child_field_managers():
+
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm._directly_has_field(field):
                 sources.append(fm)
         return sources
 
 
-def get_table_metrics(fm, table):
+def get_table_metrics(fm, table, adhoc_fms=None):
     metrics = set()
     for col in table.c:
         if not (getattr(col, "zillion", None) and col.zillion.active):
             continue
         for field in col.zillion.get_field_names():
-            if fm.has_metric(field):
+            if fm.has_metric(field, adhoc_fms=adhoc_fms):
                 metrics.add(field)
     return metrics
 
 
-def get_table_dimensions(fm, table):
+def get_table_dimensions(fm, table, adhoc_fms=None):
     dims = set()
     for col in table.c:
         if not (getattr(col, "zillion", None) and col.zillion.active):
             continue
         for field in col.zillion.get_field_names():
-            if fm.has_dimension(field):
+            if fm.has_dimension(field, adhoc_fms=adhoc_fms):
                 dims.add(field)
     return dims
 

@@ -39,6 +39,10 @@ class WarehouseException(Exception):
     pass
 
 
+class ReportException(Exception):
+    pass
+
+
 class InvalidFieldException(Exception):
     pass
 

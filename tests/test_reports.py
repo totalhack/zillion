@@ -3,7 +3,11 @@ import pytest
 from tlbx import dbg, info, st
 
 from .test_utils import *
-from zillion.core import UnsupportedGrainException, InvalidFieldException
+from zillion.core import (
+    UnsupportedGrainException,
+    InvalidFieldException,
+    ReportException,
+)
 from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 
 
@@ -20,8 +24,8 @@ def test_basic_report(wh):
         row_filters=row_filters,
         rollup=rollup,
     )
-    info(result.df)
     assert result
+    info(result.df)
 
 
 def test_impossible_report(wh):
@@ -48,6 +52,7 @@ def test_report_pivot(wh):
         pivot=pivot,
     )
     assert result
+    info(result.df)
 
 
 def test_report_moving_average_metric(wh):
@@ -66,6 +71,7 @@ def test_report_moving_average_metric(wh):
         rollup=rollup,
     )
     assert result
+    info(result.df)
 
 
 def test_report_moving_average_adhoc_metric(wh):
@@ -87,9 +93,10 @@ def test_report_moving_average_adhoc_metric(wh):
         rollup=rollup,
     )
     assert result
+    info(result.df)
 
 
-def test_reporting_moving_average_formula_metric(wh):
+def test_report_moving_average_formula_metric(wh):
     metrics = ["revenue", "rpl", "rpl_ma_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time
     # dims have been added as of the time of creating this test.
@@ -105,6 +112,7 @@ def test_reporting_moving_average_formula_metric(wh):
         rollup=rollup,
     )
     assert result
+    info(result.df)
 
 
 def test_report_cum_sum_metric(wh):
@@ -123,6 +131,7 @@ def test_report_cum_sum_metric(wh):
         rollup=rollup,
     )
     assert result
+    info(result.df)
 
 
 def test_report_bollinger_metric(wh):
@@ -141,6 +150,7 @@ def test_report_bollinger_metric(wh):
         rollup=rollup,
     )
     assert result
+    info(result.df)
 
 
 def test_report_no_dimensions(wh):
@@ -148,6 +158,7 @@ def test_report_no_dimensions(wh):
     criteria = [("campaign_name", "=", "Campaign 2B")]
     result = wh.execute(metrics, criteria=criteria)
     assert result
+    info(result.df)
 
 
 def test_report_no_metrics(wh):
@@ -155,6 +166,7 @@ def test_report_no_metrics(wh):
     dimensions = ["partner_name", "campaign_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_null_criteria(wh):
@@ -163,6 +175,7 @@ def test_report_null_criteria(wh):
     criteria = [("campaign_name", "!=", None)]
     result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
     assert result
+    info(result.df)
 
 
 def test_report_count_metric(wh):
@@ -170,6 +183,7 @@ def test_report_count_metric(wh):
     dimensions = ["campaign_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_alias_metric(wh):
@@ -177,6 +191,7 @@ def test_report_alias_metric(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_alias_dimension(wh):
@@ -184,6 +199,7 @@ def test_report_alias_dimension(wh):
     dimensions = ["lead_id"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_multiple_queries(wh):
@@ -191,6 +207,7 @@ def test_report_multiple_queries(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_formula_metric(wh):
@@ -198,13 +215,15 @@ def test_report_formula_metric(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
-def test_report_nested_formnula_metric(wh):
+def test_report_nested_formula_metric(wh):
     metrics = ["rpl_squared", "rpl_unsquared", "rpl", "leads"]
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_ds_dimension_formula(wh):
@@ -212,6 +231,7 @@ def test_report_ds_dimension_formula(wh):
     dimensions = ["revenue_decile"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_ds_metric_formula(wh):
@@ -219,6 +239,7 @@ def test_report_ds_metric_formula(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_non_existent_metric(wh):
@@ -234,6 +255,7 @@ def test_report_weighted_formula_metric(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_weighted_ds_metric_formula(wh):
@@ -241,6 +263,7 @@ def test_report_weighted_ds_metric_formula(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_weighted_metric(wh):
@@ -248,6 +271,7 @@ def test_report_weighted_metric(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_weighted_metric_with_rollup(wh):
@@ -256,6 +280,7 @@ def test_report_weighted_metric_with_rollup(wh):
     rollup = ROLLUP_TOTALS
     result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
     assert result
+    info(result.df)
 
 
 def test_report_weighted_metric_with_multi_rollup(wh):
@@ -264,6 +289,7 @@ def test_report_weighted_metric_with_multi_rollup(wh):
     rollup = 2
     result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
     assert result
+    info(result.df)
 
 
 def test_report_multi_dimension(wh):
@@ -271,6 +297,7 @@ def test_report_multi_dimension(wh):
     dimensions = ["partner_name", "lead_id"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_rollup(wh):
@@ -281,6 +308,7 @@ def test_report_rollup(wh):
     result = wh.execute(
         metrics, dimensions=dimensions, criteria=criteria, rollup=rollup
     )
+    info(result.df)
     revenue = result.rollup_rows().iloc[-1]["revenue"]
     revenue_sum = result.non_rollup_rows().sum()["revenue"]
     assert revenue == revenue_sum
@@ -294,6 +322,7 @@ def test_report_multi_rollup(wh):
     result = wh.execute(
         metrics, dimensions=dimensions, criteria=criteria, rollup=rollup
     )
+    info(result.df)
     revenue = result.rollup_rows().iloc[-1]["revenue"]
     revenue_sum = result.non_rollup_rows().sum()["revenue"]
     assert revenue == revenue_sum
@@ -309,6 +338,7 @@ def test_report_multi_rollup_pivot(wh):
         metrics, dimensions=dimensions, criteria=criteria, rollup=rollup, pivot=pivot
     )
     assert result
+    info(result.df)
 
 
 def test_report_adhoc_dimension(wh):
@@ -320,6 +350,7 @@ def test_report_adhoc_dimension(wh):
     ]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
 
 
 def test_report_adhoc_metric(wh):
@@ -327,6 +358,46 @@ def test_report_adhoc_metric(wh):
     dimensions = ["partner_name", "lead_id"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
+
+
+def test_report_date_conversion(wh):
+    metrics = ["revenue"]
+    dimensions = ["datetime", "hour_of_day"]
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+    result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+    assert result
+    info(result.df)
+
+
+def test_report_datasource_priority(wh):
+    metrics = ["revenue", "leads", "sales"]
+    dimensions = ["partner_name"]
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    assert report.queries[0].get_datasource_name() == "testdb1"
+
+
+def test_report_multi_datasource(wh):
+    metrics = ["revenue", "leads", "sales", "revenue_avg"]
+    dimensions = ["partner_name"]
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    assert len(report.queries) == 2
+    result = report.execute()
+    assert result
+    info(result.df)
+
+
+def test_report_save_and_load(wh):
+    metrics = ["revenue", "leads", "sales"]
+    dimensions = ["partner_name"]
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    report_id = report.save()
+    try:
+        result = wh.execute_id(report_id)
+        assert result
+        info(result.df)
+    finally:
+        wh.delete_report(report_id)
 
 
 def test_report_adhoc_datasource(wh):
@@ -335,56 +406,21 @@ def test_report_adhoc_datasource(wh):
     adhoc_ds = get_adhoc_datasource()
     result = wh.execute(metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds])
     assert result
+    info(result.df)
 
 
-def test_report_date_conversion(wh):
-    metrics = ["revenue"]
-    dimensions = ["datetime", "hour_of_day"]
-    criteria = [("campaign_name", "!=", "Campaign 2B")]
-    result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
-    dbg(result)
-    assert result
-
-
-def test_report_datasource_priority(wh):
-    metrics = ["revenue", "leads", "sales"]
-    dimensions = ["partner_name"]
-    report = wh.build_report(metrics=metrics, dimensions=dimensions)
-    assert report.queries[0].get_datasource_name() == "testdb2"
-
-
-def test_report_multi_datasource(wh):
-    metrics = ["revenue", "leads", "sales", "revenue_avg"]
-    dimensions = ["partner_name"]
-    report = wh.build_report(metrics=metrics, dimensions=dimensions)
-    assert len(report.queries) == 2
-    result = report.execute()
-    dbg(result)
-    assert result
-
-
-def test_report_save_and_load(wh):
-    metrics = ["revenue", "leads", "sales"]
-    dimensions = ["partner_name"]
-    report = wh.build_report(metrics=metrics, dimensions=dimensions)
-    report_id = report.save()
-    try:
-        result = wh.execute_id(report_id)
-        assert result
-    finally:
-        wh.delete_report(report_id)
-
-
-def test_report_adhoc_datasource_save_and_load(wh):
+def test_report_save_and_load_adhoc_datasource(wh):
     metrics = ["revenue", "leads", "adhoc_metric"]
     dimensions = ["partner_name"]
     adhoc_ds = get_adhoc_datasource()
-    wh.add_adhoc_datasources([adhoc_ds])
-    report = wh.build_report(metrics=metrics, dimensions=dimensions)
+    report = wh.save_report(
+        metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+    )
     report_id = report.save()
     try:
-        result = wh.execute_id(report_id)
+        result = wh.execute_id(report_id, adhoc_datasources=[adhoc_ds])
         assert result
+        info(result.df)
     finally:
         wh.delete_report(report_id)
 
@@ -393,12 +429,12 @@ def test_report_missing_adhoc_datasource_save_and_load(wh):
     metrics = ["revenue", "leads", "adhoc_metric"]
     dimensions = ["partner_name"]
     adhoc_ds = get_adhoc_datasource()
-    wh.add_adhoc_datasources([adhoc_ds])
-    report = wh.build_report(metrics=metrics, dimensions=dimensions)
+    report = wh.save_report(
+        metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+    )
     report_id = report.save()
     try:
-        wh.remove_adhoc_datasources([adhoc_ds])
-        result = wh.execute_id(report_id)
-        assert result
+        with pytest.raises(ReportException):
+            result = wh.execute_id(report_id)
     finally:
         wh.delete_report(report_id)

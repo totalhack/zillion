@@ -11,7 +11,7 @@
             "aggregation": "avg",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_metric": "sales.quantity"
+            "weighting_metric": "sales_quantity"
         },
         {
             "name": "rpl_squared",

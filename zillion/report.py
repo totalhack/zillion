@@ -27,6 +27,7 @@ from tlbx import (
 from zillion.configs import zillion_config
 from zillion.core import (
     UnsupportedGrainException,
+    ReportException,
     AggregationTypes,
     DataSourceQueryModes,
     FieldTypes,
@@ -72,8 +73,8 @@ class DataSourceQuery(PrintMixin):
     @initializer
     def __init__(self, warehouse, metrics, dimensions, criteria, table_set):
         self.field_map = {}
-        self.metrics = orderedsetify(metrics) if metrics else []
-        self.dimensions = orderedsetify(dimensions) if dimensions else []
+        self.metrics = metrics or {}
+        self.dimensions = dimensions or {}
         self.select = self.build_select()
 
     def get_datasource_name(self):
@@ -132,6 +133,13 @@ class DataSourceQuery(PrintMixin):
         select = self.add_group_by(select)
         return select
 
+    def get_field(self, name):
+        if name in self.metrics:
+            return self.metrics[name]
+        elif name in self.dimensions:
+            return self.dimensions[name]
+        assert False, "Could not find field for DataSourceQuery: %s" % name
+
     def column_for_field(self, field, table=None):
         ts = self.table_set
 
@@ -154,7 +162,7 @@ class DataSourceQuery(PrintMixin):
 
     def get_field_expression(self, field):
         column = self.column_for_field(field)
-        field_obj = self.warehouse.get_field(field)
+        field_obj = self.get_field(field)
         return field_obj.get_ds_expression(column)
 
     def get_join(self):
@@ -222,14 +230,12 @@ class DataSourceQuery(PrintMixin):
             return True
         return False
 
-    def add_metric(self, metric):
-        assert self.covers_metric(metric), (
-            "Metric %s can not be covered by query" % metric
-        )
+    def add_metric(self, name):
+        assert self.covers_metric(name), "Metric %s can not be covered by query" % name
         # TODO: improve the way we maintain targeted metrics/dims
-        self.table_set.target_fields.add(metric)
-        self.metrics.add(metric)
-        self.select = self.select.column(self.get_field_expression(metric))
+        self.table_set.target_fields.add(name)
+        self.metrics[name] = self.table_set.datasource.get_metric(name)
+        self.select = self.select.column(self.get_field_expression(name))
 
 
 class DataSourceQuerySummary(PrintMixin):
@@ -270,9 +276,12 @@ class DataSourceQueryResult(PrintMixin):
 
 class BaseCombinedResult:
     @initializer
-    def __init__(self, warehouse, ds_query_results, primary_ds_dimensions):
+    def __init__(
+        self, warehouse, ds_query_results, primary_ds_dimensions, adhoc_datasources=None
+    ):
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
+        self.adhoc_datasources = adhoc_datasources or []
         self.table_name = "zillion_%s_%s" % (
             str(time.time()).replace(".", "_"),
             random.randint(0, 1e9),
@@ -310,16 +319,14 @@ class BaseCombinedResult:
         metrics = OrderedDict()
 
         for qr in self.ds_query_results:
-            for dim_name in qr.query.dimensions:
+            for dim_name, dim in qr.query.dimensions.items():
                 if dim_name in dimensions:
                     continue
-                dim = self.warehouse.get_dimension(dim_name)
                 dimensions[dim_name] = dim
 
-            for metric_name in qr.query.metrics:
+            for metric_name, metric in qr.query.metrics.items():
                 if metric_name in metrics:
                     continue
-                metric = self.warehouse.get_metric(metric_name)
                 metrics[metric_name] = metric
 
         return dimensions, metrics
@@ -440,6 +447,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         # TODO: test weighted averages
         # https://stackoverflow.com/questions/36489576/why-does-concatenation-of-dataframes-get-exponentially-slower
         level_aggrs = [df]
+        dim_names = list(dimensions.keys())
 
         for level in range(rollup):
             if (level + 1) == len(dimensions):
@@ -454,7 +462,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             # for the remaining levels, set index cols to ROLLUP_INDEX_LABEL
             if level != (len(dimensions) - 1):
                 new_index_dims = []
-                for dim in dimensions[level + 1 :]:
+                for dim in dim_names[level + 1 :]:
                     level_aggr[dim] = ROLLUP_INDEX_LABEL
                     new_index_dims.append(dim)
                 level_aggr = level_aggr.set_index(new_index_dims, append=True)
@@ -479,8 +487,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             except ZeroDivisionError:
                 return d.mean()  # Return mean if there are no weights
 
-        for metric_name in metrics:
-            metric = self.warehouse.get_metric(metric_name)
+        for metric in metrics.values():
             if metric.weighting_metric:
                 wavgs.append((metric.name, metric.weighting_metric))
                 continue
@@ -541,25 +548,33 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         columns = []
         dimension_aliases = []
 
-        for dim_name in dimensions:
-            dim_def = self.warehouse.get_dimension(dim_name)
+        for dim in dimensions.values():
             columns.append(
                 "%s as %s"
-                % (dim_def.get_final_select_clause(self.warehouse), dim_def.name)
+                % (
+                    dim.get_final_select_clause(
+                        self.warehouse, adhoc_fms=self.adhoc_datasources
+                    ),
+                    dim.name,
+                )
             )
-            dimension_aliases.append(dim_def.name)
+            dimension_aliases.append(dim.name)
 
         technicals = {}
         rounding = {}
-        for metric_name in metrics:
-            metric_def = self.warehouse.get_metric(metric_name)
-            if metric_def.technical:
-                technicals[metric_def.name] = metric_def.technical
-            if metric_def.rounding is not None:
-                rounding[metric_def.name] = metric_def.rounding
+        for metric in metrics.values():
+            if metric.technical:
+                technicals[metric.name] = metric.technical
+            if metric.rounding is not None:
+                rounding[metric.name] = metric.rounding
             columns.append(
                 "%s as %s"
-                % (metric_def.get_final_select_clause(self.warehouse), metric_def.name)
+                % (
+                    metric.get_final_select_clause(
+                        self.warehouse, adhoc_fms=self.adhoc_datasources
+                    ),
+                    metric.name,
+                )
             )
 
         sql = self.get_final_select_sql(columns, dimension_aliases)
@@ -605,11 +620,18 @@ class Report:
         start = time.time()
         self.id = None
         self.warehouse = warehouse
-        self.metrics = metrics or []
-        self.dimensions = dimensions or []
+
+        self.metrics = self._get_fields_dict(
+            metrics, adhoc_datasources=adhoc_datasources
+        )
+        self.dimensions = self._get_fields_dict(
+            dimensions, adhoc_datasources=adhoc_datasources
+        )
+
         assert (
             self.metrics or self.dimensions
         ), "One of metrics or dimensions must be specified for Report"
+
         self.criteria = criteria or []
         self.row_filters = row_filters or []
 
@@ -621,6 +643,8 @@ class Report:
                     "Invalid rollup value: %s" % rollup
                 )
                 self.rollup = int(rollup)
+            else:
+                self.rollup = rollup
 
         self.pivot = pivot or []
         if pivot:
@@ -630,14 +654,14 @@ class Report:
 
         self.adhoc_datasources = adhoc_datasources or []
 
-        self.ds_metrics = OrderedSet()
-        self.ds_dimensions = OrderedSet()
+        self.ds_metrics = OrderedDict()
+        self.ds_dimensions = OrderedDict()
 
-        for metric_name in self.metrics:
-            self.add_ds_fields(metric_name, FieldTypes.METRIC)
+        for metric in self.metrics.values():
+            self.add_ds_fields(metric)
 
-        for dim_name in self.dimensions:
-            self.add_ds_fields(dim_name, FieldTypes.DIMENSION)
+        for dim in self.dimensions.values():
+            self.add_ds_fields(dim)
 
         self.queries = self.build_ds_queries()
         self.combined_query = None
@@ -646,11 +670,11 @@ class Report:
 
     def get_params(self):
         used_datasources = list({q.get_datasource_name() for q in self.queries})
-        datasources = [ds.get_params() for ds in self.warehouse.datasources]
+        datasources = [ds.get_params() for ds in self.warehouse.datasources.values()]
         return dict(
             kwargs=dict(
-                metrics=self.metrics,
-                dimensions=self.dimensions,
+                metrics=list(self.metrics.keys()),
+                dimensions=list(self.dimensions.keys()),
                 criteria=self.criteria,
                 row_filters=self.row_filters,
                 rollup=self.rollup,
@@ -687,16 +711,23 @@ class Report:
             conn.close()
 
     @classmethod
-    def from_params(cls, warehouse, params):
-        return Report(warehouse, **params["kwargs"])
+    def from_params(cls, warehouse, params, adhoc_datasources=None):
+        used_dses = set(params.get("used_datasources", []))
+        wh_dses = warehouse.get_datasource_names()
+        all_dses = set(wh_dses) | set([x.name for x in (adhoc_datasources or [])])
+        if not used_dses.issubset(all_dses):
+            raise ReportException(
+                "Report requires datasources that are not present: %s Found: %s"
+                % (used_dses - all_dses, all_dses)
+            )
+        return Report(
+            warehouse, **params["kwargs"], adhoc_datasources=adhoc_datasources
+        )
 
     @classmethod
-    def load(cls, warehouse, report_id):
+    def load(cls, warehouse, report_id, adhoc_datasources=None):
         params = cls.load_params(report_id)
-        # XXX TODO: if build fails, check whether its because expected
-        # datasources are missing
-        st()
-        result = cls.from_params(warehouse, params)
+        result = cls.from_params(warehouse, params, adhoc_datasources=adhoc_datasources)
         return result
 
     @classmethod
@@ -708,34 +739,50 @@ class Report:
         finally:
             conn.close()
 
-    def add_ds_fields(self, field_name, field_type, adhoc_datasources=None):
-        if field_type == FieldTypes.METRIC:
-            # field = self.warehouse.get_metric(field_name, adhoc_datasources=adhoc_datasources)
-            field = self.warehouse.get_metric(field_name)
-        elif field_type == FieldTypes.DIMENSION:
-            # field = self.warehouse.get_dimension(field_name, adhoc_datasources=adhoc_datasources)
-            field = self.warehouse.get_dimension(field_name)
-        else:
-            assert False, "Invalid field_type: %s" % field_type
+    def _get_field(self, name, adhoc_datasources=None):
+        return self.warehouse.get_field(name, adhoc_fms=adhoc_datasources)
 
-        # formula_fields, _ = field.get_formula_fields(self.warehouse, adhoc_datasources=adhoc_datasources) or (
-        #    [field_name],
-        #    None,
-        # )
+    def _get_fields_dict(self, names, adhoc_datasources=None):
+        d = OrderedDict()
+        for name in names or []:
+            d[name] = self._get_field(name, adhoc_datasources=adhoc_datasources)
+        return d
 
-        formula_fields, _ = field.get_formula_fields(self.warehouse) or (
-            [field_name],
-            None,
+    def add_ds_fields(self, field):
+        formula_fields, _ = field.get_formula_fields(
+            self.warehouse, adhoc_fms=self.adhoc_datasources
         )
+        if not formula_fields:
+            formula_fields = [field.name]
 
-        if field_type == FieldTypes.METRIC and field.weighting_metric:
-            self.ds_metrics.add(field.weighting_metric)
+        if field.field_type == FieldTypes.METRIC and field.weighting_metric:
+            weighting_field = self.warehouse.get_metric(
+                field.weighting_metric, adhoc_fms=self.adhoc_datasources
+            )
+            self.ds_metrics[field.weighting_metric] = weighting_field
 
         for formula_field in formula_fields:
-            if self.warehouse.has_metric(formula_field):
-                self.ds_metrics.add(formula_field)
-            elif self.warehouse.has_dimension(formula_field):
-                self.ds_dimensions.add(formula_field)
+            if formula_field == field.name:
+                if field.field_type == FieldTypes.METRIC:
+                    self.ds_metrics[formula_field] = field
+                elif field.field_type == FieldTypes.DIMENSION:
+                    self.ds_dimensions[formula_field] = field
+                else:
+                    assert False, "Invalid field_type: %s" % field.field_type
+                continue
+
+            if self.warehouse.has_metric(
+                formula_field, adhoc_fms=self.adhoc_datasources
+            ):
+                self.ds_metrics[formula_field] = self.warehouse.get_metric(
+                    formula_field, adhoc_fms=self.adhoc_datasources
+                )
+            elif self.warehouse.has_dimension(
+                formula_field, adhoc_fms=self.adhoc_datasources
+            ):
+                self.ds_dimensions[formula_field] = self.warehouse.get_dimension(
+                    formula_field, adhoc_fms=self.adhoc_datasources
+                )
             else:
                 assert False, "Could not find field %s in warehouse" % formula_field
 
@@ -824,23 +871,29 @@ class Report:
                     return query
             return False
 
-        for metric in self.ds_metrics:
-            existing_query = metric_covered_in_queries(metric)
+        for metric_name, metric in self.ds_metrics.items():
+            existing_query = metric_covered_in_queries(metric_name)
             if existing_query:
                 # TODO: we could do a single consolidation at the end instead
                 # and that might get more optimal results
-                dbg("Metric %s is covered by existing query" % metric)
+                dbg("Metric %s is covered by existing query" % metric_name)
                 continue
 
             try:
-                table_set = self.warehouse.get_metric_table_set(metric, grain)
+                table_set = self.warehouse.get_metric_table_set(
+                    metric_name, grain, adhoc_datasources=self.adhoc_datasources
+                )
             except UnsupportedGrainException as e:
                 # Gather all grain errors to be raised in one exception
                 grain_errors.append(str(e))
                 continue
 
             query = DataSourceQuery(
-                self.warehouse, [metric], self.ds_dimensions, self.criteria, table_set
+                self.warehouse,
+                {metric.name: metric},
+                self.ds_dimensions,
+                self.criteria,
+                table_set,
             )
             queries.append(query)
 
@@ -849,7 +902,9 @@ class Report:
 
         if not self.ds_metrics:
             dbg("No metrics requested, getting dimension table sets")
-            table_set = self.warehouse.get_dimension_table_set(grain)
+            table_set = self.warehouse.get_dimension_table_set(
+                grain, adhoc_datasources=self.adhoc_datasources
+            )
             query = DataSourceQuery(
                 self.warehouse, None, self.ds_dimensions, self.criteria, table_set
             )
@@ -862,7 +917,10 @@ class Report:
 
     def create_combined_result(self, ds_query_results):
         return SQLiteMemoryCombinedResult(
-            self.warehouse, ds_query_results, self.ds_dimensions
+            self.warehouse,
+            ds_query_results,
+            list(self.ds_dimensions.keys()),
+            adhoc_datasources=self.adhoc_datasources,
         )
 
 
