@@ -303,7 +303,6 @@ def create_metric(metric_def):
             technical=metric_def["technical"],
         )
     else:
-        # XXX metric = Metric(**metric_def) ?
         metric = Metric(
             metric_def["name"],
             metric_def["type"],
@@ -411,6 +410,7 @@ class FieldManagerMixin:
                 return self.get_dimension(obj, adhoc_fms=adhoc_fms)
             raise InvalidFieldException("Invalid field name: %s" % obj)
 
+        # TODO: should this be allowed?
         if isinstance(obj, dict):
             field = AdHocField.create(obj)
             assert not self.has_field(field.name, adhoc_fms=adhoc_fms), (
@@ -445,22 +445,31 @@ class FieldManagerMixin:
             fields.update(fm_fields)
         return fields
 
-    def get_metric_names(self):
-        return set(self.get_metrics().keys())
+    def get_metric_names(self, adhoc_fms=None):
+        return set(self.get_metrics(adhoc_fms=adhoc_fms).keys())
 
-    def get_dimension_names(self):
-        return set(self.get_dimensions().keys())
+    def get_dimension_names(self, adhoc_fms=None):
+        return set(self.get_dimensions(adhoc_fms=adhoc_fms).keys())
 
-    def get_field_names(self):
-        return set(self.get_fields().keys())
+    def get_field_names(self, adhoc_fms=None):
+        return set(self.get_fields(adhoc_fms=adhoc_fms).keys())
 
     def add_metric(self, metric, force=False):
+        if self.has_dimension(metric.name):
+            raise InvalidFieldException(
+                "Trying to add metric with same name as a dimension: %s" % metric.name
+            )
         if (not force) and self.has_metric(metric.name):
             warn("Metric %s already exists on %s" % (metric.name, self))
             return
         getattr(self, self.metrics_attr)[metric.name] = metric
 
     def add_dimension(self, dimension, force=False):
+        if self.has_metric(dimension.name):
+            raise InvalidFieldException(
+                "Trying to add dimension with same name as a metric: %s"
+                % dimension.name
+            )
         if (not force) and self.has_dimension(dimension.name):
             warn("Dimension %s already exists on %s" % (dimension.name, self))
             return

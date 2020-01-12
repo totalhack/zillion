@@ -1,5 +1,12 @@
 {
     "url": "sqlite:///testdb2",
+    "metrics": [
+        {
+            "name": "aggr_sales",
+            "type": "Integer",
+            "aggregation": "sum"
+        }
+    ],
     "tables": {
         "partners": {
             "type": "dimension",
@@ -45,7 +52,7 @@
                     "fields": ["leads"]
                 },
                 "sales": {
-                    "fields": ["sales"]
+                    "fields": ["sales", "aggr_sales"]
                 },
                 "revenue": {
                     "fields": ["revenue"]

@@ -7,7 +7,9 @@ from zillion.core import (
     UnsupportedGrainException,
     InvalidFieldException,
     ReportException,
+    WarehouseException,
 )
+from zillion.field import Metric
 from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 
 
@@ -400,19 +402,30 @@ def test_report_save_and_load(wh):
         wh.delete_report(report_id)
 
 
-def test_report_adhoc_datasource(wh):
+def test_report_save_and_load_adhoc_metric(wh):
+    metrics = ["revenue", {"formula": "{revenue} > 3*{lead_id}", "name": "testmetric"}]
+    dimensions = ["partner_name", "lead_id"]
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    report_id = report.save()
+    try:
+        result = wh.execute_id(report_id)
+        assert result
+        info(result.df)
+    finally:
+        wh.delete_report(report_id)
+
+
+def test_report_adhoc_datasource(wh, adhoc_ds):
     metrics = ["revenue", "adhoc_metric"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource()
     result = wh.execute(metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds])
     assert result
     info(result.df)
 
 
-def test_report_save_and_load_adhoc_datasource(wh):
+def test_report_save_and_load_adhoc_datasource(wh, adhoc_ds):
     metrics = ["revenue", "leads", "adhoc_metric"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource()
     report = wh.save_report(
         metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
     )
@@ -425,10 +438,9 @@ def test_report_save_and_load_adhoc_datasource(wh):
         wh.delete_report(report_id)
 
 
-def test_report_missing_adhoc_datasource_save_and_load(wh):
+def test_report_missing_adhoc_datasource_save_and_load(wh, adhoc_ds):
     metrics = ["revenue", "leads", "adhoc_metric"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource()
     report = wh.save_report(
         metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
     )
@@ -438,3 +450,34 @@ def test_report_missing_adhoc_datasource_save_and_load(wh):
             result = wh.execute_id(report_id)
     finally:
         wh.delete_report(report_id)
+
+
+def test_report_invalid_adhoc_datasource(wh, adhoc_ds):
+    metrics = ["revenue", "adhoc_metric"]
+    dimensions = ["partner_name"]
+    metric = Metric("campaign_name", "String(32)")  # This is a dimension in other DSes
+    adhoc_ds.add_metric(metric)
+    with pytest.raises(WarehouseException):
+        result = wh.execute(
+            metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+        )
+
+
+def test_regular_datasource_adhoc(config):
+    ds1 = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+    ds2 = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
+    wh = Warehouse(datasources=[ds1])
+    metrics = ["leads", "sales", "aggr_sales"]
+    dimensions = ["campaign_name"]
+    result = wh.execute(metrics, dimensions=dimensions, adhoc_datasources=[ds2])
+    assert result
+    info(result.df)
+
+
+def test_only_adhoc_datasource(adhoc_ds):
+    wh = Warehouse(datasources=[adhoc_ds])
+    metrics = ["adhoc_metric"]
+    dimensions = ["partner_name"]
+    result = wh.execute(metrics, dimensions=dimensions)
+    assert result
+    info(result.df)

@@ -621,11 +621,17 @@ class Report:
         self.id = None
         self.warehouse = warehouse
 
+        if adhoc_datasources:
+            self.warehouse.run_integrity_checks(adhoc_datasources=adhoc_datasources)
+
+        self._requested_metrics = metrics
+        self._requested_dimensions = dimensions
+
         self.metrics = self._get_fields_dict(
-            metrics, adhoc_datasources=adhoc_datasources
+            metrics, FieldTypes.METRIC, adhoc_datasources=adhoc_datasources
         )
         self.dimensions = self._get_fields_dict(
-            dimensions, adhoc_datasources=adhoc_datasources
+            dimensions, FieldTypes.DIMENSION, adhoc_datasources=adhoc_datasources
         )
 
         assert (
@@ -670,11 +676,11 @@ class Report:
 
     def get_params(self):
         used_datasources = list({q.get_datasource_name() for q in self.queries})
-        datasources = [ds.get_params() for ds in self.warehouse.datasources.values()]
+        datasources = [ds.get_params() for ds in self.warehouse.get_datasources()]
         return dict(
             kwargs=dict(
-                metrics=list(self.metrics.keys()),
-                dimensions=list(self.dimensions.keys()),
+                metrics=self._requested_metrics,
+                dimensions=self._requested_dimensions,
                 criteria=self.criteria,
                 row_filters=self.row_filters,
                 rollup=self.rollup,
@@ -739,13 +745,16 @@ class Report:
         finally:
             conn.close()
 
-    def _get_field(self, name, adhoc_datasources=None):
-        return self.warehouse.get_field(name, adhoc_fms=adhoc_datasources)
-
-    def _get_fields_dict(self, names, adhoc_datasources=None):
+    def _get_fields_dict(self, names, field_type, adhoc_datasources=None):
         d = OrderedDict()
         for name in names or []:
-            d[name] = self._get_field(name, adhoc_datasources=adhoc_datasources)
+            if field_type == FieldTypes.METRIC:
+                field = self.warehouse.get_metric(name, adhoc_fms=adhoc_datasources)
+            elif field_type == FieldTypes.DIMENSION:
+                field = self.warehouse.get_dimension(name, adhoc_fms=adhoc_datasources)
+            else:
+                assert False, "Invalid field type: %s" % field_type
+            d[field.name] = field
         return d
 
     def add_ds_fields(self, field):

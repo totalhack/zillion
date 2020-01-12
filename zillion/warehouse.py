@@ -163,21 +163,23 @@ class Warehouse(FieldManagerMixin):
             config.get("datasources", {}), skip_integrity_checks=skip_integrity_checks
         )
 
-    def _check_conflicting_fields(self):
+    def _check_conflicting_fields(self, adhoc_datasources=None):
         # TODO: in addition to checking metric vs dimension settings
         # we could add type comparisons (make sure its always num or str)
         errors = []
 
-        for field in self.get_field_names():
-            if self.has_metric(field) and self.has_dimension(field):
+        for field in self.get_field_names(adhoc_fms=adhoc_datasources):
+            if self.has_metric(
+                field, adhoc_fms=adhoc_datasources
+            ) and self.has_dimension(field, adhoc_fms=adhoc_datasources):
                 errors.append("Field %s is in both metrics and dimensions" % field)
 
         return errors
 
-    def _check_fields_have_type(self):
+    def _check_fields_have_type(self, adhoc_datasources=None):
         errors = []
 
-        for ds in self.get_datasources():
+        for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
                 if not table.zillion:
                     continue
@@ -187,7 +189,10 @@ class Warehouse(FieldManagerMixin):
                         continue
 
                     for field in column.zillion.get_field_names():
-                        if not (self.has_metric(field) or self.has_dimension(field)):
+                        if not (
+                            self.has_metric(field, adhoc_fms=adhoc_datasources)
+                            or self.has_dimension(field, adhoc_fms=adhoc_datasources)
+                        ):
                             errors.append(
                                 "Field %s for column %s->%s is not defined as a metric or dimension"
                                 % (field, ds.name, column_fullname(column))
@@ -195,10 +200,10 @@ class Warehouse(FieldManagerMixin):
 
         return errors
 
-    def _check_primary_key_dimensions(self):
+    def _check_primary_key_dimensions(self, adhoc_datasources=None):
         errors = []
 
-        for ds in self.get_datasources():
+        for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
                 for column in table.c:
                     if column.primary_key:
@@ -206,7 +211,11 @@ class Warehouse(FieldManagerMixin):
                         # Why is this even necessary?
                         dims = set()
                         for field in column.zillion.get_field_names():
-                            if self.has_dimension(field) or not self.has_metric(field):
+                            if self.has_dimension(
+                                field, adhoc_fms=adhoc_datasources
+                            ) or not self.has_metric(
+                                field, adhoc_fms=adhoc_datasources
+                            ):
                                 dims.add(field)
                             if len(dims) >= 2:
                                 errors.append(
@@ -216,14 +225,14 @@ class Warehouse(FieldManagerMixin):
 
         return errors
 
-    def _check_weighting_metrics(self):
+    def _check_weighting_metrics(self, adhoc_datasources=None):
         errors = []
 
-        for metric in self.get_metrics().values():
+        for metric in self.get_metrics(adhoc_fms=adhoc_datasources).values():
             if not metric.weighting_metric:
                 continue
 
-            for ds in self.get_datasources():
+            for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
                 tables = ds.get_tables_with_field(metric.name)
                 if not tables:
                     continue
@@ -242,12 +251,25 @@ class Warehouse(FieldManagerMixin):
 
         return errors
 
-    def run_integrity_checks(self):
+    def run_integrity_checks(self, adhoc_datasources=None):
         errors = []
-        errors.extend(self._check_conflicting_fields())
-        errors.extend(self._check_fields_have_type())
-        errors.extend(self._check_primary_key_dimensions())
-        errors.extend(self._check_weighting_metrics())
+        if adhoc_datasources:
+            for ds in adhoc_datasources:
+                if ds.name in self.datasources:
+                    errors.append(
+                        "Adhoc DataSource '%s' name conflicts with existing DataSource"
+                        % ds.name
+                    )
+        errors.extend(
+            self._check_conflicting_fields(adhoc_datasources=adhoc_datasources)
+        )
+        errors.extend(self._check_fields_have_type(adhoc_datasources=adhoc_datasources))
+        errors.extend(
+            self._check_primary_key_dimensions(adhoc_datasources=adhoc_datasources)
+        )
+        errors.extend(
+            self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
+        )
         if errors:
             raise WarehouseException("Integrity check(s) failed.\n%s" % pformat(errors))
 
@@ -449,7 +471,6 @@ class Warehouse(FieldManagerMixin):
         adhoc_datasources=None,
     ):
         start = time.time()
-        adhoc_datasources = adhoc_datasources or []
 
         report = Report(
             self,

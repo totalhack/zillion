@@ -26,3 +26,10 @@ def config():
 @pytest.fixture(scope="function")
 def wh(config):
     return Warehouse(config=config)
+
+
+@pytest.fixture(scope="function")
+def adhoc_ds(config):
+    ds = get_adhoc_datasource()
+    yield ds
+    ds.clean_up()

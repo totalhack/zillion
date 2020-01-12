@@ -39,6 +39,16 @@ def create_adhoc_data(column_types, size):
     return data
 
 
+def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
+    assert (
+        table_config["columns"].keys() == column_types.keys()
+    ), "Mismatch between table_config columns and column_types"
+
+    data = create_adhoc_data(column_types, size)
+    dt = AdHocDataTable(name, data, primary_key, table_config)
+    return dt
+
+
 def get_adhoc_datasource():
     table_config = {
         "type": TableTypes.METRIC,
@@ -69,16 +79,6 @@ def get_adhoc_datasource():
 
     adhoc_ds = AdHocDataSource([dt], config=config)
     return adhoc_ds
-
-
-def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
-    assert (
-        table_config["columns"].keys() == column_types.keys()
-    ), "Mismatch between table_config columns and column_types"
-
-    data = create_adhoc_data(column_types, size)
-    dt = AdHocDataTable(name, data, primary_key, table_config)
-    return dt
 
 
 def get_testdb_url(dbname=DEFAULT_TEST_DB):
