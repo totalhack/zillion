@@ -1,4 +1,5 @@
 climax
+lxml
 m2r
 marshmallow
 mysqlclient
@@ -12,3 +13,4 @@ simplejson
 sqlalchemy
 sqlparse
 tlbx
+xlrd

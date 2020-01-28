@@ -10,7 +10,7 @@
     "tables": {
         "partners": {
             "type": "dimension",
-            "autocolumns": true,
+            "create_fields": true,
             "columns": {
                 "id": {
                     "fields": ["partner_id"]
@@ -23,7 +23,7 @@
         
         "campaigns": {
             "type": "dimension",
-            "autocolumns": true,
+            "create_fields": true,
             "parent": "partners",
             "columns": {
                 "id": {
@@ -40,7 +40,7 @@
 
         "aggregated_stats": {
             "type": "metric",
-            "autocolumns": true,
+            "create_fields": true,
             "columns": {
                 "partner_id": {
                     "fields": ["partner_id"]

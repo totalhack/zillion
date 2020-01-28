@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import copy
 import logging
 import random
@@ -45,20 +46,44 @@ def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
     ), "Mismatch between table_config columns and column_types"
 
     data = create_adhoc_data(column_types, size)
-    dt = AdHocDataTable(name, data, primary_key, table_config)
+
+    dt = AdHocDataTable(
+        name,
+        data,
+        table_config["type"],
+        primary_key=primary_key,
+        columns=table_config.get("columns", None),
+    )
     return dt
 
 
-def get_adhoc_datasource():
+def get_adhoc_table_config():
     table_config = {
         "type": TableTypes.METRIC,
-        "autocolumns": False,
-        "columns": {
-            "partner_name": {"fields": ["partner_name"]},
-            "adhoc_metric": {"fields": ["adhoc_metric"]},
-        },
+        "create_fields": False,
+        "columns": OrderedDict(
+            partner_name={"fields": ["partner_name"]},
+            adhoc_metric={"fields": ["adhoc_metric"]},
+        ),
     }
+    return table_config
 
+
+def get_dma_zip_table_config():
+    table_config = {
+        "type": TableTypes.DIMENSION,
+        "create_fields": True,
+        "columns": OrderedDict(
+            Zip_Code={"fields": ["zip_code"]},
+            DMA_Code={"fields": ["dma_code"]},
+            DMA_Description={"fields": ["dma_description"]},
+        ),
+    }
+    return table_config
+
+
+def get_adhoc_datasource():
+    table_config = get_adhoc_table_config()
     name = "adhoc_table1"
     primary_key = ["partner_name"]
     size = 10

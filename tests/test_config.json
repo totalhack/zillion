@@ -111,7 +111,7 @@
             "dimensions": [
                 {
                     "name": "ds_partner_name",
-                    "type": "String(32)"
+                    "type": "String(50)"
                 },
                 {
                     "name": "revenue_decile",
@@ -121,7 +121,7 @@
             "tables": {
                 "partners": {
                     "type": "dimension",
-                    "autocolumns": true,
+                    "create_fields": true,
                     "columns": {
                         "id": {
                             "fields": ["partner_id"]
@@ -134,7 +134,7 @@
                 
                 "campaigns": {
                     "type": "dimension",
-                    "autocolumns": true,
+                    "create_fields": true,
                     "parent": "partners",
                     "columns": {
                         "id": {
@@ -151,7 +151,7 @@
 
                 "leads": {
                     "type": "metric",
-                    "autocolumns": true,
+                    "create_fields": true,
                     "columns": {
                         "id": {
                             "fields": [
@@ -170,7 +170,7 @@
                 
                 "sales": {
                     "type": "metric",
-                    "autocolumns": true,
+                    "create_fields": true,
                     "parent": "leads",
                     "columns": {
                         "id": {

@@ -231,9 +231,9 @@ class TableTypeField(mfields.Field):
 
 class TableInfoSchema(BaseSchema):
     type = TableTypeField(required=True)
-    autocolumns = mfields.Boolean(default=False, missing=False)
     active = mfields.Boolean(default=True, missing=True)
     parent = mfields.Str(default=None, missing=None)
+    create_fields = mfields.Boolean(default=False, missing=False)
 
 
 class TableConfigSchema(TableInfoSchema):
@@ -344,7 +344,7 @@ class ZillionInfo(MappingMixin):
 
 
 class TableInfo(ZillionInfo, PrintMixin):
-    repr_attrs = ["type", "active", "autocolumns", "parent"]
+    repr_attrs = ["type", "active", "create_fields", "parent"]
     schema = TableInfoSchema
 
 

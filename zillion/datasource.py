@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import copy
 import datetime
 from pprint import pformat
@@ -8,7 +8,15 @@ import pandas as pd
 import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
-from tlbx import PrintMixin, dbg, st, format_msg, rmfile, initializer
+from tlbx import (
+    PrintMixin,
+    dbg,
+    st,
+    format_msg,
+    rmfile,
+    initializer,
+    open_filepath_or_buffer,
+)
 
 from zillion.configs import (
     DATASOURCE_ALLOWABLE_CHARS,
@@ -271,17 +279,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 print(format_msg("column: %s" % column.name, label=None, indent=2))
                 zillion_info = column.info.get("zillion", None)
                 if not zillion_info:
-                    if not table.info["zillion"].autocolumns:
-                        print(
-                            format_msg(
-                                "column has no zillion info", label=None, indent=4
-                            )
-                        )
-                        continue
+                    print(
+                        format_msg("column has no zillion info", label=None, indent=4)
+                    )
+                    continue
 
                 print(format_msg(column.info["zillion"], label=None, indent=4))
 
     def apply_table_configs(self, table_configs):
+        """Take configs and apply them to the table/column metadata"""
         for table in self.metadata.tables.values():
             if table.fullname not in table_configs:
                 continue
@@ -289,6 +295,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
             table_config = copy.deepcopy(table_configs[table.fullname])
             column_configs = table_config.get("columns", None)
             if "columns" in table_config:
+                # ColumnInfo lives directly on column.info.zillion, so we
+                # don't keep it on the table.
                 del table_config["columns"]
 
             zillion_info = table.info.get("zillion", {})
@@ -296,12 +304,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
             zillion_info.update(table_config)
             table.info["zillion"] = TableInfo.create(zillion_info)
 
-            autocolumns = table.info["zillion"].autocolumns
-            if not autocolumns:
-                assert column_configs, (
-                    "Table %s.%s has autocolumns=False and no column configs"
-                    % (self.name, table.fullname)
-                )
             if not column_configs:
                 continue
 
@@ -329,19 +331,39 @@ class DataSource(FieldManagerMixin, PrintMixin):
             table.info["zillion"] = TableInfo.create(zillion_info)
             setattr(table, "zillion", table.info["zillion"])
 
+            column_count = 0
+
             for column in table.c:
-                zillion_info = column.info.get("zillion", None)
+                zillion_info = column.info.get("zillion", None) or {}
                 if not zillion_info:
-                    if not table.info["zillion"].autocolumns:
+                    if not table.zillion.create_fields:
+                        assert not column.primary_key, (
+                            "Primary key column %s must have zillion info defined"
+                            % column_fullname(column)
+                        )
+                        # If create_fields IS set the zillion info would
+                        # automatically get created on the column and fields
+                        # would automatically be created from the columns.
+                        # Since it is NOT set, we just set the attribute to
+                        # None and move on.
                         setattr(column, "zillion", None)
                         continue
-                    zillion_info = {}
 
                 zillion_info["fields"] = zillion_info.get(
                     "fields", [default_field_name(column)]
                 )
+                if column.primary_key:
+                    assert zillion_info["fields"], (
+                        "Primary key column %s must have fields defined and one must be a valid dimension"
+                        % column_fullname(column)
+                    )
                 column.info["zillion"] = ColumnInfo.create(zillion_info)
                 setattr(column, "zillion", column.info["zillion"])
+                column_count += 1
+
+            assert column_count, (
+                "Table %s has no columns with zillion info defined" % table.fullname
+            )
 
     def add_conversion_fields(self):
         for table in self.metadata.tables.values():
@@ -420,16 +442,21 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 if self.has_field(field):
                     continue
 
-                if table.zillion.autocolumns:
-                    formula = (
-                        field_def.get("ds_formula", None)
-                        if isinstance(field_def, dict)
-                        else None
-                    )
-                    if is_probably_metric(column, formula=formula):
-                        self.add_metric_column(column, field)
-                    else:
-                        self.add_dimension_column(column, field)
+                if not table.zillion.create_fields:
+                    # If create_fields is False we do not automatically create fields
+                    # from columns. The field would have to be explicitly defined
+                    # in the metrics/dimensions of the datasource.
+                    continue
+
+                formula = (
+                    field_def.get("ds_formula", None)
+                    if isinstance(field_def, dict)
+                    else None
+                )
+                if is_probably_metric(column, formula=formula):
+                    self.add_metric_column(column, field)
+                else:
+                    self.add_dimension_column(column, field)
 
     def add_dimension_table_fields(self, table):
         for column in table.c:
@@ -440,14 +467,19 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 continue
 
             for field in column.zillion.get_field_names():
-                if field in self._metrics:
+                if self.has_metric(field):
                     assert False, "Dimension table has metric field: %s" % field
 
-                if field in self._dimensions:
+                if self.has_dimension(field):
                     continue
 
-                if table.zillion.autocolumns:
-                    self.add_dimension_column(column, field)
+                if not table.zillion.create_fields:
+                    # If create_fields is False we do not automatically create fields
+                    # from columns. The field would have to be explicitly defined
+                    # in the metrics/dimensions of the datasource.
+                    continue
+
+                self.add_dimension_column(column, field)
 
     def populate_fields(self, config):
         self.populate_global_fields(config, force=True)
@@ -468,11 +500,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
             pk_dims = [
                 x
                 for x in col.zillion.fields
-                if isinstance(x, str) and x in self._dimensions
+                if isinstance(x, str) and x in self.get_dimensions()
             ]
+            # A primary key column can have multiple fields, but only one can
+            # be a dimension so we clearly know what field to look for in
+            # joins to related tables.
             assert len(pk_dims) == 1, (
-                "Primary key column has multiple dimensions: %s/%s"
-                % (col, col.zillion.fields)
+                "Primary key column %s should have exactly one dimension, got: %s"
+                % (col, pk_dims)
             )
             pk_fields.add(pk_dims[0])
         return pk_fields
@@ -795,24 +830,85 @@ class AdHocDataTable(PrintMixin):
     repr_attrs = ["name", "primary_key", "table_config"]
 
     @initializer
-    def __init__(self, name, data, primary_key, table_config, coerce_float=True):
-        self.table_config = TableConfigSchema().load(table_config)
+    def __init__(
+        self,
+        name,
+        data,
+        table_type,
+        columns=None,
+        primary_key=None,
+        parent=None,
+        **kwargs
+    ):
 
-        # TODO: support URLs/file paths too?
+        self.data = self.get_dataframe(data, **kwargs)
+        self.columns = columns or {}
 
-        if not isinstance(data, pd.DataFrame):
-            self.data = pd.DataFrame.from_records(
-                data,
-                primary_key,
-                columns=self.table_config["columns"].keys(),
-                coerce_float=coerce_float,
+        self.table_config = TableConfigSchema().load(
+            dict(
+                type=table_type, columns=self.columns, create_fields=True, parent=parent
             )
+        )
+
+    def get_dataframe(self, data, **kwargs):
+        if isinstance(data, pd.DataFrame):
+            return data
+
+        return pd.DataFrame.from_records(
+            data, self.primary_key, columns=self.columns, **kwargs
+        )
 
     def to_sql(self, engine, if_exists="fail", method="multi", chunksize=int(1e3)):
         # This hits limits in allowed sqlite params if chunks are too large
         self.data.to_sql(
             self.name, engine, if_exists=if_exists, method=method, chunksize=chunksize
         )
+
+
+class CSVDataTable(AdHocDataTable):
+    def get_dataframe(self, path_or_buffer, **kwargs):
+        return pd.read_csv(
+            path_or_buffer,
+            index_col=self.primary_key,
+            usecols=list(self.columns.keys()) if self.columns else None,
+            **kwargs
+        )
+
+
+class ExcelDataTable(AdHocDataTable):
+    def get_dataframe(self, path_or_buffer, **kwargs):
+        df = pd.read_excel(
+            path_or_buffer,
+            usecols=list(self.columns.keys()) if self.columns else None,
+            **kwargs
+        )
+        if self.primary_key and df.index.names != self.primary_key:
+            df = df.set_index(self.primary_key)
+        return df
+
+
+class JSONDataTable(AdHocDataTable):
+    def get_dataframe(self, path_or_buffer, orient="table", **kwargs):
+        df = pd.read_json(path_or_buffer, orient=orient, **kwargs)
+        if self.primary_key and df.index.names != self.primary_key:
+            df = df.set_index(self.primary_key)
+        return df
+
+
+class HTMLDataTable(AdHocDataTable):
+    def get_dataframe(self, path_or_buffer, **kwargs):
+        # Expects this format by default:
+        # df.reset_index().to_html("dma_zip.html", index=False)
+
+        dfs = pd.read_html(path_or_buffer, **kwargs)
+
+        assert dfs, "No html table found"
+        assert len(dfs) == 1, "More than one html table found"
+        df = dfs[0]
+
+        if self.primary_key and df.index.names != self.primary_key:
+            df = df.set_index(self.primary_key)
+        return df
 
 
 class AdHocDataSource(DataSource):
@@ -826,7 +922,7 @@ class AdHocDataSource(DataSource):
         engine = sa.create_engine(conn_url, echo=False)
 
         for dt in datatables:
-            dt.to_sql(engine)
+            dt.to_sql(engine, if_exists=if_exists)
             config.setdefault("tables", {})[dt.name] = dt.table_config
 
         metadata = sa.MetaData()
