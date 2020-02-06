@@ -16,6 +16,7 @@ from tlbx import (
     rmfile,
     initializer,
     open_filepath_or_buffer,
+    get_string_format_args,
 )
 
 from zillion.configs import (
@@ -201,6 +202,13 @@ class DataSource(FieldManagerMixin, PrintMixin):
             config = DataSourceConfigSchema().load(config)
 
         url = config.get("url", None)
+
+        ds_config_context = zillion_config.get("DATASOURCE_CONTEXTS", {}).get(
+            self.name, {}
+        )
+        if url and get_string_format_args(url):
+            url = url.format(**ds_config_context)
+
         assert url != ADHOC_URL, "Unsupported datasource URL: '%s'" % url
         assert metadata or url, "You must pass metadata or config->url"
         assert not (
@@ -966,9 +974,14 @@ class AdHocDataSource(DataSource):
                 "url", None
             ), "All tables in an adhoc datasource config must have a url"
 
+        ds_config_context = zillion_config.get("DATASOURCE_CONTEXTS", {}).get(name, {})
+
         datatables = []
         for table_name, table_config in config["tables"].items():
-            dt = datatable_from_config(table_name, table_config)
+            cfg = table_config.copy()
+            if get_string_format_args(cfg["url"]):
+                cfg["url"] = cfg["url"].format(**ds_config_context)
+            dt = datatable_from_config(table_name, cfg)
             datatables.append(dt)
 
         return cls(datatables, name=name, if_exists=if_exists)

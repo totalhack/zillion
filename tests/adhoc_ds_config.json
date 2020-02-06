@@ -14,7 +14,7 @@
                             "fields": ["DMA_Code"]
                         }
                     },
-                    "url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
+                    "url": "https://raw.githubusercontent.com/{user}/zillion/master/tests/dma_zip.csv",
                     "primary_key": ["Zip_Code"]
                 }
             }

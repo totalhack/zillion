@@ -1,0 +1,14 @@
+DEBUG: false
+LOAD_TABLE_CHUNK_SIZE: 5000
+IFNULL_PRETTY_VALUE: --
+
+ZILLION_DB_URL: sqlite:////tmp/zillion.db
+ADHOC_DATASOURCE_DIRECTORY: /tmp
+DATASOURCE_QUERY_MODE: sequential
+DATASOURCE_QUERY_TIMEOUT: null
+
+DATASOURCE_CONTEXTS:
+  testdb2:
+    schema: testdb2
+  test_adhoc_db:
+    user: totalhack

@@ -75,6 +75,7 @@ def load_zillion_config():
             IFNULL_PRETTY_VALUE="--",
             DATASOURCE_QUERY_MODE="sequential",
             DATASOURCE_QUERY_TIMEOUT=None,
+            DATASOURCE_CONTEXTS={},
         )
     return yaml.safe_load(open(zillion_config_fname))
 

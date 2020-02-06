@@ -1,5 +1,5 @@
 {
-    "url": "sqlite:///testdb2",
+    "url": "sqlite:///{schema}",
     "metrics": [
         {
             "name": "aggr_sales",
