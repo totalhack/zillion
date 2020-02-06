@@ -24,6 +24,11 @@ def config():
 
 
 @pytest.fixture(scope="function")
+def adhoc_config():
+    return copy.deepcopy(TEST_ADHOC_CONFIG)
+
+
+@pytest.fixture(scope="function")
 def wh(config):
     return Warehouse(config=config)
 

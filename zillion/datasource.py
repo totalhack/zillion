@@ -22,13 +22,16 @@ from zillion.configs import (
     DATASOURCE_ALLOWABLE_CHARS,
     TableInfo,
     ColumnInfo,
+    DataSourceConfigSchema,
     TableConfigSchema,
     MetricConfigSchema,
     DimensionConfigSchema,
     default_field_name,
     zillion_config,
+    ADHOC_TABLE_CONFIG_PARAMS,
+    EXCLUDE,
 )
-from zillion.core import TableTypes, WarehouseException
+from zillion.core import TableTypes, WarehouseException, ADHOC_URL
 from zillion.field import (
     Field,
     Metric,
@@ -194,8 +197,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
         self.graph = None
 
         config = config or {}
-        url = config.get("url", None)
+        if config:
+            config = DataSourceConfigSchema().load(config)
 
+        url = config.get("url", None)
+        assert url != ADHOC_URL, "Unsupported datasource URL: '%s'" % url
         assert metadata or url, "You must pass metadata or config->url"
         assert not (
             url and metadata
@@ -288,22 +294,26 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def apply_table_configs(self, table_configs):
         """Take configs and apply them to the table/column metadata"""
+
         for table in self.metadata.tables.values():
             if table.fullname not in table_configs:
                 continue
 
-            table_config = copy.deepcopy(table_configs[table.fullname])
-            column_configs = table_config.get("columns", None)
-            if "columns" in table_config:
-                # ColumnInfo lives directly on column.info.zillion, so we
-                # don't keep it on the table.
-                del table_config["columns"]
+            table_config = table_configs[table.fullname]
+            for param in ADHOC_TABLE_CONFIG_PARAMS:
+                assert not table_config.get(param, None), (
+                    "AdHoc table config param '%s' passed to non-adhoc datasource"
+                    % param
+                )
+
+            table_info = TableInfo.schema_load(table_config, unknown=EXCLUDE)
 
             zillion_info = table.info.get("zillion", {})
-            # Config takes precendence over values on table objects
-            zillion_info.update(table_config)
+            # Config takes precedence over values on table objects
+            zillion_info.update(table_info)
             table.info["zillion"] = TableInfo.create(zillion_info)
 
+            column_configs = table_config.get("columns", None)
             if not column_configs:
                 continue
 
@@ -840,47 +850,64 @@ class AdHocDataTable(PrintMixin):
         parent=None,
         **kwargs
     ):
-
-        self.data = self.get_dataframe(data, **kwargs)
-        self.columns = columns or {}
-
+        self.df_kwargs = kwargs or {}
         self.table_config = TableConfigSchema().load(
             dict(
                 type=table_type, columns=self.columns, create_fields=True, parent=parent
             )
         )
 
-    def get_dataframe(self, data, **kwargs):
-        if isinstance(data, pd.DataFrame):
-            return data
+    def get_dataframe(self):
+        if isinstance(self.data, pd.DataFrame):
+            return self.data
 
-        return pd.DataFrame.from_records(
-            data, self.primary_key, columns=self.columns, **kwargs
+        kwargs = self.df_kwargs.copy()
+        if self.columns:
+            kwargs["columns"] = self.columns
+        return pd.DataFrame.from_records(self.data, self.primary_key, **kwargs)
+
+    def table_exists(self, engine):
+        qr = engine.execute(
+            "SELECT name FROM sqlite_master " "WHERE type='table' AND name=?",
+            (self.name),
         )
+        result = qr.fetchone()
+        if result:
+            return True
+        return False
 
     def to_sql(self, engine, if_exists="fail", method="multi", chunksize=int(1e3)):
-        # This hits limits in allowed sqlite params if chunks are too large
-        self.data.to_sql(
+        if if_exists == "ignore":
+            if self.table_exists(engine):
+                return
+            # Pandas doesn't actually have an "ignore" option, but switching
+            # to fail will work because the table *should* not exist.
+            if_exists = "fail"
+
+        df = self.get_dataframe()
+
+        # Note: this hits limits in allowed sqlite params if chunks are too large
+        df.to_sql(
             self.name, engine, if_exists=if_exists, method=method, chunksize=chunksize
         )
 
 
 class CSVDataTable(AdHocDataTable):
-    def get_dataframe(self, path_or_buffer, **kwargs):
+    def get_dataframe(self):
         return pd.read_csv(
-            path_or_buffer,
+            self.data,
             index_col=self.primary_key,
             usecols=list(self.columns.keys()) if self.columns else None,
-            **kwargs
+            **self.df_kwargs
         )
 
 
 class ExcelDataTable(AdHocDataTable):
-    def get_dataframe(self, path_or_buffer, **kwargs):
+    def get_dataframe(self):
         df = pd.read_excel(
-            path_or_buffer,
+            self.data,
             usecols=list(self.columns.keys()) if self.columns else None,
-            **kwargs
+            **self.df_kwargs
         )
         if self.primary_key and df.index.names != self.primary_key:
             df = df.set_index(self.primary_key)
@@ -888,19 +915,19 @@ class ExcelDataTable(AdHocDataTable):
 
 
 class JSONDataTable(AdHocDataTable):
-    def get_dataframe(self, path_or_buffer, orient="table", **kwargs):
-        df = pd.read_json(path_or_buffer, orient=orient, **kwargs)
+    def get_dataframe(self, orient="table"):
+        df = pd.read_json(self.data, orient=orient, **self.df_kwargs)
         if self.primary_key and df.index.names != self.primary_key:
             df = df.set_index(self.primary_key)
         return df
 
 
 class HTMLDataTable(AdHocDataTable):
-    def get_dataframe(self, path_or_buffer, **kwargs):
+    def get_dataframe(self):
         # Expects this format by default:
         # df.reset_index().to_html("dma_zip.html", index=False)
 
-        dfs = pd.read_html(path_or_buffer, **kwargs)
+        dfs = pd.read_html(self.data, **self.df_kwargs)
 
         assert dfs, "No html table found"
         assert len(dfs) == 1, "More than one html table found"
@@ -932,6 +959,20 @@ class AdHocDataSource(DataSource):
             ds_name, metadata=metadata, config=config, reflect=True
         )
 
+    @classmethod
+    def from_config(cls, name, config, if_exists="fail"):
+        for table_name, table_config in config["tables"].items():
+            assert table_config.get(
+                "url", None
+            ), "All tables in an adhoc datasource config must have a url"
+
+        datatables = []
+        for table_name, table_config in config["tables"].items():
+            dt = datatable_from_config(table_name, table_config)
+            datatables.append(dt)
+
+        return cls(datatables, name=name, if_exists=if_exists)
+
     def get_datasource_filename(self, ds_name):
         return "%s/%s.db" % (zillion_config["ADHOC_DATASOURCE_DIRECTORY"], ds_name)
 
@@ -939,3 +980,37 @@ class AdHocDataSource(DataSource):
         filename = self.get_datasource_filename(self.name)
         dbg("Removing %s" % filename)
         rmfile(filename)
+
+
+def datasource_from_config(name, config, if_exists="fail"):
+    if config.get("url", None) == ADHOC_URL:
+        return AdHocDataSource.from_config(name, config, if_exists=if_exists)
+    return DataSource.from_config(name, config)
+
+
+def datatable_from_config(name, config, **kwargs):
+    assert config.get(
+        "create_fields", True
+    ), "AdHocDataTables must have create_fields=True"
+
+    url = config["url"]
+    if url.endswith("csv"):
+        cls = CSVDataTable
+    elif url.endswith("xlsx") or url.endswith("xls"):
+        cls = ExcelDataTable
+    elif url.endswith("json"):
+        cls = JSONDataTable
+    elif url.endswith("html"):
+        cls = HTMLDataTable
+
+    kwargs.update(config.get("adhoc_table_options", {}))
+
+    return cls(
+        name,
+        url,
+        config["type"],
+        config.get("columns", None),
+        primary_key=config.get("primary_key", None),
+        parent=config.get("parent", None),
+        **kwargs
+    )

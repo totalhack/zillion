@@ -8,6 +8,9 @@ from marshmallow import (
     ValidationError,
     validates_schema,
     pre_load,
+    EXCLUDE,
+    INCLUDE,
+    RAISE,
 )
 from pandas.io.common import get_filepath_or_buffer
 from tlbx import dbg, error, json, st, initializer, MappingMixin, PrintMixin
@@ -236,10 +239,19 @@ class TableInfoSchema(BaseSchema):
     create_fields = mfields.Boolean(default=False, missing=False)
 
 
+ADHOC_TABLE_CONFIG_PARAMS = ["url", "primary_key", "adhoc_table_options"]
+
+
 class TableConfigSchema(TableInfoSchema):
     columns = mfields.Dict(
-        keys=mfields.Str(), values=mfields.Nested(ColumnConfigSchema)
+        keys=mfields.Str(),
+        values=mfields.Nested(ColumnConfigSchema),
+        missing=None,
+        required=False,
     )
+    url = mfields.String()
+    primary_key = mfields.List(mfields.String())
+    adhoc_table_options = mfields.Dict(keys=mfields.Str())
 
 
 class MetricConfigSchema(BaseSchema):
@@ -280,6 +292,34 @@ class DataSourceConfigSchema(BaseSchema):
     metrics = mfields.List(mfields.Nested(MetricConfigSchema))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
+
+    @pre_load
+    def check_table_refs(self, data, **kwargs):
+        for table_name, table_config in data.get("tables", {}).items():
+            if not isinstance(table_config, str):
+                continue
+
+            f, _, _, should_close = get_filepath_or_buffer(table_config)
+            close = False or should_close
+            if isinstance(f, str):
+                f = open(f, "r")
+                close = True
+
+            try:
+                raw = f.read()
+            finally:
+                if close:
+                    try:
+                        f.close()
+                    except ValueError:
+                        pass
+
+            json_config = json.loads(raw)
+            schema = TableConfigSchema()
+            config = schema.load(json_config)
+            data["tables"][table_name] = config
+
+        return data
 
 
 class DataSourceConfigField(mfields.Field):
@@ -333,13 +373,21 @@ class ZillionInfo(MappingMixin):
         self.schema().load(self)
 
     @classmethod
-    def create(cls, zillion_info):
+    def schema_validate(cls, zillion_info, unknown=RAISE):
+        return cls.schema(unknown=unknown).validate(zillion_info)
+
+    @classmethod
+    def schema_load(cls, zillion_info, unknown=RAISE):
+        return cls.schema().load(zillion_info, unknown=unknown)
+
+    @classmethod
+    def create(cls, zillion_info, unknown=RAISE):
         if isinstance(zillion_info, cls):
             return zillion_info
         assert isinstance(zillion_info, dict), (
             "Raw info must be a dict: %s" % zillion_info
         )
-        zillion_info = cls.schema().load(zillion_info)
+        zillion_info = cls.schema().load(zillion_info, unknown=unknown)
         return cls(**zillion_info)
 
 

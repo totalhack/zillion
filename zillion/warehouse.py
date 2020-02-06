@@ -26,6 +26,7 @@ from tlbx import (
 from zillion.configs import (
     AdHocFieldSchema,
     AdHocMetricSchema,
+    WarehouseConfigSchema,
     ColumnInfo,
     TableInfo,
     MetricConfigSchema,
@@ -43,7 +44,7 @@ from zillion.core import (
     WarehouseException,
     TableTypes,
 )
-from zillion.datasource import DataSource
+from zillion.datasource import DataSource, AdHocDataSource, datasource_from_config
 from zillion.field import (
     Field,
     Metric,
@@ -78,11 +79,13 @@ class Warehouse(FieldManagerMixin):
         self._metrics = {}
         self._dimensions = {}
         self._supported_dimension_cache = {}
+        self._created_adhoc_datasources = set()
 
         for ds in datasources or []:
             self.add_datasource(ds, skip_integrity_checks=True)
 
         if config:
+            config = WarehouseConfigSchema().load(config)
             self.apply_config(config, skip_integrity_checks=True)
 
         assert self.datasources, "No datasources provided or found in config"
@@ -107,6 +110,11 @@ class Warehouse(FieldManagerMixin):
             self.__class__.__name__,
             self.get_datasource_names(),
         )
+
+    def clean_up(self):
+        for ds_name, ds in self.datasources.items():
+            if ds_name in self._created_adhoc_datasources:
+                ds.clean_up()
 
     def print_info(self):
         print("---- Warehouse")
@@ -154,7 +162,10 @@ class Warehouse(FieldManagerMixin):
                 self.datasources[ds_name].apply_config(ds_configs[ds_name])
                 continue
 
-            ds = DataSource.from_config(ds_name, ds_configs[ds_name])
+            ds = datasource_from_config(ds_name, ds_configs[ds_name])
+            if isinstance(ds, AdHocDataSource):
+                # We track this so we can clean up later
+                self._created_adhoc_datasources.add(ds.name)
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
     def apply_config(self, config, skip_integrity_checks=False):

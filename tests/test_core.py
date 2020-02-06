@@ -6,7 +6,7 @@ from tlbx import dbg, st, pp
 
 from .test_utils import *
 from zillion.configs import TableInfo, ColumnInfo
-from zillion.core import UnsupportedGrainException, TableTypes
+from zillion.core import UnsupportedGrainException, TableTypes, ADHOC_URL
 from zillion.datasource import *
 from zillion.sql_utils import contains_aggregation
 from zillion.warehouse import Warehouse
@@ -90,6 +90,86 @@ def test_warehouse_has_zillion_info_no_config(config):
         table.info["zillion"].type = TableTypes.METRIC
     wh = Warehouse(datasources=[ds])
     assert not wh.datasources["testdb1"].dimension_tables
+
+
+def test_warehouse_remote_datasource_config(config):
+    config["datasources"][
+        "testdb2"
+    ] = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_datasource_config.json"
+    wh = Warehouse(config=config)
+    assert wh.has_metric("aggr_sales")
+
+
+def test_warehouse_remote_csv_table(adhoc_config):
+    table_config = adhoc_config["datasources"]["test_adhoc_db"]["tables"]["dma_zip"]
+    table_config["adhoc_table_options"] = {"nrows": 30}
+    wh = Warehouse(config=adhoc_config)
+    try:
+        assert wh.has_dimension("Zip_Code")
+    finally:
+        wh.clean_up()
+
+
+def test_warehouse_remote_xlsx_table(adhoc_config):
+    url = (
+        "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.xlsx"
+    )
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["dma_zip"]["url"] = url
+    wh = Warehouse(config=adhoc_config)
+    try:
+        assert wh.has_dimension("Zip_Code")
+    finally:
+        wh.clean_up()
+
+
+def test_warehouse_remote_json_table(adhoc_config):
+    url = (
+        "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.json"
+    )
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["dma_zip"]["url"] = url
+    wh = Warehouse(config=adhoc_config)
+    try:
+        assert wh.has_dimension("Zip_Code")
+    finally:
+        wh.clean_up()
+
+
+def test_warehouse_remote_html_table(adhoc_config):
+    url = (
+        "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.html"
+    )
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["dma_zip"]["url"] = url
+    wh = Warehouse(config=adhoc_config)
+    try:
+        wh.print_info()
+        assert wh.has_dimension("Zip_Code")
+    finally:
+        wh.clean_up()
+
+
+def test_reuse_existing_remote_table(adhoc_config):
+    ds_name = "test_adhoc_db"
+    ds_configs = adhoc_config["datasources"]
+    try:
+        ds = datasource_from_config(ds_name, ds_configs[ds_name], if_exists="ignore")
+        ds = datasource_from_config(ds_name, ds_configs[ds_name], if_exists="ignore")
+        with pytest.raises(ValueError):
+            dsf = datasource_from_config(ds_name, ds_configs[ds_name], if_exists="fail")
+    finally:
+        ds.clean_up()
+
+
+def test_adhoc_config_to_ds_init(adhoc_config):
+    ds_config = adhoc_config["datasources"]["test_adhoc_db"]
+    with pytest.raises(AssertionError):
+        ds = DataSource("test", config=ds_config)
+
+
+def test_adhoc_table_url_to_ds_init(config):
+    ds_config = config["datasources"]["testdb1"]
+    ds_config["tables"]["sales"]["url"] = "test"
+    with pytest.raises(AssertionError):
+        ds = DataSource("test", config=ds_config, reflect=True)
 
 
 def test_column_config_override(config):

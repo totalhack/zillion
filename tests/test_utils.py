@@ -14,6 +14,7 @@ from zillion.warehouse import Warehouse
 
 DEFAULT_TEST_DB = "testdb1"
 TEST_CONFIG = load_warehouse_config("test_config.json")
+TEST_ADHOC_CONFIG = load_warehouse_config("adhoc_ds_config.json")
 
 logging.getLogger().setLevel(logging.INFO)
 

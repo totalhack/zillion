@@ -149,24 +149,7 @@
                     }
                 },
 
-                "leads": {
-                    "type": "metric",
-                    "create_fields": true,
-                    "columns": {
-                        "id": {
-                            "fields": [
-                                "lead_id",
-                                {"name": "leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
-                            ]
-                        },
-                        "created_at": {
-                            "allow_type_conversions": true
-                        },
-                        "campaign_id": {
-                            "fields": ["campaign_id"]
-                        }
-                    }
-                },
+                "leads": "test_table_config.json",
                 
                 "sales": {
                     "type": "metric",

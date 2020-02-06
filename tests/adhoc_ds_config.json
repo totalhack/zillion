@@ -1,0 +1,23 @@
+{
+    "datasources": {
+        "test_adhoc_db": {
+            "url": "adhoc",
+            "tables": {
+                "dma_zip": {
+                    "type": "dimension",
+                    "create_fields": true,
+                    "columns": {
+                        "Zip_Code": {
+                            "fields": ["Zip_Code"]
+                        },
+                        "DMA_Code": {
+                            "fields": ["DMA_Code"]
+                        }
+                    },
+                    "url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
+                    "primary_key": ["Zip_Code"]
+                }
+            }
+        }
+    }
+}

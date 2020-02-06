@@ -1,5 +1,7 @@
 from tlbx import ClassValueContainsMeta
 
+ADHOC_URL = "adhoc"
+
 
 class FieldTypes(metaclass=ClassValueContainsMeta):
     DIMENSION = "dimension"
