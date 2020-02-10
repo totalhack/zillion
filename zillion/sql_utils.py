@@ -125,6 +125,21 @@ def get_dialect_type_conversions(dialect, column):
     return results
 
 
+def contains_sql_keywords(sql):
+    if isinstance(sql, str):
+        sql = sp.parse(sql)
+
+    for token in sql:
+        if token.ttype in (sp.tokens.DML, sp.tokens.DDL, sp.tokens.CTE):
+            return True
+
+        if isinstance(token, sp.sql.TokenList):
+            token_result = contains_sql_keywords(token)
+            if token_result:
+                return True
+    return False
+
+
 def contains_aggregation(sql):
     if isinstance(sql, str):
         sql = sp.parse(sql)
@@ -268,6 +283,7 @@ def get_sqla_clause(column, criterion, negate=False):
 
     if negate:
         clause = sa.not_(clause)
+
     return clause
 
 

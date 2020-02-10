@@ -62,7 +62,6 @@ from zillion.report import Report
 from zillion.sql_utils import (
     infer_aggregation_and_rounding,
     aggregation_to_sqla_func,
-    contains_aggregation,
     type_string_to_sa_type,
     is_probably_metric,
     sqla_compile,
@@ -216,7 +215,13 @@ class Warehouse(FieldManagerMixin):
 
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
+                if not table.zillion:
+                    continue
+
                 for column in table.c:
+                    if not column.zillion:
+                        continue
+
                     if column.primary_key:
                         # TODO: does this make sense for composite keys?
                         # Why is this even necessary?

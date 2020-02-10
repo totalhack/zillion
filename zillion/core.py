@@ -49,5 +49,9 @@ class InvalidFieldException(Exception):
     pass
 
 
+class DisallowedSQLException(Exception):
+    pass
+
+
 class MaxFormulaDepthException(Exception):
     pass

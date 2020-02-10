@@ -8,6 +8,7 @@ from sqlite3 import connect, Row
 import time
 
 from orderedset import OrderedSet
+from pymysql import escape_string
 import pandas as pd
 import sqlalchemy as sa
 from tlbx import (
@@ -360,13 +361,16 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         create_sql += ", ".join(column_clauses)
         create_sql += ") WITHOUT ROWID"
+        create_sql = escape_string(create_sql)
         dbg(create_sql)  # Creates don't pretty print well with dbgsql?
+
         self.cursor.execute(create_sql)
         if self.primary_ds_dimensions:
             index_sql = "CREATE INDEX idx_dims ON %s (%s)" % (
                 self.table_name,
                 ", ".join(self.primary_ds_dimensions),
             )
+            index_sql = escape_string(index_sql)
             dbgsql(index_sql)
             self.cursor.execute(index_sql)
         self.conn.commit()
@@ -405,7 +409,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 row_values.append(value)
             values.append(row_values)
 
-        return sql, values
+        return escape_string(sql), values
 
     def load_table(self):
         for qr in self.ds_query_results:
@@ -429,7 +433,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             order_clause,
         )
         dbgsql(sql)
-        return sql
+        return escape_string(sql)
 
     def apply_row_filters(self, df, row_filters, metrics, dimensions):
         filter_parts = []

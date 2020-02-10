@@ -8,7 +8,7 @@ from .test_utils import *
 from zillion.configs import TableInfo, ColumnInfo
 from zillion.core import UnsupportedGrainException, TableTypes, ADHOC_URL
 from zillion.datasource import *
-from zillion.sql_utils import contains_aggregation
+from zillion.sql_utils import contains_aggregation, contains_sql_keywords
 from zillion.warehouse import Warehouse
 
 
@@ -294,6 +294,33 @@ def test_contains_aggregation():
 
     for sql in sql_without_aggr:
         assert not contains_aggregation(sql)
+
+
+def test_contains_sql_keyword():
+    sql_with_keywords = [
+        "select col from table",
+        "drop table",
+        "delete from *",
+        # "where 1",
+        # "column",
+    ]
+
+    sql_without_keywords = [
+        "distinct",
+        "avg(`select`)",
+        "ifnull(col)",
+        "avg(col)",
+        "col",
+        "a + b",
+        "(a) + (b)",
+        "(a + b)",
+    ]
+
+    for sql in sql_with_keywords:
+        assert contains_sql_keywords(sql)
+
+    for sql in sql_without_keywords:
+        assert not contains_sql_keywords(sql)
 
 
 def test_adhoc_datatable_no_columns():

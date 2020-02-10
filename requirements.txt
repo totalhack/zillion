@@ -2,12 +2,12 @@ climax
 lxml
 m2r
 marshmallow
-mysqlclient
 networkx
 numpydoc
 orderedset
 pandas
 pylint
+pymysql
 pyyaml
 simplejson
 sqlalchemy

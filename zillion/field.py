@@ -21,6 +21,7 @@ from zillion.configs import (
 from zillion.core import (
     InvalidFieldException,
     MaxFormulaDepthException,
+    DisallowedSQLException,
     AggregationTypes,
     TableTypes,
     FieldTypes,
@@ -28,6 +29,7 @@ from zillion.core import (
 from zillion.sql_utils import (
     aggregation_to_sqla_func,
     contains_aggregation,
+    contains_sql_keywords,
     type_string_to_sa_type,
     is_probably_metric,
     sqla_compile,
@@ -43,6 +45,8 @@ class Technical(MappingMixin, PrintMixin):
 
     @initializer
     def __init__(self, **kwargs):
+        # Attributes of this will be used to apply DataFrame.rolling
+        # to result columns
         pass
 
     @classmethod
@@ -78,6 +82,11 @@ class Field(PrintMixin):
         )
         if not ds_formula:
             return sa.func.ifnull(column, self.ifnull_value).label(self.name)
+
+        if contains_sql_keywords(ds_formula):
+            raise DisallowedSQLException(
+                "Formula contains disallowed sql: %s" % ds_formula
+            )
         return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
 
     def get_final_select_clause(self, *args, **kwargs):
@@ -136,9 +145,14 @@ class Metric(Field):
             if column.zillion.field_map[self.name]
             else None
         )
+
         if ds_formula:
+            if contains_sql_keywords(ds_formula):
+                raise DisallowedSQLException(
+                    "Formula contains disallowed sql: %s" % ds_formula
+                )
             if contains_aggregation(ds_formula):
-                info("Datasource formula contains aggregation, skipping default logic!")
+                info("Datasource formula contains aggregation, skipping default logic")
                 skip_aggr = True
             expr = sa.literal_column(ds_formula)
 
@@ -222,8 +236,12 @@ class FormulaField(Field):
             warehouse, adhoc_fms=adhoc_fms
         )
         format_args = {k: k for k in formula_fields}
-        clause = sa.text(raw_formula.format(**format_args))
-        return sqla_compile(clause)
+        formula = raw_formula.format(**format_args)
+        if contains_sql_keywords(formula):
+            raise DisallowedSQLException(
+                "Formula contains disallowed sql: %s" % formula
+            )
+        return sqla_compile(sa.text(formula))
 
 
 class FormulaMetric(FormulaField):
@@ -252,14 +270,6 @@ class FormulaMetric(FormulaField):
             technical=technical,
             **kwargs
         )
-
-    def get_final_select_clause(self, warehouse, adhoc_fms=None):
-        formula_fields, raw_formula = self.get_formula_fields(
-            warehouse, adhoc_fms=adhoc_fms
-        )
-        format_args = {k: k for k in formula_fields}
-        clause = sa.text(raw_formula.format(**format_args))
-        return sqla_compile(clause)
 
 
 class AdHocField(FormulaField):

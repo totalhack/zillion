@@ -8,6 +8,7 @@ from zillion.core import (
     InvalidFieldException,
     ReportException,
     WarehouseException,
+    DisallowedSQLException,
 )
 from zillion.field import Metric
 from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
@@ -481,3 +482,181 @@ def test_only_adhoc_datasource(adhoc_ds):
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
     info(result.df)
+
+
+def test_ds_metric_formula_sql_injection(config):
+    # example = r"""I don't like "special" ch;ars ¯\_(ツ)_/¯"""
+    table_config = config["datasources"]["testdb1"]["tables"]["sales"]
+    column_config = table_config["columns"]["revenue"]
+    column_config["fields"].append(
+        {
+            "name": "ds_injection",
+            "ds_formula": "IFNULL(sales.revenue, 0);select * from sales",
+        }
+    )
+    metrics = ["revenue", "ds_injection"]
+    dimensions = ["partner_name"]
+    wh = Warehouse(config=config)
+    with pytest.raises(DisallowedSQLException):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
+def test_ds_dim_formula_sql_injection(config):
+    # example = r"""I don't like "special" ch;ars ¯\_(ツ)_/¯"""
+    table_config = config["datasources"]["testdb1"]["tables"]["sales"]
+    column_config = table_config["columns"]["lead_id"]
+    column_config["fields"].append(
+        {
+            "name": "ds_injection",
+            "ds_formula": "IF(sales.lead_id > 0, 1, 0);select * from sales",
+        }
+    )
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "ds_injection"]
+    wh = Warehouse(config=config)
+    with pytest.raises(DisallowedSQLException):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
+def test_metric_formula_sql_injection(config):
+    config["metrics"].append(
+        dict(
+            name="rpl_injection",
+            aggregation="avg",
+            rounding=2,
+            formula="{revenue}/{leads};select * from leads",
+        )
+    )
+
+    metrics = ["revenue", "rpl_injection"]
+    dimensions = ["partner_name"]
+    wh = Warehouse(config=config)
+    with pytest.raises(DisallowedSQLException):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
+def test_weighting_metric_sql_injection(config):
+    config["metrics"].append(
+        dict(
+            name="rpl_injection",
+            aggregation="avg",
+            rounding=2,
+            formula="{revenue}/{leads}",
+            weighting_metric="sales_quantity;select * from leads",
+        )
+    )
+
+    metrics = ["revenue", "rpl_injection"]
+    dimensions = ["partner_name"]
+    wh = Warehouse(config=config)
+    with pytest.raises(InvalidFieldException):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
+def test_adhoc_metric_sql_injection(wh):
+    metrics = [
+        "revenue",
+        {"formula": "{revenue};select * from leads", "name": "rev_injection"},
+    ]
+    dimensions = ["partner_name"]
+    with pytest.raises(DisallowedSQLException):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
+def test_adhoc_dimension_sql_injection(wh):
+    metrics = ["leads", "sales"]
+    dimensions = [
+        "partner_name",
+        {"formula": "{lead_id} > 3;drop table leads", "name": "testdim"},
+    ]
+    with pytest.raises(DisallowedSQLException):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
+def test_criteria_sql_injection(wh):
+    metrics = ["leads", "sales"]
+    dimensions = ["campaign_name"]
+    criteria = [("campaign_name", "!=", "Campaign 2B';select * from leads --")]
+    result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+
+    criteria = [("select * from leads", "!=", "Campaign 2B")]
+    with pytest.raises(UnsupportedGrainException):
+        result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+
+    criteria = [("campaign_name", "select * from leads", "Campaign 2B")]
+    with pytest.raises(AssertionError):
+        result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+
+
+def test_row_filter_sql_injection(wh):
+    metrics = ["leads", "revenue"]
+    dimensions = ["partner_name"]
+    row_filters = [("revenue", ">", "11;select * from leads")]
+    with pytest.raises(SyntaxError):
+        result = wh.execute(metrics, dimensions=dimensions, row_filters=row_filters)
+
+
+def test_pivot_sql_injection(wh):
+    metrics = ["leads", "revenue"]
+    dimensions = ["partner_name", "campaign_name"]
+    pivot = ["partner_name;select * from leads"]
+    with pytest.raises(AssertionError):
+        result = wh.execute(metrics, dimensions=dimensions, pivot=pivot)
+
+
+def test_metric_name_sql_injection(config):
+    config["metrics"].append(
+        dict(
+            name="select * from leads",
+            aggregation="avg",
+            rounding=2,
+            formula="{revenue}/{leads}",
+        )
+    )
+    from marshmallow.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        wh = Warehouse(config=config)
+
+
+def test_dimension_name_sql_injection(config):
+    config["dimensions"].append(dict(name="select * from leads", type="String(64)"))
+    from marshmallow.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        wh = Warehouse(config=config)
+
+
+def test_type_conversion_prefix_sql_injection(config):
+    table_config = config["datasources"]["testdb1"]["tables"]["sales"]
+    table_config["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = "select * from sales;--"
+    metrics = ["sales"]
+    dimensions = ["partner_name"]
+    from marshmallow.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        wh = Warehouse(config=config)
+
+
+def test_table_name_sql_injection(config):
+    tables = config["datasources"]["testdb1"]["tables"]
+    del tables["sales"]
+    # Since this table doesn't actually match a table name it shouldn't ever
+    # become a part of the warehouse.
+    tables["select * from leads;--"] = {
+        "type": "metric",
+        "create_fields": True,
+        "columns": {
+            "id": {
+                "fields": [{"name": "sales", "ds_formula": "COUNT(DISTINCT sales.id)"}]
+            },
+            "lead_id": {"fields": ["lead_id"]},
+        },
+    }
+    metrics = ["sales"]
+    dimensions = ["lead_id"]
+    wh = Warehouse(config=config)
+    with pytest.raises(UnsupportedGrainException):
+        result = wh.execute(metrics, dimensions=dimensions)

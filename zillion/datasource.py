@@ -409,7 +409,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     types_converted.add(type(column.type))
 
                 for field_name, ds_formula in convs:
-
                     if column.zillion.type_conversion_prefix:
                         field_name = column.zillion.type_conversion_prefix + field_name
 
