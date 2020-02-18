@@ -1,11 +1,14 @@
 from collections import OrderedDict
+from contextlib import contextmanager
 import copy
 import logging
 import random
 
+import pymysql
 from tlbx import st, dbg, random_string
+import sqlalchemy as sa
 
-from zillion.configs import load_warehouse_config
+from zillion.configs import load_warehouse_config, zillion_config
 from zillion.core import TableTypes, AggregationTypes
 from zillion.datasource import DataSource, AdHocDataSource, AdHocDataTable
 from zillion.report import Report
@@ -13,10 +16,71 @@ from zillion.warehouse import Warehouse
 
 
 DEFAULT_TEST_DB = "testdb1"
-TEST_CONFIG = load_warehouse_config("test_config.json")
+TEST_WH_CONFIG = load_warehouse_config("test_wh_config.json")
 TEST_ADHOC_CONFIG = load_warehouse_config("adhoc_ds_config.json")
+test_config = zillion_config["TEST"]
 
 logging.getLogger().setLevel(logging.INFO)
+
+
+@contextmanager
+def update_zillion_config(updates):
+    """Helper to make temporary updates to global config"""
+    old = {k: v for k, v in zillion_config.items() if k in updates}
+    try:
+        zillion_config.update(updates)
+        yield
+    finally:
+        zillion_config.update(old)
+
+
+def get_pymysql_conn():
+    host = test_config["MySQLHost"]
+    port = int(test_config["MySQLPort"])
+    user = test_config["MySQLUser"]
+    password = test_config.get("MySQLPassword", None)
+    schema = test_config["MySQLTestSchema"]
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        db=schema,
+        user=user,
+        passwd=password,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    return conn
+
+
+def get_sqlalchemy_mysql_engine():
+    host = test_config["MySQLHost"]
+    port = int(test_config["MySQLPort"])
+    user = test_config["MySQLUser"]
+    password = test_config.get("MySQLPassword", None)
+    schema = test_config["MySQLTestSchema"]
+    if host in ["localhost", "127.0.0.1"] and not password:
+        conn_str = "mysql+pymysql://%(user)s@%(host)s/%(schema)s" % locals()
+    else:
+        conn_str = (
+            "mysql+pymysql://%(user)s:%(password)s@%(host)s:%(port)s/%(schema)s"
+            % locals()
+        )
+    engine = sa.create_engine(conn_str)
+    return engine
+
+
+def get_sqlalchemy_conn():
+    engine = get_sqlalchemy_mysql_engine()
+    return engine.connect()
+
+
+def get_sql(sql):
+    conn = get_pymysql_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        return cursor.fetchall()
+    finally:
+        conn.close()
 
 
 def create_adhoc_data(column_types, size):
@@ -83,11 +147,10 @@ def get_dma_zip_table_config():
     return table_config
 
 
-def get_adhoc_datasource():
+def get_adhoc_datasource(size=10):
     table_config = get_adhoc_table_config()
     name = "adhoc_table1"
     primary_key = ["partner_name"]
-    size = 10
     column_types = dict(partner_name=str, adhoc_metric=float)
 
     dt = create_adhoc_datatable(name, table_config, primary_key, column_types, size)

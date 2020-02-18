@@ -1,19 +1,23 @@
 from collections import OrderedDict
-from concurrent.futures import as_completed, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import as_completed, ThreadPoolExecutor
 import decimal
 import inspect
 import logging
 import random
 from sqlite3 import connect, Row
+import threading
 import time
 
 from orderedset import OrderedSet
 from pymysql import escape_string
 import pandas as pd
 import sqlalchemy as sa
+from stopit import TimeoutException, async_raise
 from tlbx import (
     dbg,
     dbgsql,
+    info,
+    warn,
     error,
     sqlformat,
     json,
@@ -28,14 +32,18 @@ from tlbx import (
 from zillion.configs import zillion_config
 from zillion.core import (
     UnsupportedGrainException,
+    UnsupportedKillException,
     ReportException,
     AggregationTypes,
     DataSourceQueryModes,
+    DataSourceQueryTimeoutException,
     FieldTypes,
     TechnicalTypes,
 )
 from zillion.field import get_table_fields, get_table_field_column
 from zillion.sql_utils import sqla_compile, get_sqla_clause, to_sqlite_type
+
+logging.getLogger(name="stopit").setLevel(logging.ERROR)
 
 if zillion_config["DEBUG"]:
     logging.getLogger().setLevel(logging.DEBUG)
@@ -84,6 +92,9 @@ class DataSourceQuery(PrintMixin):
     def get_datasource(self):
         return self.table_set.datasource
 
+    def format_query(self):
+        return sqlformat(sqla_compile(self.select))
+
     def get_bind(self):
         ds = self.get_datasource()
         assert ds.metadata.bind, (
@@ -91,30 +102,69 @@ class DataSourceQuery(PrintMixin):
         )
         return ds.metadata.bind
 
+    def get_dialect_name(self):
+        return self.get_bind().dialect.name
+
     def get_conn(self):
         bind = self.get_bind()
         conn = bind.connect()
         return conn
 
-    def execute(self):
-        # TODOs:
-        # Add straight joins? Optimize indexes?
-        # MySQL: SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
-        #  finally: SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ
+    def kill(self, conn, main_thread=None):
+        # TODO: what if query finishes as we get in here?
+        dialect = self.get_dialect_name()
+        info("Attempting kill() on %s conn: %s" % (dialect, conn))
 
+        if dialect == "mysql":
+            kill_conn = self.get_conn()
+            conn_id = conn.connection.thread_id()  # TODO: Assumes pymysql?
+            try:
+                kill_conn.execute("kill {}".format(conn_id))
+            finally:
+                kill_conn.close()
+        elif dialect == "sqlite":
+            conn.connection.interrupt()
+        elif main_thread:
+            # This isn't guaranteed to work as the thread may be waiting for
+            # an external resource to finish, but worth a shot.
+            info("Trying async raise for unsupported dialect=%s" % dialect)
+            async_raise(main_thread.ident, TimeoutException)
+        else:
+            raise UnsupportedKillException("No kill() support for dialect=%s" % dialect)
+
+    def execute(self, timeout=None):
         start = time.time()
         conn = self.get_conn()
+        is_timeout = False
+        info("\n" + self.format_query())
+
+        def do_timeout(main_thread):
+            nonlocal is_timeout
+            is_timeout = True
+            self.kill(conn, main_thread=main_thread)
+
+        if timeout:
+            main_thread = threading.current_thread()
+            t = threading.Timer(timeout, lambda: do_timeout(main_thread))
+            t.start()
+
         try:
             result = conn.execute(self.select)
             data = result.fetchall()
-        except:
-            error("Exception during query:")
-            dbgsql(self.select)
-            raise
+        except Exception as e:
+            if not is_timeout:
+                raise
+
+            diff = time.time() - start
+            conn.invalidate()
+            raise DataSourceQueryTimeoutException("query timed out after %.3fs" % diff)
         finally:
+            if timeout:
+                t.cancel()
             conn.close()
+
         diff = time.time() - start
-        dbg("Got %d rows in %.3fs" % (len(data), diff))
+        info("Got %d rows in %.3fs" % (len(data), diff))
         return DataSourceQueryResult(self, data, diff)
 
     def build_select(self):
@@ -801,31 +851,28 @@ class Report:
 
     def execute_ds_queries_sequential(self, queries):
         results = []
+        timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
         for query in queries:
-            result = query.execute()
+            result = query.execute(timeout=timeout)
             results.append(result)
         return results
 
-    def execute_ds_queries_multithreaded(self, queries):
-        # https://docs.python.org/3/library/concurrent.futures.html
+    def execute_ds_queries_multithread(self, queries):
+        # TODO: currently if any query times out, the entire report fails.
+        # It might be better if partial results could be returned.
         finished = {}
+        timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
 
         with ThreadPoolExecutor(max_workers=len(queries)) as executor:
-            # Note: if we eventually want to kill() a query on timeout so the thread returns immediately,
-            # need to loop over futures and call future.result() rather than using as_completed, so we have
-            # a ref to the timed out query in the loop
-            # https://stackoverflow.com/questions/6509261/how-to-use-concurrent-futures-with-timeouts
-            futures_map = {executor.submit(query.execute): query for query in queries}
-            try:
-                for future in as_completed(
-                    futures_map, timeout=zillion_config["DATASOURCE_QUERY_TIMEOUT"]
-                ):
-                    data = future.result()
-                    query = futures_map[future]
-                    finished[future] = data
-            except TimeoutError as e:
-                error("TimeoutError: %s" % str(e))
-                raise
+            futures_map = {
+                executor.submit(query.execute, timeout): query for query in queries
+            }
+
+            # TODO: support partial results if exceptions/timeouts occur?
+            for future in as_completed(futures_map):
+                data = future.result()
+                query = futures_map[future]
+                finished[future] = data
 
         return finished.values()
 
@@ -834,8 +881,8 @@ class Report:
         dbg("Executing %s datasource queries in %s mode" % (len(queries), mode))
         if mode == DataSourceQueryModes.SEQUENTIAL:
             return self.execute_ds_queries_sequential(queries)
-        if mode == DataSourceQueryModes.MULTITHREADED:
-            return self.execute_ds_queries_multithreaded(queries)
+        if mode == DataSourceQueryModes.MULTITHREAD:
+            return self.execute_ds_queries_multithread(queries)
         assert False, "Invalid DATASOURCE_QUERY_MODE: %s" % mode
 
     def execute(self):

@@ -175,9 +175,9 @@ def type_string_to_sa_type(type_string):
 
 
 def infer_aggregation_and_rounding(column):
-    if type(column.type) in INTEGER_SA_TYPES:
+    if isinstance(column.type, tuple(INTEGER_SA_TYPES)):
         return AggregationTypes.SUM, 0
-    if type(column.type) in FLOAT_SA_TYPES:
+    if isinstance(column.type, tuple(FLOAT_SA_TYPES)):
         rounding = column.type.scale
         precision = column.type.precision
         if rounding is None and precision is None:
@@ -199,7 +199,7 @@ def aggregation_to_sqla_func(aggregation):
 def is_probably_metric(column, formula=None):
     if formula and contains_aggregation(formula):
         return True
-    if type(column.type) not in NUMERIC_SA_TYPES:
+    if not isinstance(column.type, tuple(NUMERIC_SA_TYPES)):
         return False
     if column.primary_key:
         return False

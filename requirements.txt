@@ -10,6 +10,7 @@ pylint
 pymysql
 pyyaml
 simplejson
+stopit
 sqlalchemy
 sqlparse
 tlbx

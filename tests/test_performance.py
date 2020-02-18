@@ -7,13 +7,9 @@ import time
 
 from tlbx import dbg, st
 
-from zillion.configs import load_warehouse_config
+from .test_utils import *
 from zillion.core import TableTypes
 from zillion.datasource import *
-from zillion.warehouse import Warehouse
-from .test_utils import create_adhoc_datatable, get_testdb_url
-
-TEST_CONFIG = load_warehouse_config("test_config.json")
 
 
 @contextlib.contextmanager

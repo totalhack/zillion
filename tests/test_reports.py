@@ -3,12 +3,15 @@ import pytest
 from tlbx import dbg, info, st
 
 from .test_utils import *
+from zillion.configs import zillion_config
 from zillion.core import (
     UnsupportedGrainException,
     InvalidFieldException,
     ReportException,
     WarehouseException,
+    DataSourceQueryTimeoutException,
     DisallowedSQLException,
+    DataSourceQueryModes,
 )
 from zillion.field import Metric
 from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
@@ -29,6 +32,44 @@ def test_basic_report(wh):
     )
     assert result
     info(result.df)
+
+
+def test_report_sequential_timeout(wh):
+    metrics = ["adhoc_metric", "revenue"]
+    dimensions = ["partner_name"]
+    adhoc_ds = get_adhoc_datasource(size=1e5)
+    try:
+        with update_zillion_config(
+            dict(
+                DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
+                DATASOURCE_QUERY_TIMEOUT=1e-3,
+            )
+        ):
+            with pytest.raises(DataSourceQueryTimeoutException):
+                result = wh.execute(
+                    metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+                )
+    finally:
+        adhoc_ds.clean_up()
+
+
+def test_report_multithreaded_timeout(wh):
+    metrics = ["adhoc_metric", "revenue"]
+    dimensions = ["partner_name"]
+    adhoc_ds = get_adhoc_datasource(size=1e5)
+    try:
+        with update_zillion_config(
+            dict(
+                DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
+                DATASOURCE_QUERY_TIMEOUT=1e-3,
+            )
+        ):
+            with pytest.raises(DataSourceQueryTimeoutException):
+                result = wh.execute(
+                    metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+                )
+    finally:
+        adhoc_ds.clean_up()
 
 
 def test_impossible_report(wh):

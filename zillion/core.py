@@ -30,7 +30,7 @@ class TechnicalTypes(metaclass=ClassValueContainsMeta):
 
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     SEQUENTIAL = "sequential"
-    MULTITHREADED = "multithreaded"
+    MULTITHREAD = "multithread"
 
 
 class UnsupportedGrainException(Exception):
@@ -42,6 +42,14 @@ class WarehouseException(Exception):
 
 
 class ReportException(Exception):
+    pass
+
+
+class DataSourceQueryTimeoutException(Exception):
+    pass
+
+
+class UnsupportedKillException(Exception):
     pass
 
 

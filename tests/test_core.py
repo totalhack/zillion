@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import pytest
+import time
 
 import sqlalchemy as sa
 from tlbx import dbg, st, pp
@@ -12,7 +13,7 @@ from zillion.sql_utils import contains_aggregation, contains_sql_keywords
 from zillion.warehouse import Warehouse
 
 
-def test_config_init(config):
+def test_wh_config_init(config):
     pass
 
 
@@ -95,7 +96,7 @@ def test_warehouse_has_zillion_info_no_config(config):
 def test_warehouse_remote_datasource_config(config):
     config["datasources"][
         "testdb2"
-    ] = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_datasource_config.json"
+    ] = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_sqlite_ds_config.json"
     wh = Warehouse(config=config)
     assert wh.has_metric("aggr_sales")
 

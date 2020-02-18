@@ -1,0 +1,83 @@
+{
+    "url": "mysql+pymysql://{user}@{host}/{schema}",
+    "metrics": [
+        {
+            "name": "clicks",
+            "type": "Integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "cost",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2
+        }
+    ],
+    "tables": {
+        "partners": {
+            "type": "dimension",
+            "create_fields": true,
+            "columns": {
+                "id": {
+                    "fields": ["partner_id"]
+                },
+                "name": {
+                    "fields": ["partner_name"]
+                }
+            }
+        },
+        
+        "campaigns": {
+            "type": "dimension",
+            "create_fields": true,
+            "parent": "partners",
+            "columns": {
+                "id": {
+                    "fields": ["campaign_id"]
+                },
+                "name": {
+                    "fields": ["campaign_name"]
+                },
+                "partner_id": {
+                    "fields": ["partner_id"]
+                }
+            }
+        },
+
+        "campaign_cost": {
+            "type": "metric",
+            "create_fields": true,
+            "columns": {
+                "campaign_id": {
+                    "fields": ["campaign_id"]
+                },
+                "cost": {
+                    "fields": [
+                        "cost",
+                        {"name":"benchmark", "ds_formula": "benchmark(2000000, md5('when will it end?'))"}
+                    ]
+                },
+                "clicks": {
+                    "fields": ["clicks"]
+                }
+            }
+        },
+
+        "campaign_transactions": {
+            "type": "metric",
+            "create_fields": true,
+            "columns": {
+                "id": {
+                    "fields": [
+                        "transaction_id",
+                        {"name":"transactions", "ds_formula": "COUNT(DISTINCT campaign_transactions.id)"}
+                    ]
+                },
+                "campaign_id": {
+                    "fields": ["campaign_id"]
+                }
+            }
+        }
+
+    }
+}

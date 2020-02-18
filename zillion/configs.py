@@ -110,6 +110,14 @@ def load_warehouse_config(filename, preserve_order=False):
     return config
 
 
+def load_datasource_config(filename, preserve_order=False):
+    file_schema = DataSourceConfigSchema()
+    config = parse_schema_file(
+        filename, file_schema, object_pairs_hook=OrderedDict if preserve_order else None
+    )
+    return config
+
+
 def is_valid_table_type(val):
     if val in TableTypes:
         return True

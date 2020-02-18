@@ -187,6 +187,6 @@
             }
         },
 
-        "testdb2": "test_datasource_config.json"
+        "testdb2": "test_sqlite_ds_config.json"
     }
 }
