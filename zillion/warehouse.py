@@ -11,6 +11,7 @@ import pandas as pd
 import sqlalchemy as sa
 from tlbx import (
     dbg,
+    info,
     warn,
     format_msg,
     st,
@@ -113,6 +114,7 @@ class Warehouse(FieldManagerMixin):
     def clean_up(self):
         for ds_name, ds in self.datasources.items():
             if ds_name in self._created_adhoc_datasources:
+                info("Cleaning up warehouse adhoc ds %s" % ds)
                 ds.clean_up()
 
     def print_info(self):

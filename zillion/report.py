@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from concurrent.futures import as_completed, ThreadPoolExecutor
+from contextlib import contextmanager
 import decimal
 import inspect
 import logging
@@ -7,6 +8,7 @@ import random
 from sqlite3 import connect, Row
 import threading
 import time
+import uuid
 
 from orderedset import OrderedSet
 from pymysql import escape_string
@@ -19,6 +21,7 @@ from tlbx import (
     info,
     warn,
     error,
+    get_class_var_values,
     sqlformat,
     json,
     st,
@@ -34,6 +37,10 @@ from zillion.core import (
     UnsupportedGrainException,
     UnsupportedKillException,
     ReportException,
+    FailedKillException,
+    ExecutionKilledException,
+    ExecutionLockException,
+    ExecutionState,
     AggregationTypes,
     DataSourceQueryModes,
     DataSourceQueryTimeoutException,
@@ -76,15 +83,92 @@ Reports = sa.Table(
 zillion_metadata.create_all(zillion_engine)
 
 
-class DataSourceQuery(PrintMixin):
+class ExecutionStateMixin:
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._state = None
+
+    @property
+    def ready(self):
+        return self._state == ExecutionState.READY
+
+    @property
+    def querying(self):
+        return self._state == ExecutionState.QUERYING
+
+    @property
+    def killed(self):
+        return self._state == ExecutionState.KILLED
+
+    @contextmanager
+    def get_lock(self, timeout=None):
+        timeout = timeout or -1  # convert to `acquire` default if falsey
+
+        result = self._lock.acquire(timeout=timeout)
+        if not result:
+            raise ExecutionLockException("lock wait timeout after %.3fs" % timeout)
+
+        try:
+            yield
+        finally:
+            self._lock.release()
+
+    def raise_if_killed(self, timeout=None):
+        with self.get_lock(timeout=timeout):
+            if self.killed:
+                raise ExecutionKilledException
+
+    def get_state(self):
+        return self._state
+
+    def set_state(
+        self,
+        state,
+        timeout=None,
+        assert_ready=False,
+        raise_if_killed=False,
+        set_if_killed=False,
+    ):
+        assert state in get_class_var_values(ExecutionState), (
+            "Invalid state value: %s" % state
+        )
+        cls_name = self.__class__.__name__
+
+        with self.get_lock(timeout=timeout):
+            if assert_ready:
+                assert self.ready, "%s: expected ready state, got: %s" % (
+                    cls_name,
+                    self._state,
+                )
+
+            if raise_if_killed:
+                try:
+                    self.raise_if_killed()
+                except ExecutionKilledException:
+                    if set_if_killed:
+                        dbg(
+                            "%s: state transition: %s -> %s"
+                            % (cls_name, self._state, state)
+                        )
+                        self._state = state
+                    raise
+
+            dbg("%s: state transition: %s -> %s" % (cls_name, self._state, state))
+            self._state = state
+
+
+class DataSourceQuery(ExecutionStateMixin, PrintMixin):
     repr_attrs = ["metrics", "dimensions", "criteria"]
 
     @initializer
     def __init__(self, warehouse, metrics, dimensions, criteria, table_set):
+        self._conn = None
         self.field_map = {}
         self.metrics = metrics or {}
         self.dimensions = dimensions or {}
         self.select = self.build_select()
+        super().__init__()
+        self.set_state(ExecutionState.READY)
 
     def get_datasource_name(self):
         return self.table_set.datasource.name
@@ -110,62 +194,103 @@ class DataSourceQuery(PrintMixin):
         conn = bind.connect()
         return conn
 
-    def kill(self, conn, main_thread=None):
-        # TODO: what if query finishes as we get in here?
+    def execute(self, timeout=None, label=None):
+        start = time.time()
+        is_timeout = False
+        t = None
+
+        self.set_state(ExecutionState.QUERYING, assert_ready=True)
+
+        try:
+            assert not self._conn, "Called execute with active query connection"
+            self._conn = self.get_conn()
+
+            if label:
+                self.select = self.select.comment(label)
+
+            try:
+                info("\n" + self.format_query())
+
+                def do_timeout(main_thread):
+                    nonlocal is_timeout
+                    is_timeout = True
+                    self.kill(main_thread=main_thread)
+
+                if timeout:
+                    main_thread = threading.current_thread()
+                    t = threading.Timer(timeout, lambda: do_timeout(main_thread))
+                    t.start()
+
+                try:
+                    result = self._conn.execute(self.select)
+                    data = result.fetchall()
+                except Exception as e:
+                    if not is_timeout:
+                        raise
+
+                    diff = time.time() - start
+                    self._conn.invalidate()
+                    raise DataSourceQueryTimeoutException(
+                        "query timed out after %.3fs" % diff
+                    )
+                finally:
+                    if t:
+                        t.cancel()
+            finally:
+                try:
+                    self._conn.close()
+                except Exception as e:
+                    warn("Exception on connection close: %s" % str(e))
+                self._conn = None
+
+            diff = time.time() - start
+            info("Got %d rows in %.3fs" % (len(data), diff))
+            return DataSourceQueryResult(self, data, diff)
+        finally:
+            raise_if_killed = False if is_timeout else True
+            self.set_state(
+                ExecutionState.READY,
+                raise_if_killed=raise_if_killed,
+                set_if_killed=True,
+            )
+
+    def kill(self, main_thread=None):
+        # Note: if query finishes as this is processing, it should end up
+        # hitting raise_if_killed once this code is done rather than causing
+        # the underlying connection to die and raise an exception.
+        with self.get_lock():
+            if self.ready:
+                warn("kill called on query that isn't running")
+                return
+
+            if self.killed:
+                warn("kill called on query already being killed")
+                return
+
+            self.set_state(ExecutionState.KILLED)
+
+        # I don't see how this could happen, but get loud if it does...
+        assert self._conn, "Attempting to kill with no active query connection"
+
         dialect = self.get_dialect_name()
-        info("Attempting kill() on %s conn: %s" % (dialect, conn))
+        info("Attempting kill on %s conn: %s" % (dialect, self._conn))
 
         if dialect == "mysql":
             kill_conn = self.get_conn()
-            conn_id = conn.connection.thread_id()  # TODO: Assumes pymysql?
+            conn_id = self._conn.connection.thread_id()  # TODO: Assumes pymysql?
             try:
                 kill_conn.execute("kill {}".format(conn_id))
             finally:
                 kill_conn.close()
         elif dialect == "sqlite":
-            conn.connection.interrupt()
+            self._conn.connection.interrupt()
         elif main_thread:
             # This isn't guaranteed to work as the thread may be waiting for
             # an external resource to finish, but worth a shot.
             info("Trying async raise for unsupported dialect=%s" % dialect)
-            async_raise(main_thread.ident, TimeoutException)
+            async_raise(main_thread.ident, ExecutionKilledException)
         else:
-            raise UnsupportedKillException("No kill() support for dialect=%s" % dialect)
-
-    def execute(self, timeout=None):
-        start = time.time()
-        conn = self.get_conn()
-        is_timeout = False
-        info("\n" + self.format_query())
-
-        def do_timeout(main_thread):
-            nonlocal is_timeout
-            is_timeout = True
-            self.kill(conn, main_thread=main_thread)
-
-        if timeout:
-            main_thread = threading.current_thread()
-            t = threading.Timer(timeout, lambda: do_timeout(main_thread))
-            t.start()
-
-        try:
-            result = conn.execute(self.select)
-            data = result.fetchall()
-        except Exception as e:
-            if not is_timeout:
-                raise
-
-            diff = time.time() - start
-            conn.invalidate()
-            raise DataSourceQueryTimeoutException("query timed out after %.3fs" % diff)
-        finally:
-            if timeout:
-                t.cancel()
-            conn.close()
-
-        diff = time.time() - start
-        info("Got %d rows in %.3fs" % (len(data), diff))
-        return DataSourceQueryResult(self, data, diff)
+            raise UnsupportedKillException("No kill support for dialect=%s" % dialect)
 
     def build_select(self):
         # https://docs.sqlalchemy.org/en/latest/core/selectable.html
@@ -599,6 +724,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         return df
 
     def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
+        start = time.time()
         columns = []
         dimension_aliases = []
 
@@ -650,6 +776,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         if pivot:
             df = df.unstack(pivot)
 
+        dbg(df)
+        dbg("Final result took %.3fs" % (time.time() - start))
         return df
 
     def clean_up(self):
@@ -659,7 +787,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         self.conn.close()
 
 
-class Report:
+class Report(ExecutionStateMixin):
     def __init__(
         self,
         warehouse,
@@ -672,7 +800,8 @@ class Report:
         adhoc_datasources=None,
     ):
         start = time.time()
-        self.id = None
+        self.id = None  # TODO: consider renaming spec_id or save_id
+        self.uuid = uuid.uuid1()
         self.warehouse = warehouse
 
         if adhoc_datasources:
@@ -726,6 +855,9 @@ class Report:
         self.queries = self.build_ds_queries()
         self.combined_query = None
         self.result = None
+
+        super().__init__()
+        self.set_state(ExecutionState.READY)
         dbg("Report init took %.3fs" % (time.time() - start))
 
     def get_params(self):
@@ -849,11 +981,16 @@ class Report:
             else:
                 assert False, "Could not find field %s in warehouse" % formula_field
 
+    def get_query_label(self, query_label):
+        return "Report: %s | Query: %s" % (str(self.uuid), query_label)
+
     def execute_ds_queries_sequential(self, queries):
         results = []
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
-        for query in queries:
-            result = query.execute(timeout=timeout)
+        for i, query in enumerate(queries):
+            self.raise_if_killed()
+            label = self.get_query_label("%s / %s" % (i + 1, len(queries)))
+            result = query.execute(timeout=timeout, label=label)
             results.append(result)
         return results
 
@@ -864,11 +1001,12 @@ class Report:
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
 
         with ThreadPoolExecutor(max_workers=len(queries)) as executor:
-            futures_map = {
-                executor.submit(query.execute, timeout): query for query in queries
-            }
+            futures_map = {}
+            for i, query in enumerate(queries):
+                label = self.get_query_label("%s / %s" % (i + 1, len(queries)))
+                future = executor.submit(query.execute, timeout=timeout, label=label)
+                futures_map[future] = query
 
-            # TODO: support partial results if exceptions/timeouts occur?
             for future in as_completed(futures_map):
                 data = future.result()
                 query = futures_map[future]
@@ -879,35 +1017,80 @@ class Report:
     def execute_ds_queries(self, queries):
         mode = zillion_config["DATASOURCE_QUERY_MODE"]
         dbg("Executing %s datasource queries in %s mode" % (len(queries), mode))
+        start = time.time()
         if mode == DataSourceQueryModes.SEQUENTIAL:
             return self.execute_ds_queries_sequential(queries)
         if mode == DataSourceQueryModes.MULTITHREAD:
             return self.execute_ds_queries_multithread(queries)
+        dbg("DataSource queries took %.3fs" % (time.time() - start))
         assert False, "Invalid DATASOURCE_QUERY_MODE: %s" % mode
 
     def execute(self):
-        start = very_start = time.time()
-        ds_query_results = self.execute_ds_queries(self.queries)
-        dbg("DataSource queries took %.3fs" % (time.time() - start))
-        ds_query_summaries = [x.summary for x in ds_query_results]
-
         start = time.time()
-        cr = self.create_combined_result(ds_query_results)
-        dbg("Combined result took %.3fs" % (time.time() - start))
+
+        self.set_state(ExecutionState.QUERYING, assert_ready=True)
 
         try:
-            start = time.time()
-            final_result = cr.get_final_result(
-                self.metrics, self.dimensions, self.row_filters, self.rollup, self.pivot
-            )
-            dbg(final_result)
-            dbg("Final result took %.3fs" % (time.time() - start))
-            self.result = ReportResult(
-                final_result, time.time() - very_start, ds_query_summaries
-            )
-            return self.result
+            query_results = self.execute_ds_queries(self.queries)
+            summaries = [x.summary for x in query_results]
+
+            self.raise_if_killed()
+            cr = self.create_combined_result(query_results)
+
+            try:
+                self.raise_if_killed()
+                final_result = cr.get_final_result(
+                    self.metrics,
+                    self.dimensions,
+                    self.row_filters,
+                    self.rollup,
+                    self.pivot,
+                )
+                diff = time.time() - start
+                self.result = ReportResult(final_result, diff, summaries)
+                return self.result
+            finally:
+                cr.clean_up()
         finally:
-            cr.clean_up()
+            self.set_state(
+                ExecutionState.READY, raise_if_killed=True, set_if_killed=True
+            )
+
+    def kill(self, soft=False, raise_if_failed=False):
+        info("killing report %s" % self.uuid)
+
+        with self.get_lock():
+            if self.ready:
+                warn("kill called on report that isn't running")
+                return
+
+            if self.killed:
+                warn("kill called on report already being killed")
+                return
+
+            if soft:
+                self.set_state(ExecutionState.KILLED)
+                return
+
+            querying = self.querying  # grab state before changing it
+            self.set_state(ExecutionState.KILLED)
+
+            if querying:
+                dbg("attempting kill on %d report queries" % len(self.queries))
+                exceptions = []
+
+                for query in self.queries:
+                    try:
+                        query.kill()
+                    except Exception as e:
+                        setattr(e, "query", query)
+                        exceptions.append(e)
+
+                if exceptions:
+                    if raise_if_failed:
+                        raise FailedKillException(exceptions)
+                    else:
+                        warn("failed to kill some queries: %s" % exceptions)
 
     def get_grain(self):
         if not (self.ds_dimensions or self.criteria):
@@ -976,12 +1159,15 @@ class Report:
         return queries
 
     def create_combined_result(self, ds_query_results):
-        return SQLiteMemoryCombinedResult(
+        start = time.time()
+        result = SQLiteMemoryCombinedResult(
             self.warehouse,
             ds_query_results,
             list(self.ds_dimensions.keys()),
             adhoc_datasources=self.adhoc_datasources,
         )
+        dbg("Combined result took %.3fs" % (time.time() - start))
+        return result
 
 
 class ReportResult(PrintMixin):

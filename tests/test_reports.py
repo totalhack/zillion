@@ -1,4 +1,5 @@
 import pytest
+import threading
 
 from tlbx import dbg, info, st
 
@@ -10,6 +11,7 @@ from zillion.core import (
     ReportException,
     WarehouseException,
     DataSourceQueryTimeoutException,
+    ExecutionKilledException,
     DisallowedSQLException,
     DataSourceQueryModes,
 )
@@ -37,39 +39,132 @@ def test_basic_report(wh):
 def test_report_sequential_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=1e5)
-    try:
-        with update_zillion_config(
-            dict(
-                DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
-                DATASOURCE_QUERY_TIMEOUT=1e-3,
+    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
+            DATASOURCE_QUERY_TIMEOUT=1e-2,
+        )
+    ):
+        with pytest.raises(DataSourceQueryTimeoutException):
+            result = wh.execute(
+                metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
             )
-        ):
-            with pytest.raises(DataSourceQueryTimeoutException):
-                result = wh.execute(
-                    metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
-                )
-    finally:
-        adhoc_ds.clean_up()
 
 
 def test_report_multithreaded_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=1e5)
-    try:
-        with update_zillion_config(
-            dict(
-                DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
-                DATASOURCE_QUERY_TIMEOUT=1e-3,
+    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
+            DATASOURCE_QUERY_TIMEOUT=1e-2,
+        )
+    ):
+        with pytest.raises(DataSourceQueryTimeoutException):
+            result = wh.execute(
+                metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
             )
-        ):
-            with pytest.raises(DataSourceQueryTimeoutException):
-                result = wh.execute(
-                    metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
-                )
+
+
+@pytest.mark.longrun
+def test_report_reuse_after_timeout(wh):
+    metrics = ["adhoc_metric", "revenue"]
+    dimensions = ["partner_name"]
+    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
+            DATASOURCE_QUERY_TIMEOUT=1e-2,
+        )
+    ):
+        report = Report(
+            wh, metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+        )
+        with pytest.raises(DataSourceQueryTimeoutException):
+            result = report.execute()
+
+    result = report.execute()
+    assert result
+    info(result.df)
+
+
+def test_report_kill(wh):
+    metrics = ["adhoc_metric", "revenue"]
+    dimensions = ["partner_name"]
+    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    t = None
+
+    try:
+        report = Report(
+            wh, metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+        )
+
+        t = threading.Timer(0.1, report.kill)
+        t.start()
+        with pytest.raises(ExecutionKilledException):
+            result = report.execute()
     finally:
-        adhoc_ds.clean_up()
+        if t:
+            t.cancel()
+
+
+def test_report_reuse_after_kill(wh):
+    metrics = ["adhoc_metric", "revenue"]
+    dimensions = ["partner_name"]
+    criteria = [("partner_name", "like", "%zz%")]
+    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    t = None
+
+    try:
+        report = Report(
+            wh,
+            metrics=metrics,
+            dimensions=dimensions,
+            criteria=criteria,
+            adhoc_datasources=[adhoc_ds],
+        )
+
+        t = threading.Timer(0.1, report.kill)
+        t.start()
+        with pytest.raises(ExecutionKilledException):
+            result = report.execute()
+    finally:
+        if t:
+            t.cancel()
+
+    result = report.execute()
+    assert result
+    info(result.df)
+
+
+def test_report_kill_after_timeout(wh):
+    metrics = ["adhoc_metric", "revenue"]
+    dimensions = ["partner_name"]
+    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    t = None
+
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
+            DATASOURCE_QUERY_TIMEOUT=1e-3,
+        )
+    ):
+        report = Report(
+            wh, metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+        )
+        with pytest.raises(DataSourceQueryTimeoutException):
+            result = report.execute()
+
+    try:
+        t = threading.Timer(0.1, report.kill)
+        t.start()
+        with pytest.raises(ExecutionKilledException):
+            result = report.execute()
+    finally:
+        if t:
+            t.cancel()
 
 
 def test_impossible_report(wh):

@@ -2,15 +2,21 @@ from collections import OrderedDict
 from contextlib import contextmanager
 import copy
 import logging
+import os
 import random
 
 import pymysql
-from tlbx import st, dbg, random_string
+from tlbx import st, dbg, info, random_string
 import sqlalchemy as sa
 
 from zillion.configs import load_warehouse_config, zillion_config
 from zillion.core import TableTypes, AggregationTypes
-from zillion.datasource import DataSource, AdHocDataSource, AdHocDataTable
+from zillion.datasource import (
+    DataSource,
+    AdHocDataSource,
+    AdHocDataTable,
+    SQLiteDataTable,
+)
 from zillion.report import Report
 from zillion.warehouse import Warehouse
 
@@ -147,14 +153,10 @@ def get_dma_zip_table_config():
     return table_config
 
 
-def get_adhoc_datasource(size=10):
+def get_adhoc_datasource(size=10, name="adhoc_table1", reuse=False):
     table_config = get_adhoc_table_config()
-    name = "adhoc_table1"
     primary_key = ["partner_name"]
     column_types = dict(partner_name=str, adhoc_metric=float)
-
-    dt = create_adhoc_datatable(name, table_config, primary_key, column_types, size)
-
     config = {
         "metrics": [
             {
@@ -166,8 +168,21 @@ def get_adhoc_datasource(size=10):
         "dimensions": [{"name": "partner_name", "type": "String(32)"}],
     }
 
-    adhoc_ds = AdHocDataSource([dt], config=config)
-    return adhoc_ds
+    if reuse:
+        fname = AdHocDataSource.get_datasource_filename(name)
+        if os.path.exists(fname):
+            info("Reusing datasource file %s" % fname)
+            dt = SQLiteDataTable(
+                name,
+                AdHocDataSource.get_datasource_url(name),
+                table_config["type"],
+                primary_key=primary_key,
+                columns=table_config.get("columns", None),
+            )
+            return AdHocDataSource([dt], name=name, config=config)
+
+    dt = create_adhoc_datatable(name, table_config, primary_key, column_types, size)
+    return AdHocDataSource([dt], name=name, config=config)
 
 
 def get_testdb_url(dbname=DEFAULT_TEST_DB):

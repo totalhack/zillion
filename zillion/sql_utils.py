@@ -2,6 +2,8 @@ import ast
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql import expression as exp
 import sqlparse as sp
 from tlbx import dbg, st, get_class_vars, get_string_format_args
 
@@ -289,3 +291,35 @@ def get_sqla_clause(column, criterion, negate=False):
 
 def to_sqlite_type(type):
     return type.compile(dialect=sqlite_dialect())
+
+
+# https://github.com/sqlalchemy/sqlalchemy/wiki/CompiledComments
+def comment(self, comment):
+    self._added_comment = comment
+    return self
+
+
+exp.ClauseElement.comment = comment
+exp.ClauseElement._added_comment = None
+
+
+def _compile_element(elem, prepend_newline=False):
+    @compiles(elem)
+    def add_comment(element, compiler, **kw):
+        meth = getattr(compiler, "visit_%s" % element.__visit_name__)
+        text = meth(element, **kw)
+        if element._added_comment:
+            # Modified this line to not add newline
+            text = "-- %s\n" % element._added_comment + text
+        elif prepend_newline:
+            text = "\n" + text
+        return text
+
+
+_compile_element(exp.Case)
+_compile_element(exp.Label, True)
+_compile_element(exp.ColumnClause)
+_compile_element(exp.Join)
+_compile_element(exp.Select)
+_compile_element(exp.Alias)
+_compile_element(exp.Exists)

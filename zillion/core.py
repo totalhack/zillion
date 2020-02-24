@@ -33,8 +33,10 @@ class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     MULTITHREAD = "multithread"
 
 
-class UnsupportedGrainException(Exception):
-    pass
+class ExecutionState:
+    READY = "ready"
+    QUERYING = "querying"
+    KILLED = "killed"
 
 
 class WarehouseException(Exception):
@@ -45,11 +47,27 @@ class ReportException(Exception):
     pass
 
 
-class DataSourceQueryTimeoutException(Exception):
+class UnsupportedGrainException(Exception):
     pass
 
 
 class UnsupportedKillException(Exception):
+    pass
+
+
+class FailedKillException(Exception):
+    pass
+
+
+class DataSourceQueryTimeoutException(Exception):
+    pass
+
+
+class ExecutionKilledException(Exception):
+    pass
+
+
+class ExecutionLockException(Exception):
     pass
 
 

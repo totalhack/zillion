@@ -899,6 +899,14 @@ class AdHocDataTable(PrintMixin):
         )
 
 
+class SQLiteDataTable(AdHocDataTable):
+    def get_dataframe(self):
+        raise NotImplementedError
+
+    def to_sql(self, engine, **kwargs):
+        assert self.table_exists(engine), "SQLiteDataTable table does not exist"
+
+
 class CSVDataTable(AdHocDataTable):
     def get_dataframe(self):
         return pd.read_csv(
@@ -933,13 +941,10 @@ class HTMLDataTable(AdHocDataTable):
     def get_dataframe(self):
         # Expects this format by default:
         # df.reset_index().to_html("dma_zip.html", index=False)
-
         dfs = pd.read_html(self.data, **self.df_kwargs)
-
         assert dfs, "No html table found"
         assert len(dfs) == 1, "More than one html table found"
         df = dfs[0]
-
         if self.primary_key and df.index.names != self.primary_key:
             df = df.set_index(self.primary_key)
         return df
@@ -952,7 +957,7 @@ class AdHocDataSource(DataSource):
         config = config or dict(tables={})
         ds_name = self.check_or_create_name(name)
 
-        conn_url = "sqlite:///%s" % self.get_datasource_filename(ds_name)
+        conn_url = self.get_datasource_url(ds_name)
         engine = sa.create_engine(conn_url, echo=False)
 
         for dt in datatables:
@@ -985,8 +990,14 @@ class AdHocDataSource(DataSource):
 
         return cls(datatables, name=name, if_exists=if_exists)
 
-    def get_datasource_filename(self, ds_name):
-        return "%s/%s.db" % (zillion_config["ADHOC_DATASOURCE_DIRECTORY"], ds_name)
+    @classmethod
+    def get_datasource_filename(cls, ds_name):
+        dir_name = zillion_config["ADHOC_DATASOURCE_DIRECTORY"]
+        return "%s/%s.db" % (dir_name, ds_name)
+
+    @classmethod
+    def get_datasource_url(cls, ds_name):
+        return "sqlite:///%s" % cls.get_datasource_filename(ds_name)
 
     def clean_up(self):
         filename = self.get_datasource_filename(self.name)
