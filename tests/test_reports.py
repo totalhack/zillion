@@ -68,6 +68,18 @@ def test_report_multithreaded_timeout(wh):
             )
 
 
+def test_report_one_worker(wh):
+    metrics = ["sales", "revenue", "leads"]
+    dimensions = ["partner_name"]
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
+            DATASOURCE_QUERY_WORKERS=1,
+        )
+    ):
+        result = wh.execute(metrics, dimensions=dimensions)
+
+
 @pytest.mark.longrun
 def test_report_reuse_after_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]

@@ -999,8 +999,9 @@ class Report(ExecutionStateMixin):
         # It might be better if partial results could be returned.
         finished = {}
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
+        workers = zillion_config.get("DATASOURCE_QUERY_WORKERS", len(queries))
 
-        with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
             futures_map = {}
             for i, query in enumerate(queries):
                 label = self.get_query_label("%s / %s" % (i + 1, len(queries)))
