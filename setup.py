@@ -42,6 +42,7 @@ for repo in git_requires:
 
 
 extras_require = {
+    "postgres": ["psycopg2"],
     "dev": [
         "black",
         "pre-commit",
@@ -51,7 +52,7 @@ extras_require = {
         "wheel",
         "sphinx",
         "sphinx-rtd-theme",
-    ]
+    ],
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))
 

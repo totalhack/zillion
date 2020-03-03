@@ -1,6 +1,13 @@
+"""
+Useful reference around SQLAlchemy types by dialect:
+https://github.com/zzzeek/sqlalchemy/blob/master/lib/sqlalchemy/dialects/type_migration_guidelines.txt
+"""
+
 import ast
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.mysql import dialect as mysql_dialect
+from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import expression as exp
@@ -13,28 +20,32 @@ DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 
 INTEGER_SA_TYPES = [
     sa.BigInteger,
-    sa.sql.sqltypes.BIGINT,
+    sa.BIGINT,
     sa.Integer,
-    sa.sql.sqltypes.INTEGER,
+    sa.INT,
+    sa.INTEGER,
     sa.SmallInteger,
-    sa.sql.sqltypes.SMALLINT,
+    sa.SMALLINT,
 ]
 
 FLOAT_SA_TYPES = [
-    sa.sql.sqltypes.DECIMAL,
+    sa.DECIMAL,
     sa.Float,
-    sa.sql.sqltypes.FLOAT,
+    sa.FLOAT,
     sa.Numeric,
-    sa.sql.sqltypes.NUMERIC,
-    sa.sql.sqltypes.REAL,
+    sa.NUMERIC,
+    sa.REAL,
+    sa.dialects.postgresql.DOUBLE_PRECISION,
+    sa.dialects.postgresql.MONEY,
 ]
 
 NUMERIC_SA_TYPES = INTEGER_SA_TYPES + FLOAT_SA_TYPES
 
-DATETIME_SA_TYPES = [sa.DateTime, sa.TIMESTAMP]
+DATETIME_SA_TYPES = [sa.DateTime, sa.DATETIME, sa.Time, sa.TIME, sa.TIMESTAMP]
 
-DATE_SA_TYPES = [sa.Date]
+DATE_SA_TYPES = [sa.Date, sa.DATE]
 
+# Order of this matters!
 DATE_HIERARCHY = [
     "year",
     "month",
@@ -70,6 +81,9 @@ DIALECT_DATE_CONVERSIONS = {
     },
     #'mysql': {
     #   TODO
+    # },
+    #'postgresql': {
+    #   TODO
     # }
 }
 
@@ -78,11 +92,27 @@ TYPE_ALLOWED_CONVERSIONS = {
         "allowed_conversions": DATE_HIERARCHY,
         "dialect_conversions": DIALECT_DATE_CONVERSIONS,
     },
+    sa.DATETIME: {
+        "allowed_conversions": DATE_HIERARCHY,
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
     sa.TIMESTAMP: {
         "allowed_conversions": DATE_HIERARCHY,
         "dialect_conversions": DIALECT_DATE_CONVERSIONS,
     },
+    sa.Time: {
+        "allowed_conversions": DATE_HIERARCHY,
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+    sa.TIME: {
+        "allowed_conversions": DATE_HIERARCHY,
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
     sa.Date: {
+        "allowed_conversions": DATE_HIERARCHY[0 : DATE_HIERARCHY.index("hour")],
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+    sa.DATE: {
         "allowed_conversions": DATE_HIERARCHY[0 : DATE_HIERARCHY.index("hour")],
         "dialect_conversions": DIALECT_DATE_CONVERSIONS,
     },
@@ -162,6 +192,9 @@ def contains_aggregation(sql):
 
 
 def type_string_to_sa_type(type_string):
+    # This only checks the top level sqlalchemy module for matching type
+    # classes. Therefore you can not specify dialect-specific types at this
+    # time.
     parts = type_string.split("(")
     type_args = []
     if len(parts) > 1:
@@ -226,6 +259,11 @@ def column_fullname(column, prefix=None):
 
 
 def get_sqla_clause(column, criterion, negate=False):
+    """
+    TODO: postgresql like is case sensitive, but mysql like is not
+    - postgres also supports ilike to specify case insensitive
+    OPTION: look at dialect to determine function
+    """
     field, op, values = criterion
     op = op.lower()
     if not isinstance(values, (list, tuple)):
@@ -234,7 +272,7 @@ def get_sqla_clause(column, criterion, negate=False):
     use_or = True
     has_null = False
     for v in values:
-        # len() check is to avoid string.lower() on huge strings
+        # len() check is to avoid calling string.lower() on huge strings
         if v is None or (isinstance(v, str) and len(v) == 4 and v.lower() == "null"):
             has_null = True
 
@@ -270,6 +308,11 @@ def get_sqla_clause(column, criterion, negate=False):
         for value in values:
             assert len(value) == 2, "Between clause value must have length of 2"
             clauses.append(column.between(value[0], value[1]))
+    elif op == "not between":
+        clauses = []
+        for value in values:
+            assert len(value) == 2, "Between clause value must have length of 2"
+            clauses.append(sa.not_(column.between(value[0], value[1])))
     elif op == "like":
         clauses = [column.like(v) for v in values]
     elif op == "not like":
@@ -287,6 +330,14 @@ def get_sqla_clause(column, criterion, negate=False):
         clause = sa.not_(clause)
 
     return clause
+
+
+def to_mysql_type(type):
+    return type.compile(dialect=mysql_dialect())
+
+
+def to_postgresql_type(type):
+    return type.compile(dialect=postgresql_dialect())
 
 
 def to_sqlite_type(type):
@@ -323,3 +374,19 @@ _compile_element(exp.Join)
 _compile_element(exp.Select)
 _compile_element(exp.Alias)
 _compile_element(exp.Exists)
+
+
+def get_postgres_schemas(conn):
+    qr = conn.execute(
+        sa.text(
+            "SELECT schema_name FROM information_schema.schemata "
+            "WHERE schema_name not LIKE 'pg_%' and schema_name != 'information_schema'"
+        )
+    )
+    return [x["schema_name"] for x in qr.fetchall()]
+
+
+def get_postgres_pid(conn):
+    qr = conn.execute("select pg_backend_pid()")
+    pid = qr.fetchone()[0]
+    return pid

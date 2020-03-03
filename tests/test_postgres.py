@@ -9,10 +9,11 @@ from zillion.datasource import *
 from zillion.warehouse import Warehouse
 
 
-def test_mysql_datasource():
-    ds_config = load_datasource_config("test_mysql_ds_config.json")
-    ds = DataSource.from_config("mysql", ds_config)
+def test_postgres_datasource():
+    ds_config = load_datasource_config("test_postgres_ds_config.json")
+    ds = DataSource.from_config("postgres", ds_config)
     wh = Warehouse(datasources=[ds])
+    wh.print_info()
     metrics = ["cost", "clicks", "transactions"]
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
@@ -20,9 +21,9 @@ def test_mysql_datasource():
     info(result.df)
 
 
-def test_mysql_sequential_timeout():
-    ds_config = load_datasource_config("test_mysql_ds_config.json")
-    ds = DataSource.from_config("mysql", ds_config)
+def test_postgres_sequential_timeout():
+    ds_config = load_datasource_config("test_postgres_ds_config.json")
+    ds = DataSource.from_config("postgres", ds_config)
     wh = Warehouse(datasources=[ds])
     with update_zillion_config(
         dict(
@@ -30,23 +31,23 @@ def test_mysql_sequential_timeout():
             DATASOURCE_QUERY_TIMEOUT=1e-2,
         )
     ):
-        metrics = ["benchmark"]
-        dimensions = ["partner_name"]
+        metrics = ["cost"]
+        dimensions = ["benchmark"]
         with pytest.raises(DataSourceQueryTimeoutException):
             result = wh.execute(metrics, dimensions=dimensions)
 
 
-def test_mysql_multithreaded_timeout():
-    ds_config = load_datasource_config("test_mysql_ds_config.json")
-    ds = DataSource.from_config("mysql", ds_config)
+def test_postgres_multithreaded_timeout():
+    ds_config = load_datasource_config("test_postgres_ds_config.json")
+    ds = DataSource.from_config("postgres", ds_config)
     wh = Warehouse(datasources=[ds])
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
-            DATASOURCE_QUERY_TIMEOUT=1e-1,
+            DATASOURCE_QUERY_TIMEOUT=1e-2,
         )
     ):
-        metrics = ["benchmark", "transactions"]
-        dimensions = ["partner_name"]
+        metrics = ["cost"]
+        dimensions = ["benchmark"]
         with pytest.raises(DataSourceQueryTimeoutException):
             result = wh.execute(metrics, dimensions=dimensions)

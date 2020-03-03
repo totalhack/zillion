@@ -1,0 +1,89 @@
+{
+    "url": "postgresql+psycopg2://{user}@{host}/{schema}",
+    "metrics": [
+        {
+            "name": "clicks",
+            "type": "Integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "cost",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2
+        }
+    ],
+    "dimensions": [
+        {
+            "name": "benchmark",
+            "type": "Integer"
+        }
+    ],        
+    "tables": {
+        "zillion_test.partners": {
+            "type": "dimension",
+            "create_fields": true,
+            "columns": {
+                "id": {
+                    "fields": ["partner_id"]
+                },
+                "name": {
+                    "fields": ["partner_name"]
+                }
+            }
+        },
+        
+        "zillion_test.campaigns": {
+            "type": "dimension",
+            "create_fields": true,
+            "parent": "zillion_test.partners",
+            "columns": {
+                "id": {
+                    "fields": ["campaign_id"]
+                },
+                "name": {
+                    "fields": ["campaign_name"]
+                },
+                "partner_id": {
+                    "fields": ["partner_id"]
+                }
+            }
+        },
+
+        "zillion_test.campaign_cost": {
+            "type": "metric",
+            "create_fields": true,
+            "columns": {
+                "campaign_id": {
+                    "fields": ["campaign_id"]
+                },
+                "cost": {
+                    "fields": [
+                        "cost",
+                        {"name":"benchmark", "ds_formula": "DISTINCT generate_series(1,2000000) / generate_series(1,2000000)"}
+                    ]
+                },
+                "clicks": {
+                    "fields": ["clicks"]
+                }
+            }
+        },
+
+        "zillion_test.campaign_transactions": {
+            "type": "metric",
+            "create_fields": true,
+            "columns": {
+                "id": {
+                    "fields": [
+                        "transaction_id",
+                        {"name":"transactions", "ds_formula": "COUNT(DISTINCT campaign_transactions.id)"}
+                    ]
+                },
+                "campaign_id": {
+                    "fields": ["campaign_id"]
+                }
+            }
+        }
+
+    }
+}

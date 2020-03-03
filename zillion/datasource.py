@@ -52,6 +52,7 @@ from zillion.sql_utils import (
     infer_aggregation_and_rounding,
     get_dialect_type_conversions,
     is_probably_metric,
+    get_postgres_schemas,
 )
 
 
@@ -229,7 +230,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         self.reflect = reflect
         if reflect:
-            self.metadata.reflect()
+            self.reflect_metadata()
 
         self.apply_config(config, skip_conversion_fields=skip_conversion_fields)
 
@@ -267,6 +268,19 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_dialect_name(self):
         return self.metadata.bind.dialect.name
+
+    def reflect_metadata(self):
+        dialect = self.get_dialect_name()
+        if dialect == "postgresql":
+            conn = self.metadata.bind.connect()
+            try:
+                schemas = get_postgres_schemas(conn)
+            finally:
+                conn.close()
+            for schema in schemas:
+                self.metadata.reflect(schema=schema, views=True)
+        else:
+            self.metadata.reflect(views=True)
 
     def get_params(self):
         # TODO: does this need to store more information, entire config?

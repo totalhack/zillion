@@ -62,7 +62,6 @@ class Technical(MappingMixin, PrintMixin):
 
 class Field(PrintMixin):
     repr_attrs = ["name"]
-    ifnull_value = zillion_config["IFNULL_PRETTY_VALUE"]
     field_type = None
 
     @initializer
@@ -81,13 +80,16 @@ class Field(PrintMixin):
             else None
         )
         if not ds_formula:
-            return sa.func.ifnull(column, self.ifnull_value).label(self.name)
+            return column.label(self.name)
 
         if contains_sql_keywords(ds_formula):
             raise DisallowedSQLException(
                 "Formula contains disallowed sql: %s" % ds_formula
             )
-        return sa.func.ifnull(sa.text(ds_formula), self.ifnull_value).label(self.name)
+
+        if not ds_formula.startswith("(") and ds_formula.endswith("("):
+            ds_formula = "(" + ds_formula + ")"
+        return sa.literal_column(ds_formula).label(self.name)
 
     def get_final_select_clause(self, *args, **kwargs):
         return self.name

@@ -271,19 +271,23 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
         # I don't see how this could happen, but get loud if it does...
         assert self._conn, "Attempting to kill with no active query connection"
+        raw_conn = self._conn.connection
 
         dialect = self.get_dialect_name()
         info("Attempting kill on %s conn: %s" % (dialect, self._conn))
 
-        if dialect == "mysql":
+        # TODO: add support for more connection libraries
+        if dialect == "mysql" and callable(getattr(raw_conn, "thread_id", None)):
             kill_conn = self.get_conn()
-            conn_id = self._conn.connection.thread_id()  # TODO: Assumes pymysql?
+            conn_id = raw_conn.thread_id()
             try:
                 kill_conn.execute("kill {}".format(conn_id))
             finally:
                 kill_conn.close()
-        elif dialect == "sqlite":
-            self._conn.connection.interrupt()
+        elif dialect == "sqlite" and callable(getattr(raw_conn, "interrupt", None)):
+            raw_conn.interrupt()
+        elif dialect == "postgresql" and callable(getattr(raw_conn, "cancel", None)):
+            raw_conn.cancel()  # TODO: assumes psycopg2
         elif main_thread:
             # This isn't guaranteed to work as the thread may be waiting for
             # an external resource to finish, but worth a shot.
