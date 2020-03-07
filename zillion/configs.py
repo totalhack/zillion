@@ -124,6 +124,12 @@ def is_valid_table_type(val):
     raise ValidationError("Invalid table type: %s" % val)
 
 
+def is_valid_table_name(val):
+    if val.count(".") > 1:
+        raise ValidationError("Table name has more than one period: %s" % val)
+    return True
+
+
 def is_valid_field_name(val):
     if val is None:
         raise ValidationError("Field name can not be null")
@@ -296,11 +302,19 @@ class DimensionConfigSchema(BaseSchema):
     formula = mfields.String(default=None, missing=None)
 
 
+class TableNameField(mfields.Str):
+    def _validate(self, value):
+        is_valid_table_name(value)
+        super()._validate(value)
+
+
 class DataSourceConfigSchema(BaseSchema):
     url = mfields.String()
     metrics = mfields.List(mfields.Nested(MetricConfigSchema))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
-    tables = mfields.Dict(keys=mfields.Str(), values=mfields.Nested(TableConfigSchema))
+    tables = mfields.Dict(
+        keys=TableNameField(), values=mfields.Nested(TableConfigSchema)
+    )
 
     @pre_load
     def check_table_refs(self, data, **kwargs):

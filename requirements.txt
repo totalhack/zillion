@@ -4,7 +4,7 @@ m2r
 marshmallow
 networkx
 numpydoc
-orderedset
+orderedset>=2.0.3
 pandas
 pylint
 pymysql
@@ -13,5 +13,5 @@ simplejson
 stopit
 sqlalchemy
 sqlparse
-tlbx
+tlbx>=0.1.11
 xlrd

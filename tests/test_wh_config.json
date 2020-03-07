@@ -11,7 +11,7 @@
             "aggregation": "avg",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_metric": "sales_quantity"
+            "weighting_metric": "main_sales_quantity"
         },
         {
             "name": "rpl_squared",
@@ -70,14 +70,14 @@
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2,
-            "weighting_metric": "sales_quantity"
+            "weighting_metric": "main_sales_quantity"
         },
         {
             "name": "revenue_avg_ds_weighted",
             "type": "Numeric(10,2)",
             "aggregation": "avg",
             "rounding": 2,
-            "weighting_metric": "sales_quantity"
+            "weighting_metric": "main_sales_quantity"
         },
         {
             "name": "leads",
@@ -119,7 +119,7 @@
                 }
             ],
             "tables": {
-                "partners": {
+                "main.partners": {
                     "type": "dimension",
                     "create_fields": true,
                     "columns": {
@@ -132,10 +132,10 @@
                     }
                 },
                 
-                "campaigns": {
+                "main.campaigns": {
                     "type": "dimension",
                     "create_fields": true,
-                    "parent": "partners",
+                    "parent": "main.partners",
                     "columns": {
                         "id": {
                             "fields": ["campaign_id"]
@@ -149,12 +149,12 @@
                     }
                 },
 
-                "leads": "test_table_config.json",
+                "main.leads": "test_table_config.json",
                 
-                "sales": {
+                "main.sales": {
                     "type": "metric",
                     "create_fields": true,
-                    "parent": "leads",
+                    "parent": "main.leads",
                     "columns": {
                         "id": {
                             "fields": [

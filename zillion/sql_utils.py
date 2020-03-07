@@ -4,11 +4,13 @@ https://github.com/zzzeek/sqlalchemy/blob/master/lib/sqlalchemy/dialects/type_mi
 """
 
 import ast
+import re
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.mysql import dialect as mysql_dialect
 from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
+from sqlalchemy.engine import reflection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import expression as exp
 import sqlparse as sp
@@ -125,6 +127,13 @@ AGGREGATION_SQLA_FUNC_MAP = {
     AggregationTypes.MIN: sa.func.min,
     AggregationTypes.MAX: sa.func.max,
     AggregationTypes.SUM: sa.func.sum,
+}
+
+# This establishes a baseline of schemas to ignore during reflection
+DIALECT_IGNORE_SCHEMAS = {
+    "mysql": set(["information_schema", "performance_schema", "mysql", "sys"]),
+    "postgresql": set(["information_schema", r"pg_(.*)"]),
+    # TODO: more support here
 }
 
 
@@ -332,18 +341,6 @@ def get_sqla_clause(column, criterion, negate=False):
     return clause
 
 
-def to_mysql_type(type):
-    return type.compile(dialect=mysql_dialect())
-
-
-def to_postgresql_type(type):
-    return type.compile(dialect=postgresql_dialect())
-
-
-def to_sqlite_type(type):
-    return type.compile(dialect=sqlite_dialect())
-
-
 # https://github.com/sqlalchemy/sqlalchemy/wiki/CompiledComments
 def comment(self, comment):
     self._added_comment = comment
@@ -374,6 +371,44 @@ _compile_element(exp.Join)
 _compile_element(exp.Select)
 _compile_element(exp.Alias)
 _compile_element(exp.Exists)
+
+
+def get_schemas(engine):
+    insp = reflection.Inspector.from_engine(engine)
+    return insp.get_schema_names()
+
+
+# -------- Some DB-specific stuff
+
+
+def to_mysql_type(type):
+    return type.compile(dialect=mysql_dialect())
+
+
+def to_postgresql_type(type):
+    return type.compile(dialect=postgresql_dialect())
+
+
+def to_sqlite_type(type):
+    return type.compile(dialect=sqlite_dialect())
+
+
+def filter_dialect_schemas(schemas, dialect):
+    ignores = DIALECT_IGNORE_SCHEMAS.get(dialect, None)
+    if not ignores:
+        return schemas
+
+    final = []
+    for schema in schemas:
+        add = True
+        for ignore in ignores:
+            if re.match(ignore, schema):
+                add = False
+                break
+        if add:
+            final.append(schema)
+
+    return final
 
 
 def get_postgres_schemas(conn):

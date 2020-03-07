@@ -1,7 +1,6 @@
 from collections import defaultdict, OrderedDict
 import copy
 import datetime
-from pprint import pformat
 import random
 
 import pandas as pd
@@ -11,6 +10,7 @@ import sqlalchemy as sa
 from tlbx import (
     PrintMixin,
     dbg,
+    pf,
     st,
     format_msg,
     rmfile,
@@ -21,6 +21,7 @@ from tlbx import (
 
 from zillion.configs import (
     DATASOURCE_ALLOWABLE_CHARS,
+    DATASOURCE_ALLOWABLE_CHARS_STR,
     TableInfo,
     ColumnInfo,
     DataSourceConfigSchema,
@@ -32,7 +33,7 @@ from zillion.configs import (
     ADHOC_TABLE_CONFIG_PARAMS,
     EXCLUDE,
 )
-from zillion.core import TableTypes, WarehouseException, ADHOC_URL
+from zillion.core import TableTypes, ADHOC_URL
 from zillion.field import (
     Field,
     Metric,
@@ -52,7 +53,8 @@ from zillion.sql_utils import (
     infer_aggregation_and_rounding,
     get_dialect_type_conversions,
     is_probably_metric,
-    get_postgres_schemas,
+    get_schemas,
+    filter_dialect_schemas,
 )
 
 
@@ -242,7 +244,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             return name
         assert set(name) <= DATASOURCE_ALLOWABLE_CHARS, (
             'DataSource name "%s" has invalid characters. Allowed: %s'
-            % (name, DATASOURCE_ALLOWABLE_CHARS)
+            % (name, DATASOURCE_ALLOWABLE_CHARS_STR)
         )
         return name
 
@@ -271,16 +273,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def reflect_metadata(self):
         dialect = self.get_dialect_name()
-        if dialect == "postgresql":
-            conn = self.metadata.bind.connect()
-            try:
-                schemas = get_postgres_schemas(conn)
-            finally:
-                conn.close()
-            for schema in schemas:
-                self.metadata.reflect(schema=schema, views=True)
-        else:
-            self.metadata.reflect(views=True)
+        schemas = get_schemas(self.metadata.bind)
+        schemas = filter_dialect_schemas(schemas, dialect)
+        for schema in schemas:
+            self.metadata.reflect(schema=schema, views=True)
 
     def get_params(self):
         # TODO: does this need to store more information, entire config?
@@ -517,7 +513,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         for table in self.metadata.tables.values():
             if not table.zillion:
-                return
+                continue
             if table.zillion.type == TableTypes.METRIC:
                 self.add_metric_table_fields(table)
             elif table.zillion.type == TableTypes.DIMENSION:
@@ -869,6 +865,7 @@ class AdHocDataTable(PrintMixin):
         columns=None,
         primary_key=None,
         parent=None,
+        schema=None,
         **kwargs
     ):
         self.df_kwargs = kwargs or {}
@@ -877,6 +874,12 @@ class AdHocDataTable(PrintMixin):
                 type=table_type, columns=self.columns, create_fields=True, parent=parent
             )
         )
+
+    @property
+    def fullname(self):
+        if self.schema:
+            return "%s.%s" % (self.schema, self.name)
+        return self.name
 
     def get_dataframe(self):
         if isinstance(self.data, pd.DataFrame):
@@ -909,7 +912,12 @@ class AdHocDataTable(PrintMixin):
 
         # Note: this hits limits in allowed sqlite params if chunks are too large
         df.to_sql(
-            self.name, engine, if_exists=if_exists, method=method, chunksize=chunksize
+            self.name,
+            engine,
+            if_exists=if_exists,
+            method=method,
+            chunksize=chunksize,
+            schema=self.schema,
         )
 
 
@@ -976,7 +984,7 @@ class AdHocDataSource(DataSource):
 
         for dt in datatables:
             dt.to_sql(engine, if_exists=if_exists)
-            config.setdefault("tables", {})[dt.name] = dt.table_config
+            config.setdefault("tables", {})[dt.fullname] = dt.table_config
 
         metadata = sa.MetaData()
         metadata.bind = engine
@@ -997,9 +1005,18 @@ class AdHocDataSource(DataSource):
         datatables = []
         for table_name, table_config in config["tables"].items():
             cfg = table_config.copy()
+            schema = None
+
             if get_string_format_args(cfg["url"]):
                 cfg["url"] = cfg["url"].format(**ds_config_context)
-            dt = datatable_from_config(table_name, cfg)
+
+            if "." in table_name:
+                parts = table_name.split(".")
+                # This is also checked in config, should never happen
+                assert len(parts) == 2, "Invalid table name: %s" % table_name
+                schema, table_name = parts
+
+            dt = datatable_from_config(table_name, cfg, schema=schema)
             datatables.append(dt)
 
         return cls(datatables, name=name, if_exists=if_exists)
@@ -1025,7 +1042,7 @@ def datasource_from_config(name, config, if_exists="fail"):
     return DataSource.from_config(name, config)
 
 
-def datatable_from_config(name, config, **kwargs):
+def datatable_from_config(name, config, schema=None, **kwargs):
     assert config.get(
         "create_fields", True
     ), "AdHocDataTables must have create_fields=True"
@@ -1049,5 +1066,6 @@ def datatable_from_config(name, config, **kwargs):
         config.get("columns", None),
         primary_key=config.get("primary_key", None),
         parent=config.get("parent", None),
+        schema=schema,
         **kwargs
     )

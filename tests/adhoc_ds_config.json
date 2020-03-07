@@ -3,7 +3,7 @@
         "test_adhoc_db": {
             "url": "adhoc",
             "tables": {
-                "dma_zip": {
+                "main.dma_zip": {
                     "type": "dimension",
                     "create_fields": true,
                     "columns": {

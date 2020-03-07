@@ -20,7 +20,7 @@ from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 
 
 def test_basic_report(wh):
-    metrics = ["revenue", "sales_quantity"]
+    metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 11)]
@@ -188,7 +188,7 @@ def test_impossible_report(wh):
 
 
 def test_report_pivot(wh):
-    metrics = ["revenue", "sales_quantity"]
+    metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 11)]
@@ -305,7 +305,7 @@ def test_report_bollinger_metric(wh):
 
 
 def test_report_no_dimensions(wh):
-    metrics = ["revenue", "sales_quantity"]
+    metrics = ["revenue", "main_sales_quantity"]
     criteria = [("campaign_name", "=", "Campaign 2B")]
     result = wh.execute(metrics, criteria=criteria)
     assert result
@@ -402,7 +402,7 @@ def test_report_non_existent_metric(wh):
 
 
 def test_report_weighted_formula_metric(wh):
-    metrics = ["rpl_weighted", "rpl", "sales_quantity", "revenue", "leads"]
+    metrics = ["rpl_weighted", "rpl", "main_sales_quantity", "revenue", "leads"]
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
@@ -418,7 +418,7 @@ def test_report_weighted_ds_metric_formula(wh):
 
 
 def test_report_weighted_metric(wh):
-    metrics = ["sales_quantity", "revenue_avg", "revenue", "leads"]
+    metrics = ["main_sales_quantity", "revenue_avg", "revenue", "leads"]
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
@@ -426,7 +426,7 @@ def test_report_weighted_metric(wh):
 
 
 def test_report_weighted_metric_with_rollup(wh):
-    metrics = ["sales_quantity", "revenue_avg", "leads"]
+    metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name"]
     rollup = ROLLUP_TOTALS
     result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
@@ -435,7 +435,7 @@ def test_report_weighted_metric_with_rollup(wh):
 
 
 def test_report_weighted_metric_with_multi_rollup(wh):
-    metrics = ["sales_quantity", "revenue_avg", "leads"]
+    metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name", "campaign_name", "lead_id"]
     rollup = 2
     result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
@@ -634,7 +634,7 @@ def test_only_adhoc_datasource(adhoc_ds):
 
 def test_ds_metric_formula_sql_injection(config):
     # example = r"""I don't like "special" ch;ars ¯\_(ツ)_/¯"""
-    table_config = config["datasources"]["testdb1"]["tables"]["sales"]
+    table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
     column_config = table_config["columns"]["revenue"]
     column_config["fields"].append(
         {
@@ -651,7 +651,7 @@ def test_ds_metric_formula_sql_injection(config):
 
 def test_ds_dim_formula_sql_injection(config):
     # example = r"""I don't like "special" ch;ars ¯\_(ツ)_/¯"""
-    table_config = config["datasources"]["testdb1"]["tables"]["sales"]
+    table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
     column_config = table_config["columns"]["lead_id"]
     column_config["fields"].append(
         {
@@ -690,7 +690,7 @@ def test_weighting_metric_sql_injection(config):
             aggregation="avg",
             rounding=2,
             formula="{revenue}/{leads}",
-            weighting_metric="sales_quantity;select * from leads",
+            weighting_metric="main_sales_quantity;select * from leads",
         )
     )
 
@@ -776,7 +776,7 @@ def test_dimension_name_sql_injection(config):
 
 
 def test_type_conversion_prefix_sql_injection(config):
-    table_config = config["datasources"]["testdb1"]["tables"]["sales"]
+    table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
     table_config["columns"]["created_at"][
         "type_conversion_prefix"
     ] = "select * from sales;--"
@@ -790,7 +790,7 @@ def test_type_conversion_prefix_sql_injection(config):
 
 def test_table_name_sql_injection(config):
     tables = config["datasources"]["testdb1"]["tables"]
-    del tables["sales"]
+    del tables["main.sales"]
     # Since this table doesn't actually match a table name it shouldn't ever
     # become a part of the warehouse.
     tables["select * from leads;--"] = {

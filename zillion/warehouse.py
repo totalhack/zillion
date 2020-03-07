@@ -2,7 +2,6 @@ from collections import defaultdict, OrderedDict
 import copy
 import datetime
 import logging
-from pprint import pformat
 import random
 import time
 
@@ -14,6 +13,7 @@ from tlbx import (
     info,
     warn,
     format_msg,
+    pf,
     st,
     rmfile,
     initializer,
@@ -289,7 +289,7 @@ class Warehouse(FieldManagerMixin):
             self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
         )
         if errors:
-            raise WarehouseException("Integrity check(s) failed.\n%s" % pformat(errors))
+            raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
 
     def get_supported_dimensions_for_metric(
         self, metric, use_cache=True, adhoc_datasources=None

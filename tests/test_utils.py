@@ -124,6 +124,7 @@ def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
         table_config["type"],
         primary_key=primary_key,
         columns=table_config.get("columns", None),
+        schema="main",
     )
     return dt
 
@@ -178,6 +179,7 @@ def get_adhoc_datasource(size=10, name="adhoc_table1", reuse=False):
                 table_config["type"],
                 primary_key=primary_key,
                 columns=table_config.get("columns", None),
+                schema="main",
             )
             return AdHocDataSource([dt], name=name, config=config)
 

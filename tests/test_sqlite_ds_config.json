@@ -8,7 +8,7 @@
         }
     ],
     "tables": {
-        "partners": {
+        "main.partners": {
             "type": "dimension",
             "create_fields": true,
             "columns": {
@@ -21,10 +21,10 @@
             }
         },
         
-        "campaigns": {
+        "main.campaigns": {
             "type": "dimension",
             "create_fields": true,
-            "parent": "partners",
+            "parent": "main.partners",
             "columns": {
                 "id": {
                     "fields": ["campaign_id"]
@@ -38,7 +38,7 @@
             }
         },
 
-        "aggregated_stats": {
+        "main.aggregated_stats": {
             "type": "metric",
             "create_fields": true,
             "columns": {
