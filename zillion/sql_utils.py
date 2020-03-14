@@ -210,7 +210,7 @@ def type_string_to_sa_type(type_string):
         assert len(parts) == 2, "Unable to parse type string: %s" % type_string
         type_args = ast.literal_eval(parts[1].rstrip(")") + ",")
     type_name = parts[0]
-    type_cls = getattr(sa, type_name, None)
+    type_cls = getattr(sa.types, type_name, None)
     if not type_cls:
         raise InvalidSQLAlchemyTypeString(
             "Could not find matching type for %s" % type_name

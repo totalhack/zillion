@@ -63,7 +63,6 @@ from zillion.report import Report
 from zillion.sql_utils import (
     infer_aggregation_and_rounding,
     aggregation_to_sqla_func,
-    type_string_to_sa_type,
     is_probably_metric,
     sqla_compile,
     column_fullname,
