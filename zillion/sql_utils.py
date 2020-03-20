@@ -47,12 +47,15 @@ DATETIME_SA_TYPES = [sa.DateTime, sa.DATETIME, sa.Time, sa.TIME, sa.TIMESTAMP]
 
 DATE_SA_TYPES = [sa.Date, sa.DATE]
 
-# Order of this matters!
 DATE_HIERARCHY = [
     "year",
+    "quarter",
+    "quarter_of_year",
     "month",
+    "month_name",
     "month_of_year",
     "date",
+    "day_name",
     "day_of_week",
     "day_of_month",
     "day_of_year",
@@ -61,32 +64,98 @@ DATE_HIERARCHY = [
     "minute",
     "minute_of_hour",
     "datetime",
-    "unix_timestamp",
+    "unixtime",
 ]
 
+# Somewhat adhering to ISO 8601, but ignoring the "T" between the date/time
+# and not including timezone offsets for now because zillion assumes
+# everything is in the same timezone (or the datasource formulas take care of
+# aligning timezones).
 DIALECT_DATE_CONVERSIONS = {
     "sqlite": {
-        # https://www.sqlite.org/lang_datefunc.html
-        "year": "strftime('%Y', {})",
+        "year": "cast(strftime('%Y', {}) as integer)",
+        "quarter": "strftime('%Y', {}) || '-Q' || ((cast(strftime('%m', {}) as integer) + 2) / 3)",  # 2020-Q1
+        "quarter_of_year": "(cast(strftime('%m', {}) as integer) + 2) / 3",
         "month": "strftime('%Y-%m', {})",
-        "month_of_year": "strftime('%m', {})",
+        "month_name": (
+            "CASE strftime('%m', {}) "
+            "WHEN '01' THEN 'January' "
+            "WHEN '02' THEN 'February' "
+            "WHEN '03' THEN 'March' "
+            "WHEN '04' THEN 'April' "
+            "WHEN '05' THEN 'May' "
+            "WHEN '06' THEN 'June' "
+            "WHEN '07' THEN 'July' "
+            "WHEN '08' THEN 'August' "
+            "WHEN '09' THEN 'September' "
+            "WHEN '10' THEN 'October' "
+            "WHEN '11' THEN 'November' "
+            "WHEN '12' THEN 'December' "
+            "ELSE NULL "
+            "END"
+        ),
+        "month_of_year": "cast(strftime('%m', {}) as integer)",
         "date": "strftime('%Y-%m-%d', {})",
-        "day_of_week": "strftime('%w', {})",  # day of week 0-6 with Sunday==0
-        "day_of_month": "strftime('%d', {})",
-        "day_of_year": "strftime('%j', {})",
-        "hour": "strftime('%Y-%m-%d %H', {})",
-        "hour_of_day": "strftime('%H', {})",
-        "minute": "strftime('%Y-%m-%d %H:%M', {})",
-        "minute_of_hour": "strftime('%M', {})",
+        "day_name": (
+            "CASE cast(strftime('%w', {}) as integer) "
+            "WHEN 0 THEN 'Sunday' "
+            "WHEN 1 THEN 'Monday' "
+            "WHEN 2 THEN 'Tuesday' "
+            "WHEN 3 THEN 'Wednesday' "
+            "WHEN 4 THEN 'Thursday' "
+            "WHEN 5 THEN 'Friday' "
+            "WHEN 6 THEN 'Saturday' "
+            "ELSE NULL "
+            "END"
+        ),
+        "day_of_week": "(cast(strftime('%w', {}) as integer) + 6) % 7 + 1",  # Convert to Monday = 1
+        "day_of_month": "cast(strftime('%d', {}) as integer)",
+        "day_of_year": "cast(strftime('%j', {}) as integer)",
+        "hour": "strftime('%Y-%m-%d %H:00:00', {})",
+        "hour_of_day": "cast(strftime('%H', {}) as integer)",
+        "minute": "strftime('%Y-%m-%d %H:%M:00', {})",
+        "minute_of_hour": "cast(strftime('%M', {}) as integer)",
         "datetime": "strftime('%Y-%m-%d %H:%M:%S', {})",
-        "unix_timestamp": "strftime('%s', {})",
+        "unixtime": "cast(strftime('%s', {}) as integer)",
     },
-    #'mysql': {
-    #   TODO
-    # },
-    #'postgresql': {
-    #   TODO
-    # }
+    "mysql": {
+        "year": "EXTRACT(YEAR FROM {})",
+        "quarter": "CONCAT(YEAR({}), '-Q', QUARTER({}))",
+        "quarter_of_year": "EXTRACT(QUARTER FROM {})",
+        "month": "DATE_FORMAT({}, '%Y-%m')",
+        "month_name": "MONTHNAME({})",
+        "month_of_year": "EXTRACT(MONTH FROM {})",
+        "date": "DATE_FORMAT({}, '%Y-%m-%d')",
+        "day_name": "DAYNAME({})",
+        "day_of_week": "WEEKDAY({}) + 1",  # Monday = 1
+        "day_of_month": "EXTRACT(DAY FROM {})",
+        "day_of_year": "DAYOFYEAR({})",
+        "hour": "DATE_FORMAT({}, '%Y-%m-%d %H:00:00')",
+        "hour_of_day": "EXTRACT(HOUR FROM {})",
+        "minute": "DATE_FORMAT({}, '%Y-%m-%d %H:%i:00')",
+        "minute_of_hour": "EXTRACT(MINUTE FROM {})",
+        "datetime": "DATE_FORMAT({}, '%Y-%m-%d %H:%i:%S')",
+        "unixtime": "UNIX_TIMESTAMP({})",
+    },
+    "postgresql": {
+        "year": "EXTRACT(YEAR FROM {})",
+        "quarter": "TO_CHAR({}, 'FMYYYY-\"Q\"Q')",
+        "quarter_of_year": "EXTRACT(QUARTER FROM {})",
+        "month": "TO_CHAR({}, 'FMYYYY-MM')",
+        "month_name": "TO_CHAR({}, 'FMMonth')",
+        "month_of_year": "EXTRACT(MONTH FROM {})",
+        "date": "TO_CHAR({}, 'FMYYYY-MM-DD')",
+        "day_name": "TO_CHAR({}, 'FMDay')",
+        "day_of_week": "EXTRACT(ISODOW FROM {})",  # Monday = 1
+        "day_of_month": "EXTRACT(DAY FROM {})",
+        "day_of_year": "EXTRACT(DOY FROM {})",
+        "hour": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:00:00')",
+        "hour_of_day": "EXTRACT(HOUR FROM {})",
+        "minute": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:00')",
+        "minute_of_hour": "EXTRACT(MINUTE FROM {})",
+        "datetime": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:SS')",
+        "unixtime": "EXTRACT(epoch from {})",
+    },
 }
 
 TYPE_ALLOWED_CONVERSIONS = {
@@ -99,14 +168,6 @@ TYPE_ALLOWED_CONVERSIONS = {
         "dialect_conversions": DIALECT_DATE_CONVERSIONS,
     },
     sa.TIMESTAMP: {
-        "allowed_conversions": DATE_HIERARCHY,
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
-    sa.Time: {
-        "allowed_conversions": DATE_HIERARCHY,
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
-    sa.TIME: {
         "allowed_conversions": DATE_HIERARCHY,
         "dialect_conversions": DIALECT_DATE_CONVERSIONS,
     },
@@ -141,9 +202,16 @@ class InvalidSQLAlchemyTypeString(Exception):
     pass
 
 
+def get_conversions_for_type(coltype):
+    for basetype, convs in TYPE_ALLOWED_CONVERSIONS.items():
+        if issubclass(coltype, basetype):
+            return convs
+    return None
+
+
 def get_dialect_type_conversions(dialect, column):
     coltype = type(column.type)
-    conv_info = TYPE_ALLOWED_CONVERSIONS.get(coltype, None)
+    conv_info = get_conversions_for_type(coltype)
     if not conv_info:
         return []
 

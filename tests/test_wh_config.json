@@ -114,6 +114,10 @@
                     "type": "String(50)"
                 },
                 {
+                    "name": "campaign_name_length",
+                    "type": "Integer"
+                },
+                {
                     "name": "revenue_decile",
                     "type": "Integer"
                 }
@@ -141,10 +145,18 @@
                             "fields": ["campaign_id"]
                         },
                         "name": {
-                            "fields": ["campaign_name"]
+                            "fields": [
+                                "campaign_name",
+                                {"name":"campaign_name_length", "ds_formula": "LENGTH(campaigns.name)"}
+                            ]
                         },
                         "partner_id": {
                             "fields": ["partner_id"]
+                        },
+                        "created_at": {
+                            "fields": ["campaign_created_at"],
+                            "allow_type_conversions": true,
+                            "type_conversion_prefix": "campaign_"
                         }
                     }
                 },

@@ -40,6 +40,11 @@
                 },
                 "partner_id": {
                     "fields": ["partner_id"]
+                },
+                "created_at": {
+                    "fields": ["campaign_created_at"],
+                    "allow_type_conversions": true,
+                    "type_conversion_prefix": "campaign_"
                 }
             }
         },

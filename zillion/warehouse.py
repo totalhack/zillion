@@ -12,7 +12,6 @@ from tlbx import (
     dbg,
     info,
     warn,
-    format_msg,
     pf,
     st,
     rmfile,
@@ -119,9 +118,9 @@ class Warehouse(FieldManagerMixin):
     def print_info(self):
         print("---- Warehouse")
         print("metrics:")
-        print(format_msg(self._metrics, label=None, indent=2))
+        self.print_metrics(indent=2)
         print("dimensions:")
-        print(format_msg(self._dimensions, label=None, indent=2))
+        self.print_dimensions(indent=2)
 
         for ds in self.get_datasources():
             print()

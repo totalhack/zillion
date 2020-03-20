@@ -377,6 +377,21 @@ def test_report_nested_formula_metric(wh):
     info(result.df)
 
 
+# TODO: add support for FormulaDimensions
+#    {
+#        "name": "partner_name_query_dim",
+#        "type": "String(32)",
+#        "formula": "CASE WHEN ({partner_name} LIKE '%B%' OR {partner_name} LIKE '%C%') THEN 'Match' ELSE {partner_name} END"
+#    }
+#
+# def test_report_formula_dimension(wh):
+#     metrics = ["leads"]
+#     dimensions = ["campaign_name", "partner_name_query_dim"]
+#     result = wh.execute(metrics, dimensions=dimensions)
+#     assert result
+#     info(result.df)
+
+
 def test_report_ds_dimension_formula(wh):
     metrics = ["sales"]
     dimensions = ["revenue_decile"]
@@ -390,6 +405,37 @@ def test_report_ds_metric_formula(wh):
     dimensions = ["partner_name"]
     result = wh.execute(metrics, dimensions=dimensions)
     assert result
+    info(result.df)
+
+
+def test_report_where_ds_formula(wh):
+    metrics = ["sales"]
+    criteria = [("revenue_decile", ">=", 0)]
+    dimensions = ["campaign_name"]
+    result = wh.execute(metrics=metrics, dimensions=dimensions, criteria=criteria)
+    assert result
+    info(result.df)
+
+
+# def test_report_where_formula_dim(wh):
+#     metrics = ["sales"]
+#     criteria = [
+#         ("partner_name_query_dim", "=", "Match")
+#     ]
+#     dimensions = ["partner_name"]
+#     with pytest.raises(ReportException):
+#         result = wh.execute(
+#             metrics=metrics,
+#             dimensions=dimensions,
+#             criteria=criteria
+#         )
+
+
+def test_report_only_dimensions_ds_formula(wh):
+    criteria = [("campaign_name_length", ">", 5)]
+    dimensions = ["partner_name"]
+    result = wh.execute(dimensions=dimensions, criteria=criteria)
+    assert result.df.index.any()
     info(result.df)
 
 
@@ -492,16 +538,28 @@ def test_report_multi_rollup_pivot(wh):
     info(result.df)
 
 
-def test_report_adhoc_dimension(wh):
-    metrics = ["leads", "sales"]
-    dimensions = [
-        "partner_name",
-        "lead_id",
-        {"formula": "{lead_id} > 3", "name": "testdim"},
-    ]
-    result = wh.execute(metrics, dimensions=dimensions)
-    assert result
-    info(result.df)
+# TODO: add AdHocDimension support
+# def test_report_adhoc_dimension(wh):
+#     metrics = ["leads", "sales"]
+#     dimensions = [
+#         "partner_name",
+#         "lead_id",
+#         {"formula": "{lead_id} > 3", "name": "testdim"},
+#     ]
+#     result = wh.execute(metrics, dimensions=dimensions)
+#     assert result
+#     info(result.df)
+
+
+# def test_report_adhoc_dimension_rollup(wh):
+#     metrics = ["leads", "sales"]
+#     dimensions = [
+#         {"name": "testdim", "formula": "CASE WHEN ({partner_name} LIKE '%B%' OR {partner_name} LIKE '%C%') THEN 'Match' ELSE {partner_name} END"}
+#     ]
+#     rollup = ROLLUP_TOTALS
+#     result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
+#     assert result
+#     info(result.df)
 
 
 def test_report_adhoc_metric(wh):
@@ -512,13 +570,38 @@ def test_report_adhoc_metric(wh):
     info(result.df)
 
 
-def test_report_date_conversion(wh):
-    metrics = ["revenue"]
-    dimensions = ["datetime", "hour_of_day"]
-    criteria = [("campaign_name", "!=", "Campaign 2B")]
-    result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+def test_report_adhoc_nested_metric(wh):
+    metrics = [
+        "revenue",
+        "rpl_squared",
+        {"formula": "{rpl_unsquared} > 10", "name": "testmetric"},
+    ]
+    dimensions = ["partner_name"]
+    result = wh.execute(metrics, dimensions=dimensions)
     assert result
     info(result.df)
+
+
+def test_report_where_date_conversion(wh):
+    criteria = [
+        ("campaign_name", "=", "Campaign 2B"),
+        ("campaign_date", "=", "2019-03-26"),
+    ]
+    dimensions = ["campaign_created_at"]
+    result = wh.execute(dimensions=dimensions, criteria=criteria)
+    assert result.df.index.any()
+    info(result.df)
+
+
+def test_report_sqlite_date_conversions(wh):
+    params = get_date_conversion_test_params()
+    result = wh.execute(**params)
+    assert result
+    df = result.df.reset_index()
+    row = df.iloc[0]
+    info(df)
+    for field, value in EXPECTED_DATE_CONVERSION_VALUES:
+        assert row[field] == value
 
 
 def test_report_datasource_priority(wh):
@@ -711,14 +794,14 @@ def test_adhoc_metric_sql_injection(wh):
         result = wh.execute(metrics, dimensions=dimensions)
 
 
-def test_adhoc_dimension_sql_injection(wh):
-    metrics = ["leads", "sales"]
-    dimensions = [
-        "partner_name",
-        {"formula": "{lead_id} > 3;drop table leads", "name": "testdim"},
-    ]
-    with pytest.raises(DisallowedSQLException):
-        result = wh.execute(metrics, dimensions=dimensions)
+# def test_adhoc_dimension_sql_injection(wh):
+#     metrics = ["leads", "sales"]
+#     dimensions = [
+#         "partner_name",
+#         {"formula": "{lead_id} > 3;drop table leads", "name": "testdim"},
+#     ]
+#     with pytest.raises(DisallowedSQLException):
+#         result = wh.execute(metrics, dimensions=dimensions)
 
 
 def test_criteria_sql_injection(wh):
@@ -728,7 +811,7 @@ def test_criteria_sql_injection(wh):
     result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
 
     criteria = [("select * from leads", "!=", "Campaign 2B")]
-    with pytest.raises(UnsupportedGrainException):
+    with pytest.raises(InvalidFieldException):
         result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
 
     criteria = [("campaign_name", "select * from leads", "Campaign 2B")]

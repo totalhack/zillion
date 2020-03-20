@@ -299,7 +299,8 @@ class MetricConfigSchema(BaseSchema):
 class DimensionConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
     type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
-    formula = mfields.String(default=None, missing=None)
+    # TODO: add support for FormulaDimensions
+    # formula = mfields.String(default=None, missing=None)
 
 
 class TableNameField(mfields.Str):

@@ -47,7 +47,7 @@ from zillion.core import (
     FieldTypes,
     TechnicalTypes,
 )
-from zillion.field import get_table_fields, get_table_field_column
+from zillion.field import get_table_fields, get_table_field_column, FormulaField
 from zillion.sql_utils import sqla_compile, get_sqla_clause, to_sqlite_type
 
 logging.getLogger(name="stopit").setLevel(logging.ERROR)
@@ -318,6 +318,9 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             return self.metrics[name]
         elif name in self.dimensions:
             return self.dimensions[name]
+        for row in self.criteria:
+            if row[0].name == name:
+                return row[0]
         assert False, "Could not find field for DataSourceQuery: %s" % name
 
     def column_for_field(self, field, table=None):
@@ -340,10 +343,10 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         self.field_map[field] = column
         return column
 
-    def get_field_expression(self, field):
+    def get_field_expression(self, field, label=True):
         column = self.column_for_field(field)
         field_obj = self.get_field(field)
-        return field_obj.get_ds_expression(column)
+        return field_obj.get_ds_expression(column, label=label)
 
     def get_join(self):
         ts = self.table_set
@@ -380,8 +383,8 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             return select
         for row in self.criteria:
             field = row[0]
-            column = self.column_for_field(field)
-            clause = sa.and_(get_sqla_clause(column, row))
+            expr = self.get_field_expression(field.name, label=False)
+            clause = sa.and_(get_sqla_clause(expr, row))
             select = select.where(clause)
         return select
 
@@ -611,8 +614,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             self.table_name,
             order_clause,
         )
-        dbgsql(sql)
-        return escape_string(sql)
+        info("\n" + sqlformat(sql))
+        return sql
 
     def apply_row_filters(self, df, row_filters, metrics, dimensions):
         filter_parts = []
@@ -813,6 +816,7 @@ class Report(ExecutionStateMixin):
 
         self._requested_metrics = metrics
         self._requested_dimensions = dimensions
+        self._requested_criteria = criteria
 
         self.metrics = self._get_fields_dict(
             metrics, FieldTypes.METRIC, adhoc_datasources=adhoc_datasources
@@ -825,7 +829,9 @@ class Report(ExecutionStateMixin):
             self.metrics or self.dimensions
         ), "One of metrics or dimensions must be specified for Report"
 
-        self.criteria = criteria or []
+        self.criteria = self._populate_criteria_fields(
+            criteria or [], adhoc_datasources=adhoc_datasources
+        )
         self.row_filters = row_filters or []
 
         self.rollup = None
@@ -871,7 +877,7 @@ class Report(ExecutionStateMixin):
             kwargs=dict(
                 metrics=self._requested_metrics,
                 dimensions=self._requested_dimensions,
-                criteria=self.criteria,
+                criteria=self._requested_criteria,
                 row_filters=self.row_filters,
                 rollup=self.rollup,
                 pivot=self.pivot,
@@ -946,6 +952,23 @@ class Report(ExecutionStateMixin):
                 assert False, "Invalid field type: %s" % field_type
             d[field.name] = field
         return d
+
+    def _populate_criteria_fields(self, criteria, adhoc_datasources=None):
+        field_names = [row[0] for row in criteria]
+        fields_dict = self._get_fields_dict(
+            field_names, FieldTypes.DIMENSION, adhoc_datasources=adhoc_datasources
+        )
+        final_criteria = []
+        for row in criteria:
+            row = list(row)
+            field = fields_dict[row[0]]  # Replace field name with field object
+            if isinstance(field, FormulaField):
+                raise ReportException(
+                    "FormulaFields are not allowed in criteria: %s" % field.name
+                )
+            row[0] = field
+            final_criteria.append(row)
+        return final_criteria
 
     def add_ds_fields(self, field):
         formula_fields, _ = field.get_formula_fields(
@@ -1102,9 +1125,9 @@ class Report(ExecutionStateMixin):
             return None
         grain = set()
         if self.ds_dimensions:
-            grain = grain | set(self.ds_dimensions)
+            grain = grain | self.ds_dimensions.keys()
         if self.criteria:
-            grain = grain | {x[0] for x in self.criteria}
+            grain = grain | {x[0].name for x in self.criteria}
         return grain
 
     def build_ds_queries(self):

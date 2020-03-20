@@ -99193,12 +99193,12 @@ COPY zillion_test.campaign_transactions (id, campaign_id) FROM stdin;
 --
 
 COPY zillion_test.campaigns (id, name, category, partner_id, created_at) FROM stdin;
-1	Campaign 1A	fruits	1	2020-02-15 11:45:16-05
-2	Campaign 2A	vegetables	1	2020-02-15 11:45:16-05
-3	Campaign 1B	fruits	2	2020-02-15 11:45:16-05
-4	Campaign 2B	vegetables	2	2020-02-15 11:45:16-05
-5	Campaign 1C	fruits	3	2020-02-15 11:45:16-05
-6	Campaign 2C	vegetables	3	2020-02-15 11:45:16-05
+1	Campaign 1A	fruits	1	2019-03-26 21:02:15+00
+2	Campaign 2A	vegetables	1	2019-03-26 21:02:15+00
+3	Campaign 1B	fruits	2	2019-03-26 21:02:15+00
+4	Campaign 2B	vegetables	2	2019-03-26 21:02:15+00
+5	Campaign 1C	fruits	3	2019-03-26 21:02:15+00
+6	Campaign 2C	vegetables	3	2019-03-26 21:02:15+00
 \.
 
 
@@ -99207,9 +99207,9 @@ COPY zillion_test.campaigns (id, name, category, partner_id, created_at) FROM st
 --
 
 COPY zillion_test.partners (id, name, created_at) FROM stdin;
-1	Partner A	2020-02-15 11:45:15-05
-2	Partner B	2020-02-15 11:45:15-05
-3	Partner C	2020-02-15 11:45:15-05
+1	Partner A	2019-03-26 21:02:15+00
+2	Partner B	2019-03-26 21:02:15+00
+3	Partner C	2019-03-26 21:02:15+00
 \.
 
 

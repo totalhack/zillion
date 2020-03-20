@@ -3,27 +3,21 @@ import pytest
 from tlbx import info, st
 
 from .test_utils import *
-from zillion.configs import zillion_config, load_datasource_config
+from zillion.configs import zillion_config
 from zillion.core import DataSourceQueryTimeoutException, DataSourceQueryModes
 from zillion.datasource import *
 from zillion.warehouse import Warehouse
 
 
-def test_mysql_datasource():
-    ds_config = load_datasource_config("test_mysql_ds_config.json")
-    ds = DataSource.from_config("mysql", ds_config)
-    wh = Warehouse(datasources=[ds])
+def test_mysql_datasource(mysql_wh):
     metrics = ["cost", "clicks", "transactions"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = mysql_wh.execute(metrics, dimensions=dimensions)
     assert result
     info(result.df)
 
 
-def test_mysql_sequential_timeout():
-    ds_config = load_datasource_config("test_mysql_ds_config.json")
-    ds = DataSource.from_config("mysql", ds_config)
-    wh = Warehouse(datasources=[ds])
+def test_mysql_sequential_timeout(mysql_wh):
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
@@ -33,13 +27,10 @@ def test_mysql_sequential_timeout():
         metrics = ["benchmark"]
         dimensions = ["partner_name"]
         with pytest.raises(DataSourceQueryTimeoutException):
-            result = wh.execute(metrics, dimensions=dimensions)
+            result = mysql_wh.execute(metrics, dimensions=dimensions)
 
 
-def test_mysql_multithreaded_timeout():
-    ds_config = load_datasource_config("test_mysql_ds_config.json")
-    ds = DataSource.from_config("mysql", ds_config)
-    wh = Warehouse(datasources=[ds])
+def test_mysql_multithreaded_timeout(mysql_wh):
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
@@ -49,4 +40,15 @@ def test_mysql_multithreaded_timeout():
         metrics = ["benchmark", "transactions"]
         dimensions = ["partner_name"]
         with pytest.raises(DataSourceQueryTimeoutException):
-            result = wh.execute(metrics, dimensions=dimensions)
+            result = mysql_wh.execute(metrics, dimensions=dimensions)
+
+
+def test_mysql_date_conversions(mysql_wh):
+    params = get_date_conversion_test_params()
+    result = mysql_wh.execute(**params)
+    assert result
+    df = result.df.reset_index()
+    row = df.iloc[0]
+    info(df)
+    for field, value in EXPECTED_DATE_CONVERSION_VALUES:
+        assert row[field] == value

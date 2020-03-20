@@ -46,6 +46,11 @@
                 },
                 "partner_id": {
                     "fields": ["partner_id"]
+                },
+                "created_at": {
+                    "fields": ["campaign_created_at"],
+                    "allow_type_conversions": true,
+                    "type_conversion_prefix": "campaign_"
                 }
             }
         },
@@ -60,7 +65,7 @@
                 "cost": {
                     "fields": [
                         "cost",
-                        {"name":"benchmark", "ds_formula": "DISTINCT generate_series(1,2000000) / generate_series(1,2000000)"}
+                        {"name":"benchmark", "ds_formula": "generate_series(1,2000000) / generate_series(1,2000000)"}
                     ]
                 },
                 "clicks": {

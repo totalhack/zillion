@@ -40,6 +40,36 @@ def adhoc_ds(config):
     ds.clean_up()
 
 
+@pytest.fixture(scope="function")
+def mysql_ds_config():
+    return load_datasource_config("test_mysql_ds_config.json")
+
+
+@pytest.fixture(scope="function")
+def mysql_ds(mysql_ds_config):
+    return DataSource.from_config("mysql", mysql_ds_config)
+
+
+@pytest.fixture(scope="function")
+def mysql_wh(mysql_ds):
+    return Warehouse(datasources=[mysql_ds])
+
+
+@pytest.fixture(scope="function")
+def postgres_ds_config():
+    return load_datasource_config("test_postgres_ds_config.json")
+
+
+@pytest.fixture(scope="function")
+def postgres_ds(postgres_ds_config):
+    return DataSource.from_config("postgres", postgres_ds_config)
+
+
+@pytest.fixture(scope="function")
+def postgres_wh(postgres_ds):
+    return Warehouse(datasources=[postgres_ds])
+
+
 @pytest.fixture
 def pymysql_conn():
     conn = get_pymysql_conn()

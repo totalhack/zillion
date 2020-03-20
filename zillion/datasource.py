@@ -287,9 +287,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def print_info(self):
         print("---- Datasource %s" % self.name)
         print("metrics:")
-        print(format_msg(self._metrics, label=None, indent=2))
+        self.print_metrics(indent=2)
         print("dimensions:")
-        print(format_msg(self._dimensions, label=None, indent=2))
+        self.print_dimensions(indent=2)
 
         print()
         for table in self.metadata.tables.values():

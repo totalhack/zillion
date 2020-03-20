@@ -5,6 +5,7 @@ from tlbx import (
     initializer,
     warn,
     info,
+    format_msg,
     st,
     get_string_format_args,
 )
@@ -73,23 +74,28 @@ class Field(PrintMixin):
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         return None, None
 
-    def get_ds_expression(self, column):
+    def get_ds_expression(self, column, label=True):
         ds_formula = (
             column.zillion.field_map[self.name].get("ds_formula", None)
             if column.zillion.field_map[self.name]
             else None
         )
         if not ds_formula:
-            return column.label(self.name)
+            if label:
+                return column.label(self.name)
+            return column
 
         if contains_sql_keywords(ds_formula):
             raise DisallowedSQLException(
                 "Formula contains disallowed sql: %s" % ds_formula
             )
 
-        if not ds_formula.startswith("(") and ds_formula.endswith("("):
+        if not (ds_formula.startswith("(") and ds_formula.endswith("(")):
             ds_formula = "(" + ds_formula + ")"
-        return sa.literal_column(ds_formula).label(self.name)
+
+        if label:
+            return sa.literal_column(ds_formula).label(self.name)
+        return sa.literal_column(ds_formula)
 
     def get_final_select_clause(self, *args, **kwargs):
         return self.name
@@ -137,7 +143,7 @@ class Metric(Field):
             **kwargs
         )
 
-    def get_ds_expression(self, column):
+    def get_ds_expression(self, column, label=True):
         expr = column
         aggr = aggregation_to_sqla_func(self.aggregation)
         skip_aggr = False
@@ -165,7 +171,9 @@ class Metric(Field):
             ]:
                 if self.rounding:
                     info("Ignoring rounding for count field: %s" % self.name)
-                return aggr(expr).label(self.name)
+                if label:
+                    return aggr(expr).label(self.name)
+                return aggr(expr)
 
             if self.weighting_metric:
                 w_column = get_table_field_column(column.table, self.weighting_metric)
@@ -178,7 +186,9 @@ class Metric(Field):
             else:
                 expr = aggr(expr)
 
-        return expr.label(self.name)
+        if label:
+            return expr.label(self.name)
+        return expr
 
     def get_final_select_clause(self, *args, **kwargs):
         return self.name
@@ -203,7 +213,7 @@ class FormulaField(Field):
 
         for field_name in formula_fields:
             field = warehouse.get_field(field_name, adhoc_fms=adhoc_fms)
-            if isinstance(field, FormulaMetric):
+            if isinstance(field, FormulaField):
                 try:
                     sub_fields, sub_formula = field.get_formula_fields(
                         warehouse, depth=depth + 1, adhoc_fms=adhoc_fms
@@ -230,7 +240,7 @@ class FormulaField(Field):
         for field in fields:
             warehouse.get_field(field, adhoc_fms=adhoc_fms)
 
-    def get_ds_expression(self, column):
+    def get_ds_expression(self, column, label=True):
         assert False, "Formula-based Fields do not support get_ds_expression"
 
     def get_final_select_clause(self, warehouse, adhoc_fms=None):
@@ -244,6 +254,19 @@ class FormulaField(Field):
                 "Formula contains disallowed sql: %s" % formula
             )
         return sqla_compile(sa.text(formula))
+
+
+class FormulaDimension(FormulaField):
+    repr_atts = ["name", "formula"]
+    field_type = FieldTypes.DIMENSION
+
+    def __init__(self, name, formula, **kwargs):
+        # super(FormulaDimension, self).__init__(
+        #     name,
+        #     formula,
+        #     **kwargs
+        # )
+        raise InvalidFieldException("FormulaDimensions are not currently supported")
 
 
 class FormulaMetric(FormulaField):
@@ -327,7 +350,11 @@ def create_metric(metric_def):
 
 
 def create_dimension(dim_def):
-    dim = Dimension(dim_def["name"], dim_def["type"])
+    if dim_def.get("formula", None):
+        # dim = FormulaDimension(dim_def["name"], dim_def["formula"])
+        raise InvalidFieldException("FormulaDimensions are not currently supported")
+    else:
+        dim = Dimension(dim_def["name"], dim_def["type"])
     return dim
 
 
@@ -350,6 +377,14 @@ class FieldManagerMixin:
     def _directly_has_field(self, name):
         return name in getattr(self, self.metrics_attr) or name in getattr(
             self, self.dimensions_attr
+        )
+
+    def print_metrics(self, indent=None):
+        print(format_msg(getattr(self, self.metrics_attr), label=None, indent=indent))
+
+    def print_dimensions(self, indent=None):
+        print(
+            format_msg(getattr(self, self.dimensions_attr), label=None, indent=indent)
         )
 
     def has_metric(self, name, adhoc_fms=None):
@@ -405,12 +440,13 @@ class FieldManagerMixin:
             raise InvalidFieldException("Invalid dimension name: %s" % obj)
 
         if isinstance(obj, dict):
-            dim = AdHocDimension.create(obj)
-            assert not self.has_dimension(dim.name, adhoc_fms=adhoc_fms), (
-                "AdHocDimension can not use name of an existing dimension: %s"
-                % dim.name
-            )
-            return dim
+            raise InvalidFieldException("AdHocDimensions are not currently supported")
+            # dim = AdHocDimension.create(obj)
+            # assert not self.has_dimension(dim.name, adhoc_fms=adhoc_fms), (
+            #     "AdHocDimension can not use name of an existing dimension: %s"
+            #     % dim.name
+            # )
+            # return dim
 
         raise InvalidFieldException("Invalid dimension object: %s" % obj)
 
@@ -489,6 +525,7 @@ class FieldManagerMixin:
 
     def populate_global_fields(self, config, force=False):
         formula_metrics = []
+        formula_dims = []
 
         for metric_def in config.get("metrics", []):
             if isinstance(metric_def, dict):
@@ -502,8 +539,7 @@ class FieldManagerMixin:
                 metric = metric_def
 
             if isinstance(metric, FormulaMetric):
-                # These get added later
-                formula_metrics.append(metric)
+                formula_metrics.append(metric)  # These get added later
             else:
                 self.add_metric(metric, force=force)
 
@@ -517,12 +553,23 @@ class FieldManagerMixin:
                     dim_def, Dimension
                 ), "Dimension definition must be a dict-like object or a Dimension object"
                 dim = dim_def
-            self.add_dimension(dim, force=force)
 
-        # Defer formula metrics so params can be checked against existing fields
+            if isinstance(dim, FormulaDimension):
+                # formula_dims.append(dim) # These get added later
+                raise InvalidFieldException(
+                    "FormulaDimensions are not currently supported"
+                )
+            else:
+                self.add_dimension(dim, force=force)
+
+        # Defer formulas so params can be checked against existing fields
         for metric in formula_metrics:
             metric.check_formula_fields(self)
             self.add_metric(metric, force=force)
+
+        for dim in formula_dims:
+            dim.check_formula_fields(self)
+            self.add_dimension(dim, force=force)
 
     def find_field_sources(self, field, adhoc_fms=None):
         sources = []

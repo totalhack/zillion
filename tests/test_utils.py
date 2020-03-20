@@ -9,7 +9,11 @@ import pymysql
 from tlbx import st, dbg, info, random_string
 import sqlalchemy as sa
 
-from zillion.configs import load_warehouse_config, zillion_config
+from zillion.configs import (
+    load_warehouse_config,
+    load_datasource_config,
+    zillion_config,
+)
 from zillion.core import TableTypes, AggregationTypes
 from zillion.datasource import (
     DataSource,
@@ -18,6 +22,7 @@ from zillion.datasource import (
     SQLiteDataTable,
 )
 from zillion.report import Report
+from zillion.sql_utils import DATE_HIERARCHY
 from zillion.warehouse import Warehouse
 
 
@@ -189,3 +194,31 @@ def get_adhoc_datasource(size=10, name="adhoc_table1", reuse=False):
 
 def get_testdb_url(dbname=DEFAULT_TEST_DB):
     return "sqlite:///%s" % dbname
+
+
+EXPECTED_DATE_CONVERSION_VALUES = [
+    ("campaign_year", 2019),
+    ("campaign_quarter", "2019-Q1"),
+    ("campaign_quarter_of_year", 1),
+    ("campaign_month", "2019-03"),
+    ("campaign_month_name", "March"),
+    ("campaign_month_of_year", 3),
+    ("campaign_date", "2019-03-26"),
+    ("campaign_day_name", "Tuesday"),
+    ("campaign_day_of_week", 2),
+    ("campaign_day_of_month", 26),
+    ("campaign_day_of_year", 85),
+    ("campaign_hour", "2019-03-26 21:00:00"),
+    ("campaign_hour_of_day", 21),
+    ("campaign_minute", "2019-03-26 21:02:00"),
+    ("campaign_minute_of_hour", 2),
+    ("campaign_datetime", "2019-03-26 21:02:15"),
+    ("campaign_unixtime", 1553634135),
+]
+
+
+def get_date_conversion_test_params():
+    metrics = None
+    criteria = [("campaign_name", "=", "Campaign 2B")]
+    dimensions = ["campaign_%s" % v for v in DATE_HIERARCHY]
+    return dict(metrics=metrics, criteria=criteria, dimensions=dimensions)

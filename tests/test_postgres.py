@@ -9,22 +9,15 @@ from zillion.datasource import *
 from zillion.warehouse import Warehouse
 
 
-def test_postgres_datasource():
-    ds_config = load_datasource_config("test_postgres_ds_config.json")
-    ds = DataSource.from_config("postgres", ds_config)
-    wh = Warehouse(datasources=[ds])
-    wh.print_info()
+def test_postgres_datasource(postgres_wh):
     metrics = ["cost", "clicks", "transactions"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = postgres_wh.execute(metrics, dimensions=dimensions)
     assert result
     info(result.df)
 
 
-def test_postgres_sequential_timeout():
-    ds_config = load_datasource_config("test_postgres_ds_config.json")
-    ds = DataSource.from_config("postgres", ds_config)
-    wh = Warehouse(datasources=[ds])
+def test_postgres_sequential_timeout(postgres_wh):
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
@@ -34,13 +27,11 @@ def test_postgres_sequential_timeout():
         metrics = ["cost"]
         dimensions = ["benchmark"]
         with pytest.raises(DataSourceQueryTimeoutException):
-            result = wh.execute(metrics, dimensions=dimensions)
+            result = postgres_wh.execute(metrics, dimensions=dimensions)
+            info(result.df)
 
 
-def test_postgres_multithreaded_timeout():
-    ds_config = load_datasource_config("test_postgres_ds_config.json")
-    ds = DataSource.from_config("postgres", ds_config)
-    wh = Warehouse(datasources=[ds])
+def test_postgres_multithreaded_timeout(postgres_wh):
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
@@ -50,4 +41,15 @@ def test_postgres_multithreaded_timeout():
         metrics = ["cost"]
         dimensions = ["benchmark"]
         with pytest.raises(DataSourceQueryTimeoutException):
-            result = wh.execute(metrics, dimensions=dimensions)
+            result = postgres_wh.execute(metrics, dimensions=dimensions)
+
+
+def test_postgres_date_conversions(postgres_wh):
+    params = get_date_conversion_test_params()
+    result = postgres_wh.execute(**params)
+    assert result
+    df = result.df.reset_index()
+    row = df.iloc[0]
+    info(df)
+    for field, value in EXPECTED_DATE_CONVERSION_VALUES:
+        assert row[field] == value

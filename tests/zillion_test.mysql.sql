@@ -60,7 +60,7 @@ CREATE TABLE `campaigns` (
   `name` varchar(50) NOT NULL,
   `category` varchar(50) NOT NULL,
   `partner_id` int(11) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_name` (`name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8;
@@ -72,7 +72,7 @@ CREATE TABLE `campaigns` (
 
 LOCK TABLES `campaigns` WRITE;
 /*!40000 ALTER TABLE `campaigns` DISABLE KEYS */;
-INSERT INTO `campaigns` VALUES (1,'Campaign 1A','fruits',1,'2020-02-15 16:45:16'),(2,'Campaign 2A','vegetables',1,'2020-02-15 16:45:16'),(3,'Campaign 1B','fruits',2,'2020-02-15 16:45:16'),(4,'Campaign 2B','vegetables',2,'2020-02-15 16:45:16'),(5,'Campaign 1C','fruits',3,'2020-02-15 16:45:16'),(6,'Campaign 2C','vegetables',3,'2020-02-15 16:45:16');
+INSERT INTO `campaigns` VALUES (1,'Campaign 1A','fruits',1,'2019-03-26 21:02:15'),(2,'Campaign 2A','vegetables',1,'2019-03-26 21:02:15'),(3,'Campaign 1B','fruits',2,'2019-03-26 21:02:15'),(4,'Campaign 2B','vegetables',2,'2019-03-26 21:02:15'),(5,'Campaign 1C','fruits',3,'2019-03-26 21:02:15'),(6,'Campaign 2C','vegetables',3,'2019-03-26 21:02:15');
 /*!40000 ALTER TABLE `campaigns` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -86,7 +86,7 @@ DROP TABLE IF EXISTS `partners`;
 CREATE TABLE `partners` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_name` (`name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
@@ -98,7 +98,7 @@ CREATE TABLE `partners` (
 
 LOCK TABLES `partners` WRITE;
 /*!40000 ALTER TABLE `partners` DISABLE KEYS */;
-INSERT INTO `partners` VALUES (1,'Partner A','2020-02-15 16:45:15'),(2,'Partner B','2020-02-15 16:45:15'),(3,'Partner C','2020-02-15 16:45:15');
+INSERT INTO `partners` VALUES (1,'Partner A','2019-03-26 21:02:15'),(2,'Partner B','2019-03-26 21:02:15'),(3,'Partner C','2019-03-26 21:02:15');
 /*!40000 ALTER TABLE `partners` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -171,4 +171,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2020-03-07 10:51:04
+-- Dump completed on 2020-03-20 19:41:29
