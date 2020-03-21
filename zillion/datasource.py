@@ -2,6 +2,7 @@ from collections import defaultdict, OrderedDict
 import copy
 import datetime
 import random
+from urllib.parse import urlparse, urlunparse, parse_qs
 
 import pandas as pd
 import networkx as nx
@@ -972,6 +973,28 @@ class HTMLDataTable(AdHocDataTable):
         return df
 
 
+class GoogleSheetsDataTable(AdHocDataTable):
+    def get_dataframe(self):
+        parsed = urlparse(self.data)
+        params = parse_qs(parsed.query)
+        if params.get("format", None) == ["csv"]:
+            cls = CSVDataTable
+        elif parsed.path.endswith("/edit"):
+            parsed = parsed._replace(
+                path=parsed.path.replace("/edit", "/export"), query="format=csv"
+            )
+            url = urlunparse(parsed)
+        else:
+            raise Exception("Unsupported google docs URL: %s" % url)
+
+        return pd.read_csv(
+            url,
+            index_col=self.primary_key,
+            usecols=list(self.columns.keys()) if self.columns else None,
+            **self.df_kwargs
+        )
+
+
 class AdHocDataSource(DataSource):
     def __init__(
         self, datatables, name=None, config=None, coerce_float=True, if_exists="fail"
@@ -1056,6 +1079,8 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         cls = JSONDataTable
     elif url.endswith("html"):
         cls = HTMLDataTable
+    elif "docs.google.com" in url:
+        cls = GoogleSheetsDataTable
 
     kwargs.update(config.get("adhoc_table_options", {}))
 

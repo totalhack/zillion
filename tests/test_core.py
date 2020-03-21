@@ -113,6 +113,16 @@ def test_warehouse_remote_csv_table(adhoc_config):
         wh.clean_up()
 
 
+def test_warehouse_remote_google_sheet(adhoc_config):
+    url = "https://docs.google.com/spreadsheets/d/1iCzY4av_tinUpG2Q0mQhbxd77XOREwfbPAVZPObzFeE/edit?usp=sharing"
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"]["url"] = url
+    wh = Warehouse(config=adhoc_config)
+    try:
+        assert wh.has_dimension("Zip_Code")
+    finally:
+        wh.clean_up()
+
+
 def test_warehouse_remote_xlsx_table(adhoc_config):
     url = (
         "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.xlsx"
