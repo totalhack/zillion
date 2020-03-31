@@ -13,5 +13,5 @@ simplejson
 stopit
 sqlalchemy
 sqlparse
-tlbx>=0.1.11
+tlbx>=0.1.13
 xlrd
