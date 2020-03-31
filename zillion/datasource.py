@@ -1,6 +1,7 @@
 from collections import defaultdict, OrderedDict
 import copy
 import datetime
+import os
 import random
 from urllib.parse import urlparse, urlunparse, parse_qs
 
@@ -8,6 +9,7 @@ import pandas as pd
 import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
+from sqlalchemy.engine.url import make_url
 from tlbx import (
     PrintMixin,
     dbg,
@@ -220,6 +222,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         ), "Only one of metadata or config->url may be specified"
 
         if url:
+            self.check_url(url)
             self.metadata = sa.MetaData()
             self.metadata.bind = sa.create_engine(url)
         else:
@@ -271,6 +274,13 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_dialect_name(self):
         return self.metadata.bind.dialect.name
+
+    def check_url(self, url):
+        url = make_url(url)
+        if url.get_dialect().name == "sqlite":
+            assert os.path.isfile(url.database), (
+                "SQLite DB does not exist: %s" % url.database
+            )
 
     def reflect_metadata(self):
         dialect = self.get_dialect_name()
