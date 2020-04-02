@@ -7,7 +7,12 @@ from tlbx import dbg, st, pp
 
 from .test_utils import *
 from zillion.configs import TableInfo, ColumnInfo
-from zillion.core import UnsupportedGrainException, TableTypes, ADHOC_URL
+from zillion.core import (
+    WarehouseException,
+    UnsupportedGrainException,
+    TableTypes,
+    ADHOC_URL,
+)
 from zillion.datasource import *
 from zillion.sql_utils import contains_aggregation, contains_sql_keywords
 from zillion.warehouse import Warehouse
@@ -33,8 +38,13 @@ def test_datasource_metadata_init(config):
     metadata.reflect(schema="main")
 
     # Create zillion info directly on metadata
-    partners_info = TableInfo.create(dict(type="dimension", create_fields=True))
-    campaigns_info = TableInfo.create(dict(type="dimension", create_fields=True))
+    partners_info = TableInfo.create(
+        dict(type="dimension", create_fields=True, primary_key=["partner_id"])
+    )
+    campaigns_info = TableInfo.create(
+        dict(type="dimension", create_fields=True, primary_key=["campaign_id"])
+    )
+
     metadata.tables["main.partners"].info["zillion"] = partners_info
     metadata.tables["main.campaigns"].info["zillion"] = campaigns_info
 
@@ -51,8 +61,12 @@ def test_datasource_metadata_and_config_init(config):
     metadata.reflect(schema="main")
 
     # Create zillion info directly on metadata
-    partners_info = TableInfo.create(dict(type="dimension", create_fields=True))
-    campaigns_info = TableInfo.create(dict(type="dimension"))
+    partners_info = TableInfo.create(
+        dict(type="dimension", create_fields=True, primary_key=["partner_id"])
+    )
+    campaigns_info = TableInfo.create(
+        dict(type="dimension", primary_key=["campaign_id"])
+    )
     metadata.tables["main.partners"].info["zillion"] = partners_info
     metadata.tables["main.campaigns"].info["zillion"] = campaigns_info
 
@@ -116,7 +130,7 @@ def test_warehouse_remote_csv_table(adhoc_config):
 def test_warehouse_remote_google_sheet(adhoc_config):
     url = "https://docs.google.com/spreadsheets/d/1iCzY4av_tinUpG2Q0mQhbxd77XOREwfbPAVZPObzFeE/edit?usp=sharing"
     adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"]["url"] = url
-    wh = Warehouse(config=adhoc_config)
+    wh = Warehouse(config=adhoc_config, if_exists="ignore")
     try:
         assert wh.has_dimension("Zip_Code")
     finally:
@@ -202,14 +216,11 @@ def test_no_create_fields_no_columns(config):
 
 def test_no_create_fields_has_columns(config):
     del config["datasources"]["testdb2"]
-    partners_config = config["datasources"]["testdb1"]["tables"]["main.partners"]
     campaigns_config = config["datasources"]["testdb1"]["tables"]["main.campaigns"]
-    # We set both to false to make sure neither creates the partner_id field
-    partners_config["create_fields"] = False
     campaigns_config["create_fields"] = False
-    # This will raise an error because the primary key column ends up having
-    # no valid dimensions on the warehouse
-    with pytest.raises(AssertionError):
+    # This will raise an error because the fields referenced in the columns'
+    # field lists don't exist
+    with pytest.raises(WarehouseException):
         wh = Warehouse(config=config)
 
 
@@ -228,6 +239,7 @@ def test_create_fields_no_columns(config):
     table_config = config["datasources"]["testdb1"]["tables"]["main.partners"]
     table_config["create_fields"] = True
     del table_config["columns"]
+    table_config["primary_key"] = ["fake_field"]
     # Primary key mismatch in parent/child relationship with partners/campaigns
     with pytest.raises(AssertionError):
         wh = Warehouse(config=config)

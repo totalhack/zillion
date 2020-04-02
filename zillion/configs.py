@@ -252,9 +252,10 @@ class TableInfoSchema(BaseSchema):
     active = mfields.Boolean(default=True, missing=True)
     parent = mfields.Str(default=None, missing=None)
     create_fields = mfields.Boolean(default=False, missing=False)
+    primary_key = mfields.List(mfields.Str, required=True)
 
 
-ADHOC_TABLE_CONFIG_PARAMS = ["url", "primary_key", "adhoc_table_options"]
+ADHOC_TABLE_CONFIG_PARAMS = ["url", "adhoc_table_options"]
 
 
 class TableConfigSchema(TableInfoSchema):

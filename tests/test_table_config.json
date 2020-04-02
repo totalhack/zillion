@@ -1,6 +1,7 @@
 {
     "type": "metric",
     "create_fields": true,
+    "primary_key": ["lead_id"],
     "columns": {
         "id": {
             "fields": [

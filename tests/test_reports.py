@@ -700,7 +700,7 @@ def test_regular_datasource_adhoc(config):
     ds2 = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
     wh = Warehouse(datasources=[ds1])
     metrics = ["leads", "sales", "aggr_sales"]
-    dimensions = ["campaign_name"]
+    dimensions = ["partner_name", "campaign_name"]
     result = wh.execute(metrics, dimensions=dimensions, adhoc_datasources=[ds2])
     assert result
     info(result.df)

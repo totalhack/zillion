@@ -32,6 +32,7 @@ from zillion.configs import (
     MetricConfigSchema,
     DimensionConfigSchema,
     default_field_name,
+    is_valid_field_name,
     zillion_config,
     ADHOC_TABLE_CONFIG_PARAMS,
     EXCLUDE,
@@ -49,12 +50,12 @@ from zillion.field import (
     get_table_dimensions,
     get_table_fields,
     get_table_field_column,
+    get_dialect_type_conversions,
     FieldManagerMixin,
 )
 from zillion.sql_utils import (
     column_fullname,
     infer_aggregation_and_rounding,
-    get_dialect_type_conversions,
     is_probably_metric,
     get_schemas,
     filter_dialect_schemas,
@@ -354,9 +355,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 zillion_info = column.info.get("zillion", {})
                 # Config takes precendence over values on column objects
                 zillion_info.update(column_config)
-                zillion_info["fields"] = zillion_info.get(
-                    "fields", [default_field_name(column)]
-                )
+                field_name = default_field_name(column)
+                is_valid_field_name(field_name)
+                zillion_info["fields"] = zillion_info.get("fields", [field_name])
                 column.info["zillion"] = ColumnInfo.create(zillion_info)
 
     def ensure_metadata_info(self):
@@ -388,9 +389,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         setattr(column, "zillion", None)
                         continue
 
-                zillion_info["fields"] = zillion_info.get(
-                    "fields", [default_field_name(column)]
-                )
+                field_name = default_field_name(column)
+                is_valid_field_name(field_name)
+                zillion_info["fields"] = zillion_info.get("fields", [field_name])
                 if column.primary_key:
                     assert zillion_info["fields"], (
                         "Primary key column %s must have fields defined and one must be a valid dimension"
@@ -429,9 +430,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     )
                     types_converted.add(type(column.type))
 
-                for field_name, ds_formula in convs:
+                for field_def, ds_formula in convs:
+                    field_name = field_def.name
+                    field_def = field_def.copy()
+
                     if column.zillion.type_conversion_prefix:
                         field_name = column.zillion.type_conversion_prefix + field_name
+                        is_valid_field_name(field_name)
+                        field_def.name = field_name
 
                     if field_name in table_fields:
                         dbg(
@@ -446,6 +452,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     column.zillion.add_field(
                         dict(name=field_name, ds_formula=ds_formula)
                     )
+
+                    if not self.has_field(field_name):
+                        if isinstance(field_def, Dimension):
+                            self.add_dimension(field_def)
+                        else:
+                            self.add_metric(field_def)
 
     def add_metric_column(self, column, field):
         if not self.has_metric(field):
@@ -532,24 +544,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
             else:
                 assert False, "Invalid table type: %s" % table.zillion.type
 
-    def get_primary_key_fields(self, primary_key):
-        pk_fields = set()
-        for col in primary_key:
-            pk_dims = [
-                x
-                for x in col.zillion.fields
-                if isinstance(x, str) and x in self.get_dimensions()
-            ]
-            # A primary key column can have multiple fields, but only one can
-            # be a dimension so we clearly know what field to look for in
-            # joins to related tables.
-            assert len(pk_dims) == 1, (
-                "Primary key column %s should have exactly one dimension, got: %s"
-                % (col, pk_dims)
-            )
-            pk_fields.add(pk_dims[0])
-        return pk_fields
-
     def find_neighbor_tables(self, table):
         neighbor_tables = []
         fields = get_table_fields(table)
@@ -557,7 +551,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         if table.zillion.type == TableTypes.METRIC:
             # Find dimension tables whose primary key is contained in the metric table
             for dim_table in self.dimension_tables.values():
-                dt_pk_fields = self.get_primary_key_fields(dim_table.primary_key)
+                dt_pk_fields = dim_table.zillion.primary_key
                 can_join = True
                 for field in dt_pk_fields:
                     if field not in fields:
@@ -570,7 +564,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         parent_name = table.zillion.parent
         if parent_name:
             parent = self.metadata.tables[parent_name]
-            pk_fields = self.get_primary_key_fields(parent.primary_key)
+            pk_fields = parent.zillion.primary_key
             for pk_field in pk_fields:
                 assert pk_field in fields, (
                     "Table %s is parent of %s but primary key %s is not in both"
@@ -579,7 +573,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             neighbor_tables.append(NeighborTable(parent, pk_fields))
         return neighbor_tables
 
-    def build_ds_graph(self):
+    def build_graph(self):
         graph = nx.DiGraph()
         self.graph = graph
         for table in self.metadata.tables.values():
@@ -607,7 +601,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         self.populate_fields(config)
 
-        self.build_ds_graph()
+        self.build_graph()
 
     def has_table(self, table):
         return table.fullname in self.metadata.tables
@@ -882,7 +876,11 @@ class AdHocDataTable(PrintMixin):
         self.df_kwargs = kwargs or {}
         self.table_config = TableConfigSchema().load(
             dict(
-                type=table_type, columns=self.columns, create_fields=True, parent=parent
+                type=table_type,
+                columns=self.columns,
+                create_fields=True,
+                parent=parent,
+                primary_key=primary_key,
             )
         )
 

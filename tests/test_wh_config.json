@@ -126,6 +126,7 @@
                 "main.partners": {
                     "type": "dimension",
                     "create_fields": true,
+                    "primary_key": ["partner_id"],
                     "columns": {
                         "id": {
                             "fields": ["partner_id"]
@@ -140,6 +141,7 @@
                     "type": "dimension",
                     "create_fields": true,
                     "parent": "main.partners",
+                    "primary_key": ["campaign_id"],
                     "columns": {
                         "id": {
                             "fields": ["campaign_id"]
@@ -167,6 +169,7 @@
                     "type": "metric",
                     "create_fields": true,
                     "parent": "main.leads",
+                    "primary_key": ["sale_id"],
                     "columns": {
                         "id": {
                             "fields": [

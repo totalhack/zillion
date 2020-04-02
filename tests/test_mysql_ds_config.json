@@ -17,6 +17,7 @@
         "zillion_test.partners": {
             "type": "dimension",
             "create_fields": true,
+            "primary_key": ["partner_id"],
             "columns": {
                 "id": {
                     "fields": ["partner_id"]
@@ -31,6 +32,7 @@
             "type": "dimension",
             "create_fields": true,
             "parent": "zillion_test.partners",
+            "primary_key": ["campaign_id"],
             "columns": {
                 "id": {
                     "fields": ["campaign_id"]
@@ -52,6 +54,7 @@
         "zillion_test.campaign_cost": {
             "type": "metric",
             "create_fields": true,
+            "primary_key": ["campaign_id"],
             "columns": {
                 "campaign_id": {
                     "fields": ["campaign_id"]
@@ -71,6 +74,7 @@
         "zillion_test2.campaign_transactions": {
             "type": "metric",
             "create_fields": true,
+            "primary_key": ["transaction_id"],
             "columns": {
                 "id": {
                     "fields": [

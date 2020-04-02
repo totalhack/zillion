@@ -72,7 +72,12 @@ if zillion_config["DEBUG"]:
 
 
 class Warehouse(FieldManagerMixin):
-    def __init__(self, config=None, datasources=None, ds_priority=None):
+    def __init__(
+        self, config=None, datasources=None, ds_priority=None, if_exists="fail"
+    ):
+        """
+        if_exists: only applies when an adhoc datasource will be created
+        """
         self.datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
@@ -84,7 +89,7 @@ class Warehouse(FieldManagerMixin):
 
         if config:
             config = WarehouseConfigSchema().load(config)
-            self.apply_config(config, skip_integrity_checks=True)
+            self.apply_config(config, skip_integrity_checks=True, if_exists=if_exists)
 
         assert self.datasources, "No datasources provided or found in config"
         self.run_integrity_checks()
@@ -155,22 +160,28 @@ class Warehouse(FieldManagerMixin):
         dbg("Removing datasource %s" % ds.name)
         del self.datasources[ds.name]
 
-    def create_or_update_datasources(self, ds_configs, skip_integrity_checks=False):
+    def create_or_update_datasources(
+        self, ds_configs, skip_integrity_checks=False, if_exists="fail"
+    ):
         for ds_name in ds_configs:
             if ds_name in self.datasources:
                 self.datasources[ds_name].apply_config(ds_configs[ds_name])
                 continue
 
-            ds = datasource_from_config(ds_name, ds_configs[ds_name])
+            ds = datasource_from_config(
+                ds_name, ds_configs[ds_name], if_exists=if_exists
+            )
             if isinstance(ds, AdHocDataSource):
                 # We track this so we can clean up later
                 self._created_adhoc_datasources.add(ds.name)
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
-    def apply_config(self, config, skip_integrity_checks=False):
+    def apply_config(self, config, skip_integrity_checks=False, if_exists="fail"):
         self.populate_global_fields(config, force=True)
         self.create_or_update_datasources(
-            config.get("datasources", {}), skip_integrity_checks=skip_integrity_checks
+            config.get("datasources", {}),
+            skip_integrity_checks=skip_integrity_checks,
+            if_exists=if_exists,
         )
 
     def _check_conflicting_fields(self, adhoc_datasources=None):
@@ -218,26 +229,21 @@ class Warehouse(FieldManagerMixin):
                 if not table.zillion:
                     continue
 
-                for column in table.c:
-                    if not column.zillion:
-                        continue
+                primary_key = table.zillion.primary_key
+                table_dims = get_table_dimensions(
+                    self, table, adhoc_fms=adhoc_datasources
+                )
 
-                    if column.primary_key:
-                        # TODO: does this make sense for composite keys?
-                        # Why is this even necessary?
-                        dims = set()
-                        for field in column.zillion.get_field_names():
-                            if self.has_dimension(
-                                field, adhoc_fms=adhoc_datasources
-                            ) or not self.has_metric(
-                                field, adhoc_fms=adhoc_datasources
-                            ):
-                                dims.add(field)
-                            if len(dims) >= 2:
-                                errors.append(
-                                    "Primary key column %s may only map to a single dimension: %s"
-                                    % (column, dims)
-                                )
+                for pk_field in primary_key:
+                    if not self.has_dimension(pk_field):
+                        errors.append(
+                            "Primary key field is not a dimension: %s" % pk_field
+                        )
+                    if pk_field not in table_dims:
+                        errors.append(
+                            "Primary key dimension %s is not in table %s"
+                            % (pk_field, table.fullname)
+                        )
 
         return errors
 
@@ -296,7 +302,7 @@ class Warehouse(FieldManagerMixin):
         metric = self.get_metric(metric, adhoc_fms=adhoc_datasources)
 
         if use_cache and metric.name in self._supported_dimension_cache:
-            # XXX When to clear cache?
+            # XXX TODO: When to clear cache?
             return self._supported_dimension_cache[metric]
 
         for ds in self.get_datasources():

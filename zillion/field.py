@@ -1,3 +1,6 @@
+from collections import OrderedDict
+import inspect
+
 import sqlalchemy as sa
 from tlbx import (
     MappingMixin,
@@ -70,6 +73,12 @@ class Field(PrintMixin):
         is_valid_field_name(name)
         if isinstance(type, str):
             self.type = type_string_to_sa_type(type)
+        if inspect.isclass(type):
+            # Assume its a SQLAlchemy class
+            self.type = type()
+
+    def copy(self):
+        raise NotImplementedError
 
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         return None, None
@@ -143,6 +152,16 @@ class Metric(Field):
             **kwargs
         )
 
+    def copy(self):
+        return Metric(
+            self.name,
+            self.type,
+            aggregation=aggregation,
+            rounding=rounding,
+            weighting_metric=weighting_metric,
+            technical=technical,
+        )
+
     def get_ds_expression(self, column, label=True):
         expr = column
         aggr = aggregation_to_sqla_func(self.aggregation)
@@ -196,6 +215,9 @@ class Metric(Field):
 
 class Dimension(Field):
     field_type = FieldTypes.DIMENSION
+
+    def copy(self):
+        return Dimension(self.name, self.type)
 
 
 class FormulaField(Field):
@@ -625,3 +647,177 @@ def get_table_field_column(table, field_name):
         field_name,
         table.fullname,
     )
+
+
+def get_conversions_for_type(coltype):
+    for basetype, convs in TYPE_ALLOWED_CONVERSIONS.items():
+        if issubclass(coltype, basetype):
+            return convs
+    return None
+
+
+def get_dialect_type_conversions(dialect, column):
+    coltype = type(column.type)
+    conv_info = get_conversions_for_type(coltype)
+    if not conv_info:
+        return []
+
+    results = []
+    allowed = conv_info["allowed_conversions"]
+    convs = conv_info["dialect_conversions"]
+
+    for field_def in allowed:
+        field_name = field_def.name
+        conv = convs[dialect].get(field_name, None)
+        if not conv:
+            continue
+        format_args = get_string_format_args(conv)
+        assert not any([x != "" for x in format_args]), (
+            "Field conversion has non-named format arguments: %s" % conv
+        )
+        if format_args:
+            conv = conv.format(*[column_fullname(column) for i in format_args])
+        results.append((field_def, conv))
+
+    return results
+
+
+DATETIME_CONVERSION_FIELDS = [
+    Dimension("year", sa.Integer),
+    Dimension("quarter", sa.String(8)),
+    Dimension("quarter_of_year", sa.SmallInteger),
+    Dimension("month", sa.String(8)),
+    Dimension("month_name", sa.String(8)),
+    Dimension("month_of_year", sa.SmallInteger),
+    Dimension("date", sa.String(10)),
+    Dimension("day_name", sa.String(10)),
+    Dimension("day_of_week", sa.SmallInteger),
+    Dimension("day_of_month", sa.SmallInteger),
+    Dimension("day_of_year", sa.SmallInteger),
+    Dimension("hour", sa.String(20)),
+    Dimension("hour_of_day", sa.SmallInteger),
+    Dimension("minute", sa.String(20)),
+    Dimension("minute_of_hour", sa.SmallInteger),
+    Dimension("datetime", sa.String(20)),
+    Dimension("unixtime", sa.BigInteger),
+]
+
+DATE_CONVERSION_FIELDS = []
+for _dim in DATETIME_CONVERSION_FIELDS:
+    if _dim.name == "hour":
+        break
+    DATE_CONVERSION_FIELDS.append(_dim)
+
+# Somewhat adhering to ISO 8601, but ignoring the "T" between the date/time
+# and not including timezone offsets for now because zillion assumes
+# everything is in the same timezone (or the datasource formulas take care of
+# aligning timezones).
+DIALECT_DATE_CONVERSIONS = {
+    "sqlite": {
+        "year": "cast(strftime('%Y', {}) as integer)",
+        "quarter": "strftime('%Y', {}) || '-Q' || ((cast(strftime('%m', {}) as integer) + 2) / 3)",  # 2020-Q1
+        "quarter_of_year": "(cast(strftime('%m', {}) as integer) + 2) / 3",
+        "month": "strftime('%Y-%m', {})",
+        "month_name": (
+            "CASE strftime('%m', {}) "
+            "WHEN '01' THEN 'January' "
+            "WHEN '02' THEN 'February' "
+            "WHEN '03' THEN 'March' "
+            "WHEN '04' THEN 'April' "
+            "WHEN '05' THEN 'May' "
+            "WHEN '06' THEN 'June' "
+            "WHEN '07' THEN 'July' "
+            "WHEN '08' THEN 'August' "
+            "WHEN '09' THEN 'September' "
+            "WHEN '10' THEN 'October' "
+            "WHEN '11' THEN 'November' "
+            "WHEN '12' THEN 'December' "
+            "ELSE NULL "
+            "END"
+        ),
+        "month_of_year": "cast(strftime('%m', {}) as integer)",
+        "date": "strftime('%Y-%m-%d', {})",
+        "day_name": (
+            "CASE cast(strftime('%w', {}) as integer) "
+            "WHEN 0 THEN 'Sunday' "
+            "WHEN 1 THEN 'Monday' "
+            "WHEN 2 THEN 'Tuesday' "
+            "WHEN 3 THEN 'Wednesday' "
+            "WHEN 4 THEN 'Thursday' "
+            "WHEN 5 THEN 'Friday' "
+            "WHEN 6 THEN 'Saturday' "
+            "ELSE NULL "
+            "END"
+        ),
+        "day_of_week": "(cast(strftime('%w', {}) as integer) + 6) % 7 + 1",  # Convert to Monday = 1
+        "day_of_month": "cast(strftime('%d', {}) as integer)",
+        "day_of_year": "cast(strftime('%j', {}) as integer)",
+        "hour": "strftime('%Y-%m-%d %H:00:00', {})",
+        "hour_of_day": "cast(strftime('%H', {}) as integer)",
+        "minute": "strftime('%Y-%m-%d %H:%M:00', {})",
+        "minute_of_hour": "cast(strftime('%M', {}) as integer)",
+        "datetime": "strftime('%Y-%m-%d %H:%M:%S', {})",
+        "unixtime": "cast(strftime('%s', {}) as integer)",
+    },
+    "mysql": {
+        "year": "EXTRACT(YEAR FROM {})",
+        "quarter": "CONCAT(YEAR({}), '-Q', QUARTER({}))",
+        "quarter_of_year": "EXTRACT(QUARTER FROM {})",
+        "month": "DATE_FORMAT({}, '%Y-%m')",
+        "month_name": "MONTHNAME({})",
+        "month_of_year": "EXTRACT(MONTH FROM {})",
+        "date": "DATE_FORMAT({}, '%Y-%m-%d')",
+        "day_name": "DAYNAME({})",
+        "day_of_week": "WEEKDAY({}) + 1",  # Monday = 1
+        "day_of_month": "EXTRACT(DAY FROM {})",
+        "day_of_year": "DAYOFYEAR({})",
+        "hour": "DATE_FORMAT({}, '%Y-%m-%d %H:00:00')",
+        "hour_of_day": "EXTRACT(HOUR FROM {})",
+        "minute": "DATE_FORMAT({}, '%Y-%m-%d %H:%i:00')",
+        "minute_of_hour": "EXTRACT(MINUTE FROM {})",
+        "datetime": "DATE_FORMAT({}, '%Y-%m-%d %H:%i:%S')",
+        "unixtime": "UNIX_TIMESTAMP({})",
+    },
+    "postgresql": {
+        "year": "EXTRACT(YEAR FROM {})",
+        "quarter": "TO_CHAR({}, 'FMYYYY-\"Q\"Q')",
+        "quarter_of_year": "EXTRACT(QUARTER FROM {})",
+        "month": "TO_CHAR({}, 'FMYYYY-MM')",
+        "month_name": "TO_CHAR({}, 'FMMonth')",
+        "month_of_year": "EXTRACT(MONTH FROM {})",
+        "date": "TO_CHAR({}, 'FMYYYY-MM-DD')",
+        "day_name": "TO_CHAR({}, 'FMDay')",
+        "day_of_week": "EXTRACT(ISODOW FROM {})",  # Monday = 1
+        "day_of_month": "EXTRACT(DAY FROM {})",
+        "day_of_year": "EXTRACT(DOY FROM {})",
+        "hour": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:00:00')",
+        "hour_of_day": "EXTRACT(HOUR FROM {})",
+        "minute": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:00')",
+        "minute_of_hour": "EXTRACT(MINUTE FROM {})",
+        "datetime": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:SS')",
+        "unixtime": "EXTRACT(epoch from {})",
+    },
+}
+
+TYPE_ALLOWED_CONVERSIONS = {
+    sa.DateTime: {
+        "allowed_conversions": DATETIME_CONVERSION_FIELDS,
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+    sa.DATETIME: {
+        "allowed_conversions": DATETIME_CONVERSION_FIELDS,
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+    sa.TIMESTAMP: {
+        "allowed_conversions": DATETIME_CONVERSION_FIELDS,
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+    sa.Date: {
+        "allowed_conversions": DATE_CONVERSION_FIELDS,  # DATE_HIERARCHY[0 : DATE_HIERARCHY.index("hour")],
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+    sa.DATE: {
+        "allowed_conversions": DATE_CONVERSION_FIELDS,  # DATE_HIERARCHY[0 : DATE_HIERARCHY.index("hour")],
+        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
+    },
+}

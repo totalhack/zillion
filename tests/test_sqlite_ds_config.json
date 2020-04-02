@@ -11,6 +11,7 @@
         "main.partners": {
             "type": "dimension",
             "create_fields": true,
+            "primary_key": ["partner_id"],
             "columns": {
                 "id": {
                     "fields": ["partner_id"]
@@ -25,6 +26,7 @@
             "type": "dimension",
             "create_fields": true,
             "parent": "main.partners",
+            "primary_key": ["campaign_id"],
             "columns": {
                 "id": {
                     "fields": ["campaign_id"]
@@ -41,6 +43,7 @@
         "main.aggregated_stats": {
             "type": "metric",
             "create_fields": true,
+            "primary_key": ["partner_id", "campaign_id"],
             "columns": {
                 "partner_id": {
                     "fields": ["partner_id"]

@@ -21,8 +21,8 @@ from zillion.datasource import (
     AdHocDataTable,
     SQLiteDataTable,
 )
+from zillion.field import DATETIME_CONVERSION_FIELDS
 from zillion.report import Report
-from zillion.sql_utils import DATE_HIERARCHY
 from zillion.warehouse import Warehouse
 
 
@@ -220,5 +220,5 @@ EXPECTED_DATE_CONVERSION_VALUES = [
 def get_date_conversion_test_params():
     metrics = None
     criteria = [("campaign_name", "=", "Campaign 2B")]
-    dimensions = ["campaign_%s" % v for v in DATE_HIERARCHY]
+    dimensions = ["campaign_%s" % v.name for v in DATETIME_CONVERSION_FIELDS]
     return dict(metrics=metrics, criteria=criteria, dimensions=dimensions)
