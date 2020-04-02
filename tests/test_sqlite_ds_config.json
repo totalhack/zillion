@@ -43,6 +43,7 @@
         "main.aggregated_stats": {
             "type": "metric",
             "create_fields": true,
+            "use_full_column_names": false,
             "primary_key": ["partner_id", "campaign_id"],
             "columns": {
                 "partner_id": {
@@ -50,9 +51,6 @@
                 },
                 "campaign_id": {
                     "fields": ["campaign_id"]
-                },
-                "leads": {
-                    "fields": ["leads"]
                 },
                 "sales": {
                     "fields": ["sales", "aggr_sales"]

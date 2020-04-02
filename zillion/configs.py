@@ -252,6 +252,7 @@ class TableInfoSchema(BaseSchema):
     active = mfields.Boolean(default=True, missing=True)
     parent = mfields.Str(default=None, missing=None)
     create_fields = mfields.Boolean(default=False, missing=False)
+    use_full_column_names = mfields.Boolean(default=True, missing=True)
     primary_key = mfields.List(mfields.Str, required=True)
 
 

@@ -353,10 +353,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 column_config = column_configs[column.name]
                 zillion_info = column.info.get("zillion", {})
-                # Config takes precendence over values on column objects
+                # Config takes precedence over values on column objects
                 zillion_info.update(column_config)
-                field_name = default_field_name(column)
+
+                if table.info["zillion"].use_full_column_names:
+                    field_name = default_field_name(column)
+                else:
+                    field_name = column.name
                 is_valid_field_name(field_name)
+
                 zillion_info["fields"] = zillion_info.get("fields", [field_name])
                 column.info["zillion"] = ColumnInfo.create(zillion_info)
 
@@ -389,8 +394,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         setattr(column, "zillion", None)
                         continue
 
-                field_name = default_field_name(column)
+                if table.zillion.use_full_column_names:
+                    field_name = default_field_name(column)
+                else:
+                    field_name = column.name
                 is_valid_field_name(field_name)
+
                 zillion_info["fields"] = zillion_info.get("fields", [field_name])
                 if column.primary_key:
                     assert zillion_info["fields"], (

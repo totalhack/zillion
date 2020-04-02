@@ -715,6 +715,16 @@ def test_only_adhoc_datasource(adhoc_ds):
     info(result.df)
 
 
+def test_no_use_full_column_names(config):
+    ds = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
+    wh = Warehouse(datasources=[ds])
+    metrics = ["leads", "sales", "aggr_sales"]
+    dimensions = ["partner_name", "campaign_name"]
+    result = wh.execute(metrics, dimensions=dimensions)
+    assert result
+    info(result.df)
+
+
 def test_ds_metric_formula_sql_injection(config):
     # example = r"""I don't like "special" ch;ars ¯\_(ツ)_/¯"""
     table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
