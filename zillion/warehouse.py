@@ -11,7 +11,6 @@ import sqlalchemy as sa
 from tlbx import (
     dbg,
     info,
-    warn,
     pf,
     st,
     rmfile,
@@ -30,7 +29,6 @@ from zillion.configs import (
     ColumnInfo,
     TableInfo,
     MetricConfigSchema,
-    TechnicalInfoSchema,
     DimensionConfigSchema,
     parse_technical_string,
     is_valid_field_name,
@@ -49,7 +47,6 @@ from zillion.field import (
     Field,
     Metric,
     Dimension,
-    Technical,
     FormulaMetric,
     create_metric,
     create_dimension,
@@ -388,7 +385,7 @@ class Warehouse(FieldManagerMixin):
         # TODO: eventually it would be nice to choose a datasource if:
         #  A) Its historically been faster
         #  B) All of the requested data can be pulled from one datasource
-        warn("No datasource priorities established, choosing first option")
+        info("No datasource priorities established, choosing first option")
         assert ds_names, "No datasource names provided"
         return ds_names[0]
 
@@ -396,7 +393,7 @@ class Warehouse(FieldManagerMixin):
         ds_name = self.choose_best_data_source(list(ds_table_sets.keys()))
         if len(ds_table_sets[ds_name]) > 1:
             # TODO: establish table set priorities based on expected query performance?
-            warn(
+            info(
                 "Picking smallest of %d available table sets"
                 % len(ds_table_sets[ds_name])
             )

@@ -42,7 +42,6 @@ from zillion.field import (
     Field,
     Metric,
     Dimension,
-    Technical,
     FormulaMetric,
     create_metric,
     create_dimension,

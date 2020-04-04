@@ -53,11 +53,32 @@
             "technical": "SUM-5"
         },
         {
+            "name": "revenue_cumsum",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "CUMSUM"
+        },
+        {
             "name": "revenue_boll_5",
             "type": "Numeric(10,2)",
             "aggregation": "sum",
             "rounding": 2,
             "technical": "BOLL-5"
+        },
+        {
+            "name": "revenue_diff",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "DIFF"
+        },
+        {
+            "name": "revenue_pct_diff",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "PCT_DIFF"
         },
         {
             "name": "revenue_ds",
@@ -191,6 +212,9 @@
                                 "revenue_ma_5",
                                 "revenue_sum_5",
                                 "revenue_boll_5",
+                                "revenue_cumsum",
+                                "revenue_diff",
+                                "revenue_pct_diff",
                                 {"name": "revenue_ds", "ds_formula": "IFNULL(sales.revenue, 0)"},
                                 "revenue_avg",
                                 {"name": "revenue_avg_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},

@@ -14,11 +14,10 @@ from tlbx import (
 )
 from zillion.configs import (
     MetricConfigSchema,
-    TechnicalInfoSchema,
     DimensionConfigSchema,
     AdHocMetricSchema,
     AdHocFieldSchema,
-    parse_technical_string,
+    create_technical,
     is_valid_field_name,
     zillion_config,
 )
@@ -42,26 +41,6 @@ from zillion.sql_utils import (
 
 
 MAX_FORMULA_DEPTH = 3
-
-
-class Technical(MappingMixin, PrintMixin):
-    repr_attrs = ["type", "window", "min_periods"]
-
-    @initializer
-    def __init__(self, **kwargs):
-        # Attributes of this will be used to apply DataFrame.rolling
-        # to result columns
-        pass
-
-    @classmethod
-    def create(cls, info):
-        if isinstance(info, cls):
-            return info
-        if isinstance(info, str):
-            info = parse_technical_string(info)
-        assert isinstance(info, dict), "Raw info must be a dict: %s" % info
-        info = TechnicalInfoSchema().load(info)
-        return cls(**info)
 
 
 class Field(PrintMixin):
@@ -140,7 +119,7 @@ class Metric(Field):
             )
 
         if technical:
-            technical = Technical.create(technical)
+            technical = create_technical(technical)
 
         super(Metric, self).__init__(
             name,
@@ -306,7 +285,7 @@ class FormulaMetric(FormulaField):
         **kwargs
     ):
         if technical:
-            technical = Technical.create(technical)
+            technical = create_technical(technical)
 
         super(FormulaMetric, self).__init__(
             name,

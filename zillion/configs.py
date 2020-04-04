@@ -16,7 +16,13 @@ from pandas.io.common import get_filepath_or_buffer
 from tlbx import dbg, error, json, st, initializer, MappingMixin, PrintMixin
 import yaml
 
-from zillion.core import FieldTypes, TableTypes, AggregationTypes, TechnicalTypes
+from zillion.core import (
+    FieldTypes,
+    TableTypes,
+    AggregationTypes,
+    TechnicalTypes,
+    InvalidTechnicalException,
+)
 from zillion.sql_utils import (
     column_fullname,
     type_string_to_sa_type,
@@ -47,21 +53,45 @@ def default_field_name(column):
 
 
 def parse_technical_string(val):
-    min_period = None
-    center = None
-    parts = val.split("-")
+    arg1 = None
+    arg2 = None
 
-    if len(parts) == 2:
-        ttype, window = parts
-    elif len(parts) == 3:
-        ttype, window, min_period = parts
+    if "-" in val:
+        parts = val.split("-")
+        if len(parts) == 2:
+            ttype, arg1 = parts
+        elif len(parts) == 3:
+            ttype, arg1, arg2 = parts
+    else:
+        ttype = val
 
-    val = dict(type=ttype, window=window)
-    if min_period is not None:
-        val["min_period"] = min_period
-    if center is not None:
-        val["center"] = center
-    return val
+    result = dict(type=ttype, params={})
+
+    if ttype == TechnicalTypes.CUMSUM:
+        if arg1 or arg2:
+            raise InvalidTechnicalException(
+                "Invalid %s technical string: %s, no args allowed" % (ttype, val)
+            )
+    elif ttype in (TechnicalTypes.DIFF, TechnicalTypes.PCT_DIFF):
+        if arg2 is not None:
+            raise InvalidTechnicalException(
+                "Invalid %s technical string: %s, only 1 arg allowed" % (ttype, val)
+            )
+        if arg1 is not None:
+            result["params"] = dict(periods=int(arg1))
+    elif ttype in TechnicalTypes:
+        window = int(arg1) if arg1 is not None else None
+        if window is None:
+            raise InvalidTechnicalException(
+                "Invalid %s technical string: %s, window arg required" % (ttype, val)
+            )
+        result["params"] = dict(window=window, min_periods=1)
+        if arg2 is not None:
+            result["params"]["min_periods"] = int(arg2)
+    else:
+        raise InvalidTechnicalException("Invalid technical type: %s" % ttype)
+
+    return result
 
 
 def load_zillion_config():
@@ -173,12 +203,10 @@ def is_valid_technical_type(val):
 
 
 def is_valid_technical(val):
-    if isinstance(val, str):
-        val = parse_technical_string(val)
-    elif not isinstance(val, dict):
-        raise ValidationError("Invalid technical: %s" % val)
-    schema = TechnicalInfoSchema()
-    val = schema.load(val)
+    try:
+        tech = create_technical(val)
+    except InvalidTechnicalException as e:
+        raise ValidationError("Invalid technical: %s" % val) from e
     return True
 
 
@@ -198,9 +226,7 @@ class BaseSchema(Schema):
 
 class TechnicalInfoSchema(BaseSchema):
     type = mfields.String(required=True, validate=is_valid_technical_type)
-    window = mfields.Integer(required=True)
-    min_periods = mfields.Integer(default=1, missing=1)
-    center = mfields.Boolean(default=False, missing=False)
+    params = mfields.Dict(keys=mfields.Str(), default=None, missing=None)
 
 
 class TechnicalField(mfields.Field):
@@ -459,3 +485,81 @@ class ColumnInfo(ZillionInfo, PrintMixin):
 
     def get_field_names(self):
         return self.field_map.keys()
+
+
+# TODO: is there a better home for this?
+class Technical(MappingMixin, PrintMixin):
+    repr_attrs = ["type", "params"]
+    allowed_params = set()
+
+    @initializer
+    def __init__(self, type, params):
+        self.check_params(params)
+
+    @classmethod
+    def check_params(cls, params):
+        if not params:
+            return
+        for k, v in params.items():
+            if k not in cls.allowed_params:
+                raise InvalidTechnicalException("Invalid param for %s: %s" % (cls, k))
+
+    def apply(self, df, column):
+        raise NotImplementedError
+
+
+class CumulativeTechnical(Technical):
+    def apply(self, df, column):
+        return df[column].cumsum()
+
+
+class DiffTechnical(Technical):
+    allowed_params = set(["periods"])
+
+    def apply(self, df, column):
+        if self.type == TechnicalTypes.DIFF:
+            return df[column].diff(**self.params)
+        elif self.type == TechnicalTypes.PCT_DIFF:
+            return df[column].pct_change(**self.params)
+        raise InvalidTechnicalException("Invalid DiffTechnical type: %s" % self.type)
+
+
+class RollingTechnical(Technical):
+    allowed_params = set(["window", "min_periods", "center"])
+
+    def apply(self, df, column):
+        rolling = df[column].rolling(**self.params)
+
+        if self.type == TechnicalTypes.MA:
+            return rolling.mean()
+        elif self.type == TechnicalTypes.SUM:
+            return rolling.sum()
+        elif self.type == TechnicalTypes.BOLL:
+            ma = rolling.mean()
+            std = rolling.std()
+            lower = ma - 2 * std
+            upper = ma + 2 * std
+            return lower, upper
+
+        raise InvalidTechnicalException("Invalid RollingTechnical type: %s" % self.type)
+
+
+def create_technical(info):
+    if isinstance(info, Technical):
+        return info
+    if isinstance(info, str):
+        info = parse_technical_string(info)
+    assert isinstance(info, dict), "Raw info must be a dict: %s" % info
+
+    info = TechnicalInfoSchema().load(info)
+
+    if info["type"] == TechnicalTypes.CUMSUM:
+        cls = CumulativeTechnical
+    elif info["type"] in (TechnicalTypes.DIFF, TechnicalTypes.PCT_DIFF):
+        cls = DiffTechnical
+    elif info["type"] in TechnicalTypes:
+        cls = RollingTechnical
+    else:
+        raise InvalidTechnicalException("Invalid technical type: %s" % info["type"])
+
+    return cls(info["type"], info.get("params", {}))

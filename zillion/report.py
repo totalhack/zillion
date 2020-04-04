@@ -373,7 +373,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                     last_column = self.column_for_field(field, table=last_table)
                     column = self.column_for_field(field, table=table)
                     conditions.append(column == last_column)
-                sqla_join = sqla_join.outerjoin(table, *tuple(conditions))
+                sqla_join = sqla_join.outerjoin(table, sa.and_(*tuple(conditions)))
                 last_table = table
 
         return sqla_join
@@ -706,28 +706,25 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def apply_technicals(self, df, technicals, rounding):
         for metric, tech in technicals.items():
-            rolling = df[metric].rolling(
-                tech.window, min_periods=tech.min_periods, center=tech.center
-            )
-            if tech.type == TechnicalTypes.MA:
-                df[metric] = rolling.mean()
-            elif tech.type == TechnicalTypes.SUM:
-                df[metric] = rolling.sum()
-            elif tech.type == TechnicalTypes.BOLL:
-                ma = rolling.mean()
-                std = rolling.std()
-                upper = metric + "_upper"
+            result = tech.apply(df, metric)
+
+            if tech.type == TechnicalTypes.BOLL:
+                assert len(result) == 2, (
+                    "Expected two items in %s technical result" % tech.type
+                )
                 lower = metric + "_lower"
+                upper = metric + "_upper"
                 if metric in rounding:
-                    # This adds some extra columns for the bounds, so we use the same rounding
-                    # as the root metric if applicable.
-                    df[upper] = round(ma + 2 * std, rounding[metric])
-                    df[lower] = round(ma - 2 * std, rounding[metric])
+                    # This adds some extra columns for the bounds, so we use
+                    # the same rounding as the root metric if applicable.
+                    df[lower] = round(result[0], rounding[metric])
+                    df[upper] = round(result[1], rounding[metric])
                 else:
-                    df[upper] = ma + 2 * std
-                    df[lower] = ma - 2 * std
+                    df[lower] = result[0]
+                    df[upper] = result[1]
             else:
-                assert False, "Invalid technical type: %s" % tech.type
+                df[metric] = result
+
         return df
 
     def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):

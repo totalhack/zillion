@@ -25,13 +25,7 @@ def test_basic_report(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 11)]
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -77,7 +71,7 @@ def test_report_one_worker(wh):
             DATASOURCE_QUERY_WORKERS=1,
         )
     ):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 @pytest.mark.longrun
@@ -184,7 +178,7 @@ def test_impossible_report(wh):
     dimensions = ["sale_id"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     with pytest.raises(UnsupportedGrainException):
-        result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+        result = wh_execute(wh, locals())
 
 
 def test_report_pivot(wh):
@@ -194,19 +188,12 @@ def test_report_pivot(wh):
     row_filters = [("revenue", ">", 11)]
     rollup = ROLLUP_TOTALS
     pivot = ["partner_name"]
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-        pivot=pivot,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
 
-def test_report_moving_average_metric(wh):
+def test_report_technical_ma(wh):
     metrics = ["revenue", "revenue_ma_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time
     # dims have been added as of the time of creating this test.
@@ -214,18 +201,12 @@ def test_report_moving_average_metric(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 8)]
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
 
-def test_report_moving_average_adhoc_metric(wh):
+def test_report_technical_ma_adhoc(wh):
     metrics = [
         "revenue",
         {"formula": "{revenue}", "technical": "MA-5", "name": "my_revenue_ma_5"},
@@ -236,18 +217,12 @@ def test_report_moving_average_adhoc_metric(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 8)]
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
 
-def test_report_moving_average_formula_metric(wh):
+def test_report_technical_ma_formula(wh):
     metrics = ["revenue", "rpl", "rpl_ma_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time
     # dims have been added as of the time of creating this test.
@@ -255,18 +230,12 @@ def test_report_moving_average_formula_metric(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 8)]
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
 
-def test_report_cum_sum_metric(wh):
+def test_report_technical_rolling_sum(wh):
     metrics = ["revenue", "revenue_sum_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time
     # dims have been added as of the time of creating this test.
@@ -274,18 +243,51 @@ def test_report_cum_sum_metric(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
 
-def test_report_bollinger_metric(wh):
+def test_report_technical_cumsum(wh):
+    metrics = ["revenue", "revenue_cumsum"]
+    # TODO: it doesnt make sense to use these dimensions, but no date/time
+    # dims have been added as of the time of creating this test.
+    dimensions = ["partner_name", "campaign_name"]
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+    row_filters = None
+    rollup = ROLLUP_TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_technical_diff(wh):
+    metrics = ["revenue", "revenue_diff"]
+    # TODO: it doesnt make sense to use these dimensions, but no date/time
+    # dims have been added as of the time of creating this test.
+    dimensions = ["partner_name", "campaign_name"]
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+    row_filters = None
+    rollup = ROLLUP_TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_technical_pct_diff(wh):
+    metrics = ["revenue", "revenue_pct_diff"]
+    # TODO: it doesnt make sense to use these dimensions, but no date/time
+    # dims have been added as of the time of creating this test.
+    dimensions = ["partner_name", "campaign_name"]
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+    row_filters = None
+    rollup = ROLLUP_TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_technical_bollinger(wh):
     metrics = ["revenue", "revenue_boll_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time
     # dims have been added as of the time of creating this test.
@@ -293,13 +295,7 @@ def test_report_bollinger_metric(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics,
-        dimensions=dimensions,
-        criteria=criteria,
-        row_filters=row_filters,
-        rollup=rollup,
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -307,7 +303,7 @@ def test_report_bollinger_metric(wh):
 def test_report_no_dimensions(wh):
     metrics = ["revenue", "main_sales_quantity"]
     criteria = [("campaign_name", "=", "Campaign 2B")]
-    result = wh.execute(metrics, criteria=criteria)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -315,7 +311,7 @@ def test_report_no_dimensions(wh):
 def test_report_no_metrics(wh):
     metrics = []
     dimensions = ["partner_name", "campaign_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -324,7 +320,7 @@ def test_report_null_criteria(wh):
     metrics = ["revenue"]
     dimensions = ["partner_name"]
     criteria = [("campaign_name", "!=", None)]
-    result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -332,7 +328,7 @@ def test_report_null_criteria(wh):
 def test_report_count_metric(wh):
     metrics = ["leads"]
     dimensions = ["campaign_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -340,7 +336,7 @@ def test_report_count_metric(wh):
 def test_report_alias_metric(wh):
     metrics = ["revenue_avg"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -348,7 +344,7 @@ def test_report_alias_metric(wh):
 def test_report_alias_dimension(wh):
     metrics = ["revenue"]
     dimensions = ["lead_id"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -356,7 +352,7 @@ def test_report_alias_dimension(wh):
 def test_report_multiple_queries(wh):
     metrics = ["revenue", "leads"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -364,7 +360,7 @@ def test_report_multiple_queries(wh):
 def test_report_formula_metric(wh):
     metrics = ["rpl", "revenue", "leads"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -372,7 +368,7 @@ def test_report_formula_metric(wh):
 def test_report_nested_formula_metric(wh):
     metrics = ["rpl_squared", "rpl_unsquared", "rpl", "leads"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -387,7 +383,7 @@ def test_report_nested_formula_metric(wh):
 # def test_report_formula_dimension(wh):
 #     metrics = ["leads"]
 #     dimensions = ["campaign_name", "partner_name_query_dim"]
-#     result = wh.execute(metrics, dimensions=dimensions)
+#     result = wh_execute(wh, locals())
 #     assert result
 #     info(result.df)
 
@@ -395,7 +391,7 @@ def test_report_nested_formula_metric(wh):
 def test_report_ds_dimension_formula(wh):
     metrics = ["sales"]
     dimensions = ["revenue_decile"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -403,7 +399,7 @@ def test_report_ds_dimension_formula(wh):
 def test_report_ds_metric_formula(wh):
     metrics = ["revenue", "revenue_ds"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -412,7 +408,7 @@ def test_report_where_ds_formula(wh):
     metrics = ["sales"]
     criteria = [("revenue_decile", ">=", 0)]
     dimensions = ["campaign_name"]
-    result = wh.execute(metrics=metrics, dimensions=dimensions, criteria=criteria)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -424,17 +420,13 @@ def test_report_where_ds_formula(wh):
 #     ]
 #     dimensions = ["partner_name"]
 #     with pytest.raises(ReportException):
-#         result = wh.execute(
-#             metrics=metrics,
-#             dimensions=dimensions,
-#             criteria=criteria
-#         )
+#         result = wh_execute(wh, locals())
 
 
 def test_report_only_dimensions_ds_formula(wh):
     criteria = [("campaign_name_length", ">", 5)]
     dimensions = ["partner_name"]
-    result = wh.execute(dimensions=dimensions, criteria=criteria)
+    result = wh_execute(wh, locals())
     assert result.df.index.any()
     info(result.df)
 
@@ -444,13 +436,13 @@ def test_report_non_existent_metric(wh):
     dimensions = ["campaign_id"]
     result = False
     with pytest.raises(InvalidFieldException):
-        wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 def test_report_weighted_formula_metric(wh):
     metrics = ["rpl_weighted", "rpl", "main_sales_quantity", "revenue", "leads"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -458,7 +450,7 @@ def test_report_weighted_formula_metric(wh):
 def test_report_weighted_ds_metric_formula(wh):
     metrics = ["revenue_avg", "revenue_avg_ds_weighted"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -466,7 +458,7 @@ def test_report_weighted_ds_metric_formula(wh):
 def test_report_weighted_metric(wh):
     metrics = ["main_sales_quantity", "revenue_avg", "revenue", "leads"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -475,7 +467,7 @@ def test_report_weighted_metric_with_rollup(wh):
     metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name"]
     rollup = ROLLUP_TOTALS
-    result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -484,7 +476,7 @@ def test_report_weighted_metric_with_multi_rollup(wh):
     metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name", "campaign_name", "lead_id"]
     rollup = 2
-    result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -492,7 +484,7 @@ def test_report_weighted_metric_with_multi_rollup(wh):
 def test_report_multi_dimension(wh):
     metrics = ["leads", "sales"]
     dimensions = ["partner_name", "lead_id"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -502,9 +494,7 @@ def test_report_rollup(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     rollup = ROLLUP_TOTALS
-    result = wh.execute(
-        metrics, dimensions=dimensions, criteria=criteria, rollup=rollup
-    )
+    result = wh_execute(wh, locals())
     info(result.df)
     revenue = result.rollup_rows().iloc[-1]["revenue"]
     revenue_sum = result.non_rollup_rows().sum()["revenue"]
@@ -516,9 +506,7 @@ def test_report_multi_rollup(wh):
     dimensions = ["partner_name", "campaign_name", "lead_id"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     rollup = 3
-    result = wh.execute(
-        metrics, dimensions=dimensions, criteria=criteria, rollup=rollup
-    )
+    result = wh_execute(wh, locals())
     info(result.df)
     revenue = result.rollup_rows().iloc[-1]["revenue"]
     revenue_sum = result.non_rollup_rows().sum()["revenue"]
@@ -531,9 +519,7 @@ def test_report_multi_rollup_pivot(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     rollup = 3
     pivot = ["campaign_name"]
-    result = wh.execute(
-        metrics, dimensions=dimensions, criteria=criteria, rollup=rollup, pivot=pivot
-    )
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -546,7 +532,7 @@ def test_report_multi_rollup_pivot(wh):
 #         "lead_id",
 #         {"formula": "{lead_id} > 3", "name": "testdim"},
 #     ]
-#     result = wh.execute(metrics, dimensions=dimensions)
+#     result = wh_execute(wh, locals())
 #     assert result
 #     info(result.df)
 
@@ -557,7 +543,7 @@ def test_report_multi_rollup_pivot(wh):
 #         {"name": "testdim", "formula": "CASE WHEN ({partner_name} LIKE '%B%' OR {partner_name} LIKE '%C%') THEN 'Match' ELSE {partner_name} END"}
 #     ]
 #     rollup = ROLLUP_TOTALS
-#     result = wh.execute(metrics, dimensions=dimensions, rollup=rollup)
+#     result = wh_execute(wh, locals())
 #     assert result
 #     info(result.df)
 
@@ -565,7 +551,7 @@ def test_report_multi_rollup_pivot(wh):
 def test_report_adhoc_metric(wh):
     metrics = ["revenue", {"formula": "{revenue} > 3*{lead_id}", "name": "testmetric"}]
     dimensions = ["partner_name", "lead_id"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -577,7 +563,7 @@ def test_report_adhoc_nested_metric(wh):
         {"formula": "{rpl_unsquared} > 10", "name": "testmetric"},
     ]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -588,7 +574,7 @@ def test_report_where_date_conversion(wh):
         ("campaign_date", "=", "2019-03-26"),
     ]
     dimensions = ["campaign_created_at"]
-    result = wh.execute(dimensions=dimensions, criteria=criteria)
+    result = wh_execute(wh, locals())
     assert result.df.index.any()
     info(result.df)
 
@@ -710,7 +696,7 @@ def test_only_adhoc_datasource(adhoc_ds):
     wh = Warehouse(datasources=[adhoc_ds])
     metrics = ["adhoc_metric"]
     dimensions = ["partner_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -720,7 +706,7 @@ def test_no_use_full_column_names(config):
     wh = Warehouse(datasources=[ds])
     metrics = ["leads", "sales", "aggr_sales"]
     dimensions = ["partner_name", "campaign_name"]
-    result = wh.execute(metrics, dimensions=dimensions)
+    result = wh_execute(wh, locals())
     assert result
     info(result.df)
 
@@ -739,7 +725,7 @@ def test_ds_metric_formula_sql_injection(config):
     dimensions = ["partner_name"]
     wh = Warehouse(config=config)
     with pytest.raises(DisallowedSQLException):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 def test_ds_dim_formula_sql_injection(config):
@@ -756,7 +742,7 @@ def test_ds_dim_formula_sql_injection(config):
     dimensions = ["partner_name", "ds_injection"]
     wh = Warehouse(config=config)
     with pytest.raises(DisallowedSQLException):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 def test_metric_formula_sql_injection(config):
@@ -773,7 +759,7 @@ def test_metric_formula_sql_injection(config):
     dimensions = ["partner_name"]
     wh = Warehouse(config=config)
     with pytest.raises(DisallowedSQLException):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 def test_weighting_metric_sql_injection(config):
@@ -791,7 +777,7 @@ def test_weighting_metric_sql_injection(config):
     dimensions = ["partner_name"]
     wh = Warehouse(config=config)
     with pytest.raises(InvalidFieldException):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 def test_adhoc_metric_sql_injection(wh):
@@ -801,7 +787,7 @@ def test_adhoc_metric_sql_injection(wh):
     ]
     dimensions = ["partner_name"]
     with pytest.raises(DisallowedSQLException):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())
 
 
 # def test_adhoc_dimension_sql_injection(wh):
@@ -811,22 +797,22 @@ def test_adhoc_metric_sql_injection(wh):
 #         {"formula": "{lead_id} > 3;drop table leads", "name": "testdim"},
 #     ]
 #     with pytest.raises(DisallowedSQLException):
-#         result = wh.execute(metrics, dimensions=dimensions)
+#         result = wh_execute(wh, locals())
 
 
 def test_criteria_sql_injection(wh):
     metrics = ["leads", "sales"]
     dimensions = ["campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B';select * from leads --")]
-    result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+    result = wh_execute(wh, locals())
 
     criteria = [("select * from leads", "!=", "Campaign 2B")]
     with pytest.raises(InvalidFieldException):
-        result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+        result = wh_execute(wh, locals())
 
     criteria = [("campaign_name", "select * from leads", "Campaign 2B")]
     with pytest.raises(AssertionError):
-        result = wh.execute(metrics, dimensions=dimensions, criteria=criteria)
+        result = wh_execute(wh, locals())
 
 
 def test_row_filter_sql_injection(wh):
@@ -834,7 +820,7 @@ def test_row_filter_sql_injection(wh):
     dimensions = ["partner_name"]
     row_filters = [("revenue", ">", "11;select * from leads")]
     with pytest.raises(SyntaxError):
-        result = wh.execute(metrics, dimensions=dimensions, row_filters=row_filters)
+        result = wh_execute(wh, locals())
 
 
 def test_pivot_sql_injection(wh):
@@ -842,7 +828,7 @@ def test_pivot_sql_injection(wh):
     dimensions = ["partner_name", "campaign_name"]
     pivot = ["partner_name;select * from leads"]
     with pytest.raises(AssertionError):
-        result = wh.execute(metrics, dimensions=dimensions, pivot=pivot)
+        result = wh_execute(wh, locals())
 
 
 def test_metric_name_sql_injection(config):
@@ -900,4 +886,4 @@ def test_table_name_sql_injection(config):
     dimensions = ["lead_id"]
     wh = Warehouse(config=config)
     with pytest.raises(UnsupportedGrainException):
-        result = wh.execute(metrics, dimensions=dimensions)
+        result = wh_execute(wh, locals())

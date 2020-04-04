@@ -25,7 +25,10 @@ class AggregationTypes(metaclass=ClassValueContainsMeta):
 class TechnicalTypes(metaclass=ClassValueContainsMeta):
     MA = "MA"
     SUM = "SUM"
+    CUMSUM = "CUMSUM"
     BOLL = "BOLL"
+    DIFF = "DIFF"
+    PCT_DIFF = "PCT_DIFF"
 
 
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
@@ -37,6 +40,10 @@ class ExecutionState:
     READY = "ready"
     QUERYING = "querying"
     KILLED = "killed"
+
+
+class InvalidTechnicalException(Exception):
+    pass
 
 
 class WarehouseException(Exception):

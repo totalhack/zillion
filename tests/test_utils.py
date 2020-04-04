@@ -222,3 +222,22 @@ def get_date_conversion_test_params():
     criteria = [("campaign_name", "=", "Campaign 2B")]
     dimensions = ["campaign_%s" % v.name for v in DATETIME_CONVERSION_FIELDS]
     return dict(metrics=metrics, criteria=criteria, dimensions=dimensions)
+
+
+def wh_execute_args(d):
+    exec_params = set(
+        [
+            "metrics",
+            "dimensions",
+            "criteria",
+            "row_filters",
+            "rollup",
+            "pivot",
+            "adhoc_datasources",
+        ]
+    )
+    return {k: v for k, v in d.items() if k in exec_params}
+
+
+def wh_execute(wh, d):
+    return wh.execute(**wh_execute_args(d))
