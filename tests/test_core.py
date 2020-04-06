@@ -10,6 +10,7 @@ from zillion.configs import TableInfo, ColumnInfo
 from zillion.core import (
     WarehouseException,
     UnsupportedGrainException,
+    InvalidFieldException,
     TableTypes,
     ADHOC_URL,
 )
@@ -105,6 +106,20 @@ def test_warehouse_has_zillion_info_no_config(config):
         table.info["zillion"].type = TableTypes.METRIC
     wh = Warehouse(datasources=[ds])
     assert not wh.datasources["testdb1"].dimension_tables
+
+
+def test_warehouse_technical_within_formula(config):
+    config["metrics"].append(
+        {
+            "name": "revenue_ma_5_sum_5",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "formula": "{revenue_ma_5}/{revenue_sum_5}",
+        }
+    )
+    with pytest.raises(InvalidFieldException):
+        wh = Warehouse(config=config)
 
 
 def test_warehouse_remote_datasource_config(config):

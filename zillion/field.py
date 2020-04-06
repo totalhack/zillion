@@ -214,6 +214,13 @@ class FormulaField(Field):
 
         for field_name in formula_fields:
             field = warehouse.get_field(field_name, adhoc_fms=adhoc_fms)
+
+            if getattr(field, "technical", None):
+                raise InvalidFieldException(
+                    "Formula field %s contains field with technical: %s"
+                    % (self.name, field.name)
+                )
+
             if isinstance(field, FormulaField):
                 try:
                     sub_fields, sub_formula = field.get_formula_fields(

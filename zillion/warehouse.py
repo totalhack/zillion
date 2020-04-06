@@ -174,12 +174,12 @@ class Warehouse(FieldManagerMixin):
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
     def apply_config(self, config, skip_integrity_checks=False, if_exists="fail"):
-        self.populate_global_fields(config, force=True)
         self.create_or_update_datasources(
             config.get("datasources", {}),
             skip_integrity_checks=skip_integrity_checks,
             if_exists=if_exists,
         )
+        self.populate_global_fields(config, force=True)
 
     def _check_conflicting_fields(self, adhoc_datasources=None):
         # TODO: in addition to checking metric vs dimension settings
