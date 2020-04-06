@@ -243,6 +243,7 @@ class AdHocFieldSchema(BaseSchema):
 class AdHocMetricSchema(AdHocFieldSchema):
     technical = TechnicalField(default=None, missing=None)
     rounding = mfields.Integer(default=None, missing=None)
+    required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
 
 class ColumnFieldConfigSchema(BaseSchema):
@@ -309,6 +310,7 @@ class MetricConfigSchema(BaseSchema):
     weighting_metric = mfields.Str(default=None, missing=None)
     formula = mfields.String(default=None, missing=None)
     technical = TechnicalField(default=None, missing=None)
+    required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
     @validates_schema(skip_on_field_errors=True)
     def validate_object(self, data, **kwargs):

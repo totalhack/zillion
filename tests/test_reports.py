@@ -434,8 +434,28 @@ def test_report_only_dimensions_ds_formula(wh):
 def test_report_non_existent_metric(wh):
     metrics = ["sales1234"]
     dimensions = ["campaign_id"]
-    result = False
     with pytest.raises(InvalidFieldException):
+        result = wh_execute(wh, locals())
+
+
+def test_report_metric_required_grain(wh):
+    metrics = ["revenue", "revenue_required_grain"]
+    dimensions = ["campaign_id"]
+    with pytest.raises(UnsupportedGrainException):
+        result = wh_execute(wh, locals())
+
+
+def test_report_metric_formula_required_grain(wh):
+    metrics = ["revenue", "revenue_per_lead_required_grain"]
+    dimensions = ["campaign_id"]
+    with pytest.raises(UnsupportedGrainException):
+        result = wh_execute(wh, locals())
+
+
+def test_report_metric_formula_field_required_grain(wh):
+    metrics = ["revenue", "revenue_formula_required_grain"]
+    dimensions = ["campaign_id"]
+    with pytest.raises(UnsupportedGrainException):
         result = wh_execute(wh, locals())
 
 

@@ -270,6 +270,22 @@ class Warehouse(FieldManagerMixin):
 
         return errors
 
+    def _check_required_grain(self, adhoc_datasources=None):
+        errors = []
+
+        for metric in self.get_metrics(adhoc_fms=adhoc_datasources).values():
+            if not metric.required_grain:
+                continue
+
+            for field in metric.required_grain:
+                if not self.has_dimension(field, adhoc_fms=adhoc_datasources):
+                    errors.append(
+                        "Metric %s references unknown dimension %s in required_grain"
+                        % (metric.name, field)
+                    )
+
+        return errors
+
     def run_integrity_checks(self, adhoc_datasources=None):
         errors = []
         if adhoc_datasources:
@@ -289,6 +305,7 @@ class Warehouse(FieldManagerMixin):
         errors.extend(
             self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
         )
+        errors.extend(self._check_required_grain(adhoc_datasources=adhoc_datasources))
         if errors:
             raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
 

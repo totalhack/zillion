@@ -109,6 +109,25 @@
             "name": "sales",
             "type": "Integer",
             "aggregation": "sum"
+        },
+        {
+            "name": "revenue_required_grain",
+            "type": "Numeric(10,2)",
+            "aggregation": "sum",
+            "required_grain": ["campaign_name"]
+        },
+        {
+            "name": "revenue_per_lead_required_grain",
+            "type": "Numeric(10,2)",
+            "aggregation": "avg",
+            "formula": "1.0*{revenue}/{leads}",
+            "required_grain": ["campaign_name"]
+        },
+        {
+            "name": "revenue_formula_required_grain",
+            "type": "Numeric(10,2)",
+            "aggregation": "avg",
+            "formula": "1.0*{revenue_required_grain}"
         }
     ],
 
@@ -215,8 +234,9 @@
                                 "revenue_cumsum",
                                 "revenue_diff",
                                 "revenue_pct_diff",
-                                {"name": "revenue_ds", "ds_formula": "IFNULL(sales.revenue, 0)"},
                                 "revenue_avg",
+                                "revenue_required_grain",
+                                {"name": "revenue_ds", "ds_formula": "IFNULL(sales.revenue, 0)"},
                                 {"name": "revenue_avg_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},
                                 {"name": "revenue_decile", "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}
                             ]

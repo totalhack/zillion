@@ -110,6 +110,7 @@ class Metric(Field):
         rounding=None,
         weighting_metric=None,
         technical=None,
+        required_grain=None,
         **kwargs
     ):
         if weighting_metric:
@@ -128,6 +129,7 @@ class Metric(Field):
             rounding=rounding,
             weighting_metric=weighting_metric,
             technical=technical,
+            required_grain=required_grain,
             **kwargs
         )
 
@@ -135,10 +137,11 @@ class Metric(Field):
         return Metric(
             self.name,
             self.type,
-            aggregation=aggregation,
-            rounding=rounding,
-            weighting_metric=weighting_metric,
-            technical=technical,
+            aggregation=self.aggregation,
+            rounding=self.rounding,
+            weighting_metric=self.weighting_metric,
+            technical=self.technical,
+            required_grain=self.required_grain,
         )
 
     def get_ds_expression(self, column, label=True):
@@ -289,6 +292,7 @@ class FormulaMetric(FormulaField):
         rounding=None,
         weighting_metric=None,
         technical=None,
+        required_grain=None,
         **kwargs
     ):
         if technical:
@@ -301,6 +305,7 @@ class FormulaMetric(FormulaField):
             rounding=rounding,
             weighting_metric=weighting_metric,
             technical=technical,
+            required_grain=required_grain,
             **kwargs
         )
 
@@ -314,9 +319,15 @@ class AdHocField(FormulaField):
 
 
 class AdHocMetric(FormulaMetric):
-    def __init__(self, name, formula, technical=None, rounding=None):
+    def __init__(
+        self, name, formula, technical=None, rounding=None, required_grain=None
+    ):
         super(AdHocMetric, self).__init__(
-            name, formula, technical=technical, rounding=rounding
+            name,
+            formula,
+            technical=technical,
+            rounding=rounding,
+            required_grain=required_grain,
         )
 
     @classmethod
@@ -328,6 +339,7 @@ class AdHocMetric(FormulaMetric):
             field_def["formula"],
             technical=field_def["technical"],
             rounding=field_def["rounding"],
+            required_grain=field_def["required_grain"],
         )
 
 
@@ -344,6 +356,7 @@ def create_metric(metric_def):
             rounding=metric_def["rounding"],
             weighting_metric=metric_def["weighting_metric"],
             technical=metric_def["technical"],
+            required_grain=metric_def["required_grain"],
         )
     else:
         metric = Metric(
@@ -353,6 +366,7 @@ def create_metric(metric_def):
             rounding=metric_def["rounding"],
             weighting_metric=metric_def["weighting_metric"],
             technical=metric_def["technical"],
+            required_grain=metric_def["required_grain"],
         )
     return metric
 

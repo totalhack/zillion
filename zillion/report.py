@@ -859,6 +859,7 @@ class Report(ExecutionStateMixin):
         for dim in self.dimensions.values():
             self.add_ds_fields(dim)
 
+        self.check_required_grain()
         self.queries = self.build_ds_queries()
         self.combined_query = None
         self.result = None
@@ -1126,6 +1127,29 @@ class Report(ExecutionStateMixin):
         if self.criteria:
             grain = grain | {x[0].name for x in self.criteria}
         return grain
+
+    def check_required_grain(self):
+        grain = self.get_grain()
+        grain_errors = []
+
+        for metric in self.metrics.values():
+            if metric.required_grain:
+                if not set(metric.required_grain).issubset(grain):
+                    grain_errors.append(
+                        "Grain %s is not a superset of required_grain %s for metric: %s"
+                        % (grain, metric.required_grain, metric.name)
+                    )
+
+        for metric in self.ds_metrics.values():
+            if metric.required_grain:
+                if not set(metric.required_grain).issubset(grain):
+                    grain_errors.append(
+                        "Grain %s is not a superset of required_grain %s for metric: %s"
+                        % (grain, metric.required_grain, metric.name)
+                    )
+
+        if grain_errors:
+            raise UnsupportedGrainException(grain_errors)
 
     def build_ds_queries(self):
         grain = self.get_grain()
