@@ -1128,8 +1128,16 @@ class Report(ExecutionStateMixin):
             grain = grain | {x[0].name for x in self.criteria}
         return grain
 
+    def get_dimension_grain(self):
+        if not self.ds_dimensions:
+            return None
+        return set(self.ds_dimensions.keys())
+
     def check_required_grain(self):
-        grain = self.get_grain()
+        # NOTE: this only checks against dimension grain
+        # Need to make note of that in required_grain docs
+
+        grain = self.get_dimension_grain() or set()
         grain_errors = []
 
         for metric in self.metrics.values():
