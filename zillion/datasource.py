@@ -50,6 +50,7 @@ from zillion.field import (
     get_table_fields,
     get_table_field_column,
     get_dialect_type_conversions,
+    table_field_allows_grain,
     FieldManagerMixin,
 )
 from zillion.sql_utils import (
@@ -844,6 +845,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def find_possible_table_sets(self, ds_tables_with_field, field, grain):
         table_sets = []
         for field_table in ds_tables_with_field:
+            if not table_field_allows_grain(field_table, field, grain):
+                # XXX TODO: really need dimension grain instead
+                continue
+
             if (not grain) or grain.issubset(get_table_fields(field_table)):
                 table_set = TableSet(self, field_table, None, grain, set([field]))
                 table_sets.append(table_set)

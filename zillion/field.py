@@ -649,6 +649,15 @@ def get_table_field_column(table, field_name):
     )
 
 
+def table_field_allows_grain(table, field, grain):
+    column = get_table_field_column(table, field)
+    if not column.zillion.required_grain:
+        return True
+    if set(column.zillion.required_grain).issubset(grain):
+        return True
+    return False
+
+
 def get_conversions_for_type(coltype):
     for basetype, convs in TYPE_ALLOWED_CONVERSIONS.items():
         if issubclass(coltype, basetype):

@@ -731,6 +731,15 @@ def test_no_use_full_column_names(config):
     info(result.df)
 
 
+def test_report_column_required_grain(config):
+    ds = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
+    wh = Warehouse(datasources=[ds])
+    metrics = ["revenue", "sales"]
+    dimensions = ["campaign_name"]
+    with pytest.raises(UnsupportedGrainException):
+        result = wh_execute(wh, locals())
+
+
 def test_ds_metric_formula_sql_injection(config):
     # example = r"""I don't like "special" ch;ars ¯\_(ツ)_/¯"""
     table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]

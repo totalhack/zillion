@@ -1134,7 +1134,8 @@ class Report(ExecutionStateMixin):
         return set(self.ds_dimensions.keys())
 
     def check_required_grain(self):
-        # NOTE: this only checks against dimension grain
+        # NOTE: this only checks against dimension grain on the field level.
+        # It does not check column-level grain requirements.
         # Need to make note of that in required_grain docs
 
         grain = self.get_dimension_grain() or set()

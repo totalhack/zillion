@@ -262,6 +262,7 @@ class ColumnInfoSchema(BaseSchema):
     allow_type_conversions = mfields.Boolean(default=False, missing=False)
     type_conversion_prefix = mfields.String(default=None, missing=None)
     active = mfields.Boolean(default=True, missing=True)
+    required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
 
 class ColumnConfigSchema(ColumnInfoSchema):
