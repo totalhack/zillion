@@ -650,6 +650,7 @@ def get_table_field_column(table, field_name):
 
 
 def table_field_allows_grain(table, field, grain):
+    grain = grain or set()
     column = get_table_field_column(table, field)
     if not column.zillion.required_grain:
         return True

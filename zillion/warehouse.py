@@ -41,6 +41,7 @@ from zillion.core import (
     MaxFormulaDepthException,
     WarehouseException,
     TableTypes,
+    RESERVED_FIELD_NAMES,
 )
 from zillion.datasource import DataSource, AdHocDataSource, datasource_from_config
 from zillion.field import (
@@ -181,6 +182,13 @@ class Warehouse(FieldManagerMixin):
         )
         self.populate_global_fields(config, force=True)
 
+    def _check_reserved_field_names(self, adhoc_datasources=None):
+        errors = []
+        for field in self.get_field_names(adhoc_fms=adhoc_datasources):
+            if field in RESERVED_FIELD_NAMES:
+                errors.append("Field name %s is reserved" % field)
+        return errors
+
     def _check_conflicting_fields(self, adhoc_datasources=None):
         # TODO: in addition to checking metric vs dimension settings
         # we could add type comparisons (make sure its always num or str)
@@ -295,6 +303,10 @@ class Warehouse(FieldManagerMixin):
                         "Adhoc DataSource '%s' name conflicts with existing DataSource"
                         % ds.name
                     )
+
+        errors.extend(
+            self._check_reserved_field_names(adhoc_datasources=adhoc_datasources)
+        )
         errors.extend(
             self._check_conflicting_fields(adhoc_datasources=adhoc_datasources)
         )
@@ -306,6 +318,7 @@ class Warehouse(FieldManagerMixin):
             self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
         )
         errors.extend(self._check_required_grain(adhoc_datasources=adhoc_datasources))
+
         if errors:
             raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
 
@@ -379,13 +392,15 @@ class Warehouse(FieldManagerMixin):
         )
         return ds_tables
 
-    def get_ds_table_sets(self, ds_tables, field, grain, adhoc_datasources=None):
+    def get_ds_table_sets(
+        self, ds_tables, field, grain, dimension_grain, adhoc_datasources=None
+    ):
         """Returns all table sets that can satisfy grain in each datasource"""
         ds_table_sets = {}
         for ds_name, ds_tables_with_field in ds_tables.items():
             ds = self.get_datasource(ds_name, adhoc_datasources=adhoc_datasources)
             possible_table_sets = ds.find_possible_table_sets(
-                ds_tables_with_field, field, grain
+                ds_tables_with_field, field, grain, dimension_grain
             )
             if not possible_table_sets:
                 continue
@@ -440,13 +455,19 @@ class Warehouse(FieldManagerMixin):
             )
         return msg
 
-    def get_metric_table_set(self, metric, grain, adhoc_datasources=None):
+    def get_metric_table_set(
+        self, metric, grain, dimension_grain, adhoc_datasources=None
+    ):
         dbg("metric:%s grain:%s" % (metric, grain))
         ds_metric_tables = self.get_ds_tables_with_metric(
             metric, adhoc_datasources=adhoc_datasources
         )
         ds_table_sets = self.get_ds_table_sets(
-            ds_metric_tables, metric, grain, adhoc_datasources=adhoc_datasources
+            ds_metric_tables,
+            metric,
+            grain,
+            dimension_grain,
+            adhoc_datasources=adhoc_datasources,
         )
         if not ds_table_sets:
             msg = self.generate_unsupported_grain_msg(
@@ -456,7 +477,7 @@ class Warehouse(FieldManagerMixin):
         table_set = self.choose_best_table_set(ds_table_sets)
         return table_set
 
-    def get_dimension_table_set(self, grain, adhoc_datasources=None):
+    def get_dimension_table_set(self, grain, dimension_grain, adhoc_datasources=None):
         """
         This is meant to be used in cases where no metrics are requested. We only
         allow it to look at dim tables since the assumption is joining to a metric
@@ -470,7 +491,11 @@ class Warehouse(FieldManagerMixin):
                 dim_name, adhoc_datasources=adhoc_datasources
             )
             ds_table_sets = self.get_ds_table_sets(
-                ds_dim_tables, dim_name, grain, adhoc_datasources=adhoc_datasources
+                ds_dim_tables,
+                dim_name,
+                grain,
+                dimension_grain,
+                adhoc_datasources=adhoc_datasources,
             )
             if not ds_table_sets:
                 continue

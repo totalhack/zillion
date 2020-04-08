@@ -558,7 +558,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
         fields = get_table_fields(table)
 
         if table.zillion.type == TableTypes.METRIC:
-            # Find dimension tables whose primary key is contained in the metric table
+            # Find dimension tables whose primary key is contained in the
+            # metric table
             for dim_table in self.dimension_tables.values():
                 dt_pk_fields = dim_table.zillion.primary_key
                 can_join = True
@@ -842,11 +843,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
         dbg(possible_joins)
         return possible_joins
 
-    def find_possible_table_sets(self, ds_tables_with_field, field, grain):
+    def find_possible_table_sets(
+        self, ds_tables_with_field, field, grain, dimension_grain
+    ):
         table_sets = []
         for field_table in ds_tables_with_field:
-            if not table_field_allows_grain(field_table, field, grain):
-                # XXX TODO: really need dimension grain instead
+            if not table_field_allows_grain(field_table, field, dimension_grain):
                 continue
 
             if (not grain) or grain.issubset(get_table_fields(field_table)):

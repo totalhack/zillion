@@ -529,7 +529,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def create_table(self):
         create_sql = "CREATE TEMP TABLE %s (" % self.table_name
-        column_clauses = ["hash BIGINT NOT NULL PRIMARY KEY"]
+        column_clauses = ["row_hash BIGINT NOT NULL PRIMARY KEY"]
 
         for field_name, field in self.ds_dimensions.items():
             type_str = str(to_sqlite_type(field.type))
@@ -560,7 +560,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
     def get_bulk_insert_sql(self, rows):
         columns = [k for k in rows[0].keys()]
         placeholder = "(%s)" % (", ".join(["?"] * (1 + len(columns))))
-        columns_clause = "hash, " + ", ".join(columns)
+        columns_clause = "row_hash, " + ", ".join(columns)
 
         sql = "INSERT INTO %s (%s) VALUES %s" % (
             self.table_name,
@@ -575,7 +575,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             update_clauses.append("%s=excluded.%s" % (k, k))
 
         if update_clauses:
-            update_clause = " ON CONFLICT(hash) DO UPDATE SET " + ", ".join(
+            update_clause = " ON CONFLICT(row_hash) DO UPDATE SET " + ", ".join(
                 update_clauses
             )
             sql = sql + update_clause
@@ -609,7 +609,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         order_clause = "1"
         if dimension_aliases:
             order_clause = ", ".join(["%s ASC" % d for d in dimension_aliases])
-        sql = "SELECT %s FROM %s GROUP BY hash ORDER BY %s" % (
+        sql = "SELECT %s FROM %s GROUP BY row_hash ORDER BY %s" % (
             columns_clause,
             self.table_name,
             order_clause,
@@ -1000,6 +1000,11 @@ class Report(ExecutionStateMixin):
             elif self.warehouse.has_dimension(
                 formula_field, adhoc_fms=self.adhoc_datasources
             ):
+                if formula_field not in self.dimensions:
+                    raise ReportException(
+                        "Formula for field %s uses dimension %s that is not included in requested report dimensions"
+                        % (field.name, formula_field)
+                    )
                 self.ds_dimensions[formula_field] = self.warehouse.get_dimension(
                     formula_field, adhoc_fms=self.adhoc_datasources
                 )
@@ -1129,9 +1134,9 @@ class Report(ExecutionStateMixin):
         return grain
 
     def get_dimension_grain(self):
-        if not self.ds_dimensions:
+        if not self.dimensions:
             return None
-        return set(self.ds_dimensions.keys())
+        return set(self.dimensions.keys())
 
     def check_required_grain(self):
         # NOTE: this only checks against dimension grain on the field level.
@@ -1162,6 +1167,7 @@ class Report(ExecutionStateMixin):
 
     def build_ds_queries(self):
         grain = self.get_grain()
+        dim_grain = self.get_dimension_grain()
         grain_errors = []
         queries = []
 
@@ -1182,7 +1188,10 @@ class Report(ExecutionStateMixin):
 
             try:
                 table_set = self.warehouse.get_metric_table_set(
-                    metric_name, grain, adhoc_datasources=self.adhoc_datasources
+                    metric_name,
+                    grain,
+                    dimension_grain=dim_grain,
+                    adhoc_datasources=self.adhoc_datasources,
                 )
             except UnsupportedGrainException as e:
                 # Gather all grain errors to be raised in one exception
@@ -1204,7 +1213,9 @@ class Report(ExecutionStateMixin):
         if not self.ds_metrics:
             dbg("No metrics requested, getting dimension table sets")
             table_set = self.warehouse.get_dimension_table_set(
-                grain, adhoc_datasources=self.adhoc_datasources
+                grain,
+                dimension_grain=dim_grain,
+                adhoc_datasources=self.adhoc_datasources,
             )
             query = DataSourceQuery(
                 self.warehouse, None, self.ds_dimensions, self.criteria, table_set

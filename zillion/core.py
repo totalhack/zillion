@@ -1,6 +1,7 @@
 from tlbx import ClassValueContainsMeta
 
 ADHOC_URL = "adhoc"
+RESERVED_FIELD_NAMES = set(["row_hash"])
 
 
 class FieldTypes(metaclass=ClassValueContainsMeta):

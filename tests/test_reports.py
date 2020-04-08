@@ -413,6 +413,22 @@ def test_report_where_ds_formula(wh):
     info(result.df)
 
 
+def test_report_metric_formula_with_dim(config):
+    config["metrics"].append(
+        {
+            "name": "revenue_formula_with_dim",
+            "type": "Numeric(10,2)",
+            "aggregation": "avg",
+            "formula": "1.0*{revenue}*IFNULL({campaign_name}, 0)",
+        }
+    )
+    wh = Warehouse(config=config)
+    metrics = ["revenue", "revenue_formula_with_dim"]
+    dimensions = ["partner_name"]
+    with pytest.raises(ReportException):
+        result = wh_execute(wh, locals())
+
+
 # def test_report_where_formula_dim(wh):
 #     metrics = ["sales"]
 #     criteria = [

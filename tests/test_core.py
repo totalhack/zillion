@@ -108,6 +108,15 @@ def test_warehouse_has_zillion_info_no_config(config):
     assert not wh.datasources["testdb1"].dimension_tables
 
 
+def test_reserved_field_name(config):
+    config["datasources"]["testdb1"]["metrics"].append(
+        {"name": "row_hash", "type": "Integer", "aggregation": "sum"}
+    )
+    ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+    with pytest.raises(WarehouseException):
+        wh = Warehouse(config=config, datasources=[ds])
+
+
 def test_warehouse_technical_within_formula(config):
     config["metrics"].append(
         {
@@ -282,11 +291,11 @@ def test_get_dimension_table_set(wh):
     ]
 
     for grain in possible:
-        ts = wh.get_dimension_table_set(grain)
+        ts = wh.get_dimension_table_set(grain, grain)
 
     for grain in impossible:
         with pytest.raises(UnsupportedGrainException):
-            ts = wh.get_dimension_table_set(grain)
+            ts = wh.get_dimension_table_set(grain, grain)
 
 
 def test_get_metric_table_set(wh):
@@ -299,11 +308,11 @@ def test_get_metric_table_set(wh):
     impossible = [("leads", {"sale_id"})]
 
     for metric, grain in possible:
-        wh.get_metric_table_set(metric, grain)
+        wh.get_metric_table_set(metric, grain, grain)
 
     for metric, grain in impossible:
         with pytest.raises(UnsupportedGrainException):
-            wh.get_metric_table_set(metric, grain)
+            wh.get_metric_table_set(metric, grain, grain)
 
 
 def test_get_supported_dimensions(wh):
