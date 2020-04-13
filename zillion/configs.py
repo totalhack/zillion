@@ -282,6 +282,7 @@ class TableInfoSchema(BaseSchema):
     create_fields = mfields.Boolean(default=False, missing=False)
     use_full_column_names = mfields.Boolean(default=True, missing=True)
     primary_key = mfields.List(mfields.Str, required=True)
+    incomplete_dimensions = mfields.List(mfields.Str, default=None, missing=None)
 
 
 ADHOC_TABLE_CONFIG_PARAMS = ["url", "adhoc_table_options"]

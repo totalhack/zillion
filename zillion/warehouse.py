@@ -292,9 +292,49 @@ class Warehouse(FieldManagerMixin):
                         % (metric.name, field)
                     )
 
+        for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
+            for table in ds.metadata.tables.values():
+                if not table.zillion:
+                    continue
+
+                for column in table.c:
+                    if not column.zillion:
+                        continue
+                    if not column.zillion.required_grain:
+                        continue
+
+                    for field in column.zillion.required_grain:
+                        if not self.has_dimension(field, adhoc_fms=adhoc_datasources):
+                            errors.append(
+                                "Column %s->%s references unknown dimension %s in required_grain"
+                                % (ds.name, column_fullname(column), field)
+                            )
+
+        return errors
+
+    def _check_incomplete_dimensions(self, adhoc_datasources=None):
+        errors = []
+
+        for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
+            for table in ds.metadata.tables.values():
+                if not table.zillion:
+                    continue
+
+                if not table.zillion.incomplete_dimensions:
+                    continue
+
+                for field in table.zillion.incomplete_dimensions:
+                    if not self.has_dimension(field, adhoc_fms=adhoc_datasources):
+                        errors.append(
+                            "Table %s->%s references unknown dimension %s in incomplete_dimensions"
+                            % (ds.name, table.fullname, field)
+                        )
+
         return errors
 
     def run_integrity_checks(self, adhoc_datasources=None):
+        # TODO: some of these checks may belong elsewhere
+
         errors = []
         if adhoc_datasources:
             for ds in adhoc_datasources:
@@ -318,6 +358,9 @@ class Warehouse(FieldManagerMixin):
             self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
         )
         errors.extend(self._check_required_grain(adhoc_datasources=adhoc_datasources))
+        errors.extend(
+            self._check_incomplete_dimensions(adhoc_datasources=adhoc_datasources)
+        )
 
         if errors:
             raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))

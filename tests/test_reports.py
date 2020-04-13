@@ -325,6 +325,24 @@ def test_report_null_criteria(wh):
     info(result.df)
 
 
+def test_report_incomplete_dimensions(config):
+    del config["datasources"]["testdb2"]
+    metrics = ["sales"]
+    dimensions = ["campaign_name"]
+    table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
+
+    # This should prevent it from joining back through the lead table,
+    # thus preventing the report from running.
+    table_config["incomplete_dimensions"] = ["lead_id"]
+    wh = Warehouse(config=config)
+    with pytest.raises(UnsupportedGrainException):
+        result = wh_execute(wh, locals())
+
+    table_config["incomplete_dimensions"] = ["xyz"]
+    with pytest.raises(WarehouseException):
+        wh = Warehouse(config=config)
+
+
 def test_report_count_metric(wh):
     metrics = ["leads"]
     dimensions = ["campaign_name"]

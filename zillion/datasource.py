@@ -162,6 +162,15 @@ class Join(PrintMixin):
             if field not in self.field_map:
                 self.add_field(field)
 
+    def join_parts_for_table(self, table_name):
+        return [jp for jp in self.join_parts if table_name in jp.table_names]
+
+    def join_fields_for_table(self, table_name):
+        result = set()
+        for jp in self.join_parts_for_table(table_name):
+            result |= set(jp.join_fields)
+        return result
+
 
 def joins_from_path(ds, path, field_map=None):
     join_parts = []
@@ -804,6 +813,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 assert field_map, "Could not map dimension %s to column" % dimension
                 join = joins_from_path(self, path, field_map=field_map)
+                if table.zillion.incomplete_dimensions:
+                    join_fields = join.join_fields_for_table(table.fullname)
+                    if set(table.zillion.incomplete_dimensions) & join_fields:
+                        dbg(
+                            "Skipping table %s join due to incomplete dimensions"
+                            % table.fullname
+                        )
+                        continue
                 joins.append(join)
 
         dbg("Found joins to dim %s for table %s:" % (dimension, table.fullname))
