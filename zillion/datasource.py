@@ -168,7 +168,8 @@ class Join(PrintMixin):
     def join_fields_for_table(self, table_name):
         result = set()
         for jp in self.join_parts_for_table(table_name):
-            result |= set(jp.join_fields)
+            if jp.join_fields:
+                result |= set(jp.join_fields)
         return result
 
 

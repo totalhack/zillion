@@ -180,6 +180,9 @@ class Warehouse(FieldManagerMixin):
             skip_integrity_checks=skip_integrity_checks,
             if_exists=if_exists,
         )
+        # TODO: this goes second in case any formula fields reference
+        # fields defined or created in the datasources. It may make more sense
+        # to only defer population of formula fields.
         self.populate_global_fields(config, force=True)
 
     def _check_reserved_field_names(self, adhoc_datasources=None):
