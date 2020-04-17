@@ -87,20 +87,6 @@
             "rounding": 2
         },
         {
-            "name": "revenue_avg",
-            "type": "Numeric(10,2)",
-            "aggregation": "avg",
-            "rounding": 2,
-            "weighting_metric": "main_sales_quantity"
-        },
-        {
-            "name": "revenue_avg_ds_weighted",
-            "type": "Numeric(10,2)",
-            "aggregation": "avg",
-            "rounding": 2,
-            "weighting_metric": "main_sales_quantity"
-        },
-        {
             "name": "leads",
             "type": "Integer",
             "aggregation": "sum"
@@ -146,6 +132,20 @@
                     "name": "ds_sales",
                     "type": "Integer",
                     "aggregation": "sum"
+                },
+                {
+                    "name": "revenue_avg",
+                    "type": "Numeric(10,2)",
+                    "aggregation": "avg",
+                    "rounding": 2,
+                    "weighting_metric": "main_sales_quantity"
+                },
+                {
+                    "name": "revenue_avg_ds_weighted",
+                    "type": "Numeric(10,2)",
+                    "aggregation": "avg",
+                    "rounding": 2,
+                    "weighting_metric": "main_sales_quantity"
                 }
             ],
             "dimensions": [

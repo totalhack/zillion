@@ -480,7 +480,6 @@ class FieldManagerMixin:
                 return self.get_dimension(obj, adhoc_fms=adhoc_fms)
             raise InvalidFieldException("Invalid field name: %s" % obj)
 
-        # TODO: should this be allowed?
         if isinstance(obj, dict):
             field = AdHocField.create(obj)
             assert not self.has_field(field.name, adhoc_fms=adhoc_fms), (
@@ -489,6 +488,20 @@ class FieldManagerMixin:
             return field
 
         raise InvalidFieldException("Invalid field object: %s" % obj)
+
+    def get_field_instances(self, field, adhoc_fms=None):
+        instances = {}
+
+        if self._directly_has_field(field):
+            instances[self] = self.get_field(field)
+
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
+            if fm.has_field(field):
+                instances.update(fm.get_field_instances(field))
+
+        if not instances:
+            raise InvalidFieldException("Invalid field name: %s" % field)
+        return instances
 
     def get_metrics(self, adhoc_fms=None):
         metrics = {}

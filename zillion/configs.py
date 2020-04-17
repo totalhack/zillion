@@ -474,7 +474,6 @@ class ColumnInfo(ZillionInfo, PrintMixin):
         if isinstance(field, str):
             self.field_map[field] = None
         else:
-            # TODO: FieldInfoSchema?
             assert isinstance(field, dict) and "name" in field, (
                 "Invalid field config: %s" % field
             )
@@ -491,7 +490,6 @@ class ColumnInfo(ZillionInfo, PrintMixin):
         return self.field_map.keys()
 
 
-# TODO: is there a better home for this?
 class Technical(MappingMixin, PrintMixin):
     repr_attrs = ["type", "params"]
     allowed_params = set()

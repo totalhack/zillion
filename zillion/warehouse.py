@@ -40,6 +40,7 @@ from zillion.core import (
     InvalidFieldException,
     MaxFormulaDepthException,
     WarehouseException,
+    FieldTypes,
     TableTypes,
     RESERVED_FIELD_NAMES,
 )
@@ -61,6 +62,7 @@ from zillion.sql_utils import (
     infer_aggregation_and_rounding,
     aggregation_to_sqla_func,
     is_probably_metric,
+    is_numeric_type,
     sqla_compile,
     column_fullname,
 )
@@ -118,6 +120,9 @@ class Warehouse(FieldManagerMixin):
                 info("Cleaning up warehouse adhoc ds %s" % ds)
                 ds.clean_up()
 
+    def _clear_supported_dimension_cache(self):
+        self._supported_dimension_cache = {}
+
     def print_info(self):
         print("---- Warehouse")
         print("metrics:")
@@ -151,12 +156,14 @@ class Warehouse(FieldManagerMixin):
     def add_datasource(self, ds, skip_integrity_checks=False):
         dbg("Adding datasource %s" % ds.name)
         self.datasources[ds.name] = ds
+        self._clear_supported_dimension_cache()
         if not skip_integrity_checks:
             self.run_integrity_checks()
 
     def remove_datasource(self, ds):
         dbg("Removing datasource %s" % ds.name)
         del self.datasources[ds.name]
+        self._clear_supported_dimension_cache()
 
     def create_or_update_datasources(
         self, ds_configs, skip_integrity_checks=False, if_exists="fail"
@@ -184,6 +191,7 @@ class Warehouse(FieldManagerMixin):
         # fields defined or created in the datasources. It may make more sense
         # to only defer population of formula fields.
         self.populate_global_fields(config, force=True)
+        self._clear_supported_dimension_cache()
 
     def _check_reserved_field_names(self, adhoc_datasources=None):
         errors = []
@@ -193,8 +201,6 @@ class Warehouse(FieldManagerMixin):
         return errors
 
     def _check_conflicting_fields(self, adhoc_datasources=None):
-        # TODO: in addition to checking metric vs dimension settings
-        # we could add type comparisons (make sure its always num or str)
         errors = []
 
         for field in self.get_field_names(adhoc_fms=adhoc_datasources):
@@ -202,6 +208,39 @@ class Warehouse(FieldManagerMixin):
                 field, adhoc_fms=adhoc_datasources
             ) and self.has_dimension(field, adhoc_fms=adhoc_datasources):
                 errors.append("Field %s is in both metrics and dimensions" % field)
+
+            instances = self.get_field_instances(field, adhoc_fms=adhoc_datasources)
+
+            field_type_mismatch = False
+            data_type_mismatch = False
+            aggregation_mismatch = False
+            field_type = None
+            field_aggr = None
+            field_is_numeric = None
+
+            for fm, field_def in instances.items():
+                if not field_type:
+                    field_type = field_def.field_type
+                    field_is_numeric = is_numeric_type(field_def.type)
+                    field_aggr = getattr(field_def, "aggregation", None)
+                    continue
+
+                if field_def.field_type != field_type:
+                    field_type_mismatch = True
+
+                if is_numeric_type(field_def.type) != field_is_numeric:
+                    data_type_mismatch = True
+
+                if field_def.field_type == FieldTypes.METRIC:
+                    if field_def.aggregation != field_aggr:
+                        aggregation_mismatch = True
+
+            if field_type_mismatch:
+                errors.append("Field %s is in both metrics and dimensions" % field)
+            if data_type_mismatch:
+                errors.append("Field %s has data type mismatches" % field)
+            if aggregation_mismatch:
+                errors.append("Field %s has aggregation mismatches" % field)
 
         return errors
 
@@ -336,8 +375,6 @@ class Warehouse(FieldManagerMixin):
         return errors
 
     def run_integrity_checks(self, adhoc_datasources=None):
-        # TODO: some of these checks may belong elsewhere
-
         errors = []
         if adhoc_datasources:
             for ds in adhoc_datasources:
@@ -375,7 +412,6 @@ class Warehouse(FieldManagerMixin):
         metric = self.get_metric(metric, adhoc_fms=adhoc_datasources)
 
         if use_cache and metric.name in self._supported_dimension_cache:
-            # XXX TODO: When to clear cache?
             return self._supported_dimension_cache[metric]
 
         for ds in self.get_datasources():
@@ -470,7 +506,7 @@ class Warehouse(FieldManagerMixin):
     def choose_best_table_set(self, ds_table_sets):
         ds_name = self.choose_best_data_source(list(ds_table_sets.keys()))
         if len(ds_table_sets[ds_name]) > 1:
-            # TODO: establish table set priorities based on expected query performance?
+            # TODO: table set priorities based on expected query performance
             info(
                 "Picking smallest of %d available table sets"
                 % len(ds_table_sets[ds_name])
@@ -481,7 +517,7 @@ class Warehouse(FieldManagerMixin):
         """
         This assumes you are in a situation where you are sure the metric can not
         meet the grain and want to generate a helpful message pinpointing the
-        issue.  If the metric actually supports all dimensions, the conclusion
+        issue. If the metric actually supports all dimensions, the conclusion
         is that it just doesn't support them all in a single datasource and
         thus can't meet the grain.
         """

@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 
+import numpy as np
 from orderedset import OrderedSet
 from pymysql import escape_string
 import pandas as pd
@@ -73,8 +74,8 @@ zillion_engine = sa.create_engine(zillion_config["ZILLION_DB_URL"])
 zillion_metadata = sa.MetaData()
 zillion_metadata.bind = zillion_engine
 
-Reports = sa.Table(
-    "reports",
+ReportSpecs = sa.Table(
+    "report_specs",
     zillion_metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("params", sa.Text),
@@ -276,7 +277,6 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         dialect = self.get_dialect_name()
         info("Attempting kill on %s conn: %s" % (dialect, self._conn))
 
-        # TODO: add support for more connection libraries
         if dialect == "mysql" and callable(getattr(raw_conn, "thread_id", None)):
             kill_conn = self.get_conn()
             conn_id = raw_conn.thread_id()
@@ -415,7 +415,6 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def add_metric(self, name):
         assert self.covers_metric(name), "Metric %s can not be covered by query" % name
-        # TODO: improve the way we maintain targeted metrics/dims
         self.table_set.target_fields.add(name)
         self.metrics[name] = self.table_set.datasource.get_metric(name)
         self.select = self.select.column(self.get_field_expression(name))
@@ -443,7 +442,6 @@ class DataSourceQuerySummary(PrintMixin):
             "Metrics: %s" % list(self.metrics),
             "Dimensions: %s" % list(self.dimensions),
             "\n%s" % sql,
-            # TODO: Explain of query plan
         ]
         return "\n".join(parts)
 
@@ -584,7 +582,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         for row in rows:
             row_values = [self.get_row_hash(row)]
             for value in row.values():
-                # XXX: sqlite cant handle Decimal values. Alternative approach:
+                # Note: sqlite cant handle Decimal values. Alternative approach:
                 # https://stackoverflow.com/questions/6319409/how-to-convert-python-decimal-to-sqlite-numeric
                 if isinstance(value, decimal.Decimal):
                     value = float(value)
@@ -628,12 +626,15 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             filter_parts.append("(%s %s %s)" % (field, op, value))
         return df.query(" and ".join(filter_parts))
 
-    def get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavg, wavgs):
-        # TODO: signature of this is a bit odd
-        # TODO: test weighted averages
+    def get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavgs):
         # https://stackoverflow.com/questions/36489576/why-does-concatenation-of-dataframes-get-exponentially-slower
         level_aggrs = [df]
         dim_names = list(dimensions.keys())
+
+        for metric_name, weighting_metric in wavgs:
+            # TODO: how does this behave if weights are missing?
+            wavg = lambda x: np.average(x, weights=df.loc[x.index, weighting_metric])
+            aggrs[metric_name] = wavg
 
         for level in range(rollup):
             if (level + 1) == len(dimensions):
@@ -642,8 +643,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
             grouped = df.groupby(level=list(range(0, level + 1)))
             level_aggr = grouped.agg(aggrs, skipna=True)
-            for metric_name, weighting_metric in wavgs:
-                level_aggr[metric_name] = wavg(metric_name, weighting_metric)
 
             # for the remaining levels, set index cols to ROLLUP_INDEX_LABEL
             if level != (len(dimensions) - 1):
@@ -661,7 +660,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def apply_rollup(self, df, rollup, metrics, dimensions):
         assert dimensions, "Can not rollup without dimensions"
-
         aggrs = {}
         wavgs = []
 
@@ -677,10 +675,10 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             if metric.weighting_metric:
                 wavgs.append((metric.name, metric.weighting_metric))
                 continue
-            else:
-                aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
-                    metric.aggregation, metric.aggregation
-                )
+
+            aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
+                metric.aggregation, metric.aggregation
+            )
             aggrs[metric.name] = aggr_func
 
         aggr = df.agg(aggrs, skipna=True)
@@ -689,7 +687,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         apply_totals = True
         if rollup != ROLLUP_TOTALS:
-            df = self.get_multi_rollup_df(df, rollup, dimensions, aggrs, wavg, wavgs)
+            df = self.get_multi_rollup_df(df, rollup, dimensions, aggrs, wavgs)
             if rollup != len(dimensions):
                 apply_totals = False
 
@@ -804,7 +802,7 @@ class Report(ExecutionStateMixin):
         adhoc_datasources=None,
     ):
         start = time.time()
-        self.id = None  # TODO: consider renaming spec_id or save_id
+        self.spec_id = None
         self.uuid = uuid.uuid1()
         self.warehouse = warehouse
 
@@ -890,17 +888,17 @@ class Report(ExecutionStateMixin):
     def save(self):
         conn = zillion_engine.connect()
         try:
-            result = conn.execute(Reports.insert(), params=self.get_json())
-            report_id = result.inserted_primary_key[0]
-            assert report_id, "No report ID found!"
+            result = conn.execute(ReportSpecs.insert(), params=self.get_json())
+            spec_id = result.inserted_primary_key[0]
+            assert spec_id, "No report spec ID found!"
         finally:
             conn.close()
-        self.id = report_id
-        return report_id
+        self.spec_id = spec_id
+        return spec_id
 
     @classmethod
-    def load_params(cls, report_id):
-        s = sa.select([Reports.c.params]).where(Reports.c.id == report_id)
+    def load_params(cls, spec_id):
+        s = sa.select([ReportSpecs.c.params]).where(ReportSpecs.c.id == spec_id)
         conn = zillion_engine.connect()
         try:
             result = conn.execute(s)
@@ -925,14 +923,14 @@ class Report(ExecutionStateMixin):
         )
 
     @classmethod
-    def load(cls, warehouse, report_id, adhoc_datasources=None):
-        params = cls.load_params(report_id)
+    def load(cls, warehouse, spec_id, adhoc_datasources=None):
+        params = cls.load_params(spec_id)
         result = cls.from_params(warehouse, params, adhoc_datasources=adhoc_datasources)
         return result
 
     @classmethod
-    def delete(cls, report_id):
-        s = Reports.delete().where(Reports.c.id == report_id)
+    def delete(cls, spec_id):
+        s = ReportSpecs.delete().where(ReportSpecs.c.id == spec_id)
         conn = zillion_engine.connect()
         try:
             result = conn.execute(s)
@@ -1025,8 +1023,8 @@ class Report(ExecutionStateMixin):
         return results
 
     def execute_ds_queries_multithread(self, queries):
-        # TODO: currently if any query times out, the entire report fails.
-        # It might be better if partial results could be returned.
+        # TODO: If any query times out, the entire report fails. It might be
+        # better if partial results could be returned.
         finished = {}
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
         workers = zillion_config.get("DATASOURCE_QUERY_WORKERS", len(queries))
@@ -1181,8 +1179,6 @@ class Report(ExecutionStateMixin):
         for metric_name, metric in self.ds_metrics.items():
             existing_query = metric_covered_in_queries(metric_name)
             if existing_query:
-                # TODO: we could do a single consolidation at the end instead
-                # and that might get more optimal results
                 dbg("Metric %s is covered by existing query" % metric_name)
                 continue
 
@@ -1247,18 +1243,22 @@ class ReportResult(PrintMixin):
         self.duration = round(duration, 4)
         self.rowcount = len(df)
 
-    def get_rollup_mask(self):
+    @property
+    def rollup_mask(self):
         # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.Index.isin.html
         mask = None
-        for i, level in enumerate(self.df.index.levels):
+        index = self.df.index
+        for i, level in enumerate(range(index.nlevels)):
             if mask is None:
-                mask = self.df.index.isin([ROLLUP_INDEX_LABEL], i)
+                mask = index.isin([ROLLUP_INDEX_LABEL], i)
             else:
-                mask = mask | self.df.index.isin([ROLLUP_INDEX_LABEL], i)
+                mask = mask | index.isin([ROLLUP_INDEX_LABEL], i)
         return mask
 
+    @property
     def rollup_rows(self):
-        return self.df.loc[self.get_rollup_mask()]
+        return self.df.loc[self.rollup_mask]
 
+    @property
     def non_rollup_rows(self):
-        return self.df.loc[~self.get_rollup_mask()]
+        return self.df.loc[~self.rollup_mask]

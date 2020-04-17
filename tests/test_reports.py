@@ -515,24 +515,28 @@ def test_report_weighted_metric(wh):
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
+    assert result.df.loc["Partner A"]["revenue_avg"] == 8.35
 
 
-def test_report_weighted_metric_with_rollup(wh):
+def test_report_weighted_rollup(wh):
     metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name"]
     rollup = ROLLUP_TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
+    assert result.rollup_rows["revenue_avg"][0] == 8.39
 
 
-def test_report_weighted_metric_with_multi_rollup(wh):
+def test_report_weighted_multi_rollup(wh):
     metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name", "campaign_name", "lead_id"]
     rollup = 2
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
+    test_row = result.df.loc["Partner A", ROLLUP_INDEX_LABEL, ROLLUP_INDEX_LABEL]
+    assert test_row["revenue_avg"] == 8.35
 
 
 def test_report_multi_dimension(wh):
@@ -550,8 +554,8 @@ def test_report_rollup(wh):
     rollup = ROLLUP_TOTALS
     result = wh_execute(wh, locals())
     info(result.df)
-    revenue = result.rollup_rows().iloc[-1]["revenue"]
-    revenue_sum = result.non_rollup_rows().sum()["revenue"]
+    revenue = result.rollup_rows.iloc[-1]["revenue"]
+    revenue_sum = result.non_rollup_rows.sum()["revenue"]
     assert revenue == revenue_sum
 
 
@@ -562,8 +566,8 @@ def test_report_multi_rollup(wh):
     rollup = 3
     result = wh_execute(wh, locals())
     info(result.df)
-    revenue = result.rollup_rows().iloc[-1]["revenue"]
-    revenue_sum = result.non_rollup_rows().sum()["revenue"]
+    revenue = result.rollup_rows.iloc[-1]["revenue"]
+    revenue_sum = result.non_rollup_rows.sum()["revenue"]
     assert revenue == revenue_sum
 
 

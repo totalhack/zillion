@@ -60,7 +60,6 @@ AGGREGATION_SQLA_FUNC_MAP = {
 DIALECT_IGNORE_SCHEMAS = {
     "mysql": set(["information_schema", "performance_schema", "mysql", "sys"]),
     "postgresql": set(["information_schema", r"pg_(.*)"]),
-    # TODO: more support here
 }
 
 
@@ -142,6 +141,12 @@ def aggregation_to_sqla_func(aggregation):
     return AGGREGATION_SQLA_FUNC_MAP[aggregation]
 
 
+def is_numeric_type(type):
+    if isinstance(type, tuple(NUMERIC_SA_TYPES)):
+        return True
+    return False
+
+
 def is_probably_metric(column, formula=None):
     if formula and contains_aggregation(formula):
         return True
@@ -171,9 +176,9 @@ def column_fullname(column, prefix=None):
 
 def get_sqla_clause(column, criterion, negate=False):
     """
-    TODO: postgresql like is case sensitive, but mysql like is not
-    - postgres also supports ilike to specify case insensitive
-    OPTION: look at dialect to determine function
+    TODO: Postgresql "like" is case sensitive, but mysql "like" is not.
+    Postgresql also supports "ilike" to specify case insensitive, so one
+    option is to look at the dialect to determine the function.
     """
     field, op, values = criterion
     op = op.lower()

@@ -301,7 +301,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
             self.metadata.reflect(schema=schema, views=True)
 
     def get_params(self):
-        # TODO: does this need to store more information, entire config?
+        # TODO: does this need to store entire config?
+        # TODO: is the metadata URL exposing sensitive info?
         return dict(
             name=self.name, url=str(self.metadata.bind.url), reflect=self.reflect
         )
@@ -437,8 +438,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     continue
 
                 if not column.zillion.allow_type_conversions:
-                    # TODO: could allow specifying certain allowable conversions
-                    # instead of just on/off switch
                     continue
 
                 convs = get_dialect_type_conversions(self.get_dialect_name(), column)
@@ -795,7 +794,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
             if column.table == table:
                 paths = [[table.fullname]]
             else:
-                # TODO: consider caching with larger graphs, or precomputing
                 paths = nx.all_simple_paths(
                     self.graph, table.fullname, column.table.fullname
                 )
