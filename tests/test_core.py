@@ -90,7 +90,7 @@ def test_warehouse_no_config(config):
     ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
     wh = Warehouse(datasources=[ds])
     assert wh.get_dimension_names()
-    assert len(wh.get_datasource_names()) == 1
+    assert len(wh.datasource_names) == 1
 
 
 def test_warehouse_has_zillion_info_no_config(config):
@@ -98,7 +98,7 @@ def test_warehouse_has_zillion_info_no_config(config):
     for table in ds.metadata.tables.values():
         table.info["zillion"].type = TableTypes.METRIC
     wh = Warehouse(datasources=[ds])
-    assert not wh.datasources["testdb1"].dimension_tables
+    assert not wh.get_datasource("testdb1").dimension_tables
 
 
 def test_reserved_field_name(config):
@@ -220,7 +220,7 @@ def test_column_config_override(config):
     table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
     table_config["columns"]["revenue"]["active"] = False
     wh = Warehouse(config=config)
-    assert not "sales" in wh.datasources["testdb1"].get_tables_with_field("revenue")
+    assert not "sales" in wh.get_datasource("testdb1").get_tables_with_field("revenue")
 
 
 def test_no_create_fields_no_columns(config):
@@ -310,7 +310,7 @@ def test_get_metric_table_set(wh):
 
 def test_get_supported_dimensions(wh):
     metrics = ["leads", "main_sales_quantity"]
-    dims = wh.get_supported_dimensions(metrics)
+    dims = wh._get_supported_dimensions(metrics)
     assert dims & {"campaign_name", "partner_name"}
     assert not (dims & {"sale_id"})
 

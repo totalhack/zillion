@@ -47,11 +47,7 @@ class Field(PrintMixin):
         return None, None
 
     def get_ds_expression(self, column, label=True):
-        ds_formula = (
-            column.zillion.field_map[self.name].get("ds_formula", None)
-            if column.zillion.field_map[self.name]
-            else None
-        )
+        ds_formula = column.zillion.field_ds_formula(self.name)
         if not ds_formula:
             if label:
                 return column.label(self.name)
@@ -134,11 +130,7 @@ class Metric(Field):
         aggr = aggregation_to_sqla_func(self.aggregation)
         skip_aggr = False
 
-        ds_formula = (
-            column.zillion.field_map[self.name].get("ds_formula", None)
-            if column.zillion.field_map[self.name]
-            else None
-        )
+        ds_formula = column.zillion.field_ds_formula(self.name)
 
         if ds_formula:
             if contains_sql_keywords(ds_formula):
@@ -231,11 +223,6 @@ class FormulaField(Field):
         raw_formula = self.formula.format(**field_formula_map)
         return raw_fields, raw_formula
 
-    def check_formula_fields(self, warehouse, adhoc_fms=None):
-        fields, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
-        for field in fields:
-            warehouse.get_field(field, adhoc_fms=adhoc_fms)
-
     def get_ds_expression(self, column, label=True):
         raise ZillionException("Formula-based Fields do not support get_ds_expression")
 
@@ -250,6 +237,11 @@ class FormulaField(Field):
                 "Formula contains disallowed sql: %s" % formula
             )
         return sqla_compile(sa.text(formula))
+
+    def _check_formula_fields(self, warehouse, adhoc_fms=None):
+        fields, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
+        for field in fields:
+            warehouse.get_field(field, adhoc_fms=adhoc_fms)
 
 
 class FormulaDimension(FormulaField):
@@ -375,13 +367,13 @@ class FieldManagerMixin:
     def get_field_managers(self, adhoc_fms=None):
         return self.get_child_field_managers() + (adhoc_fms or [])
 
-    def _directly_has_metric(self, name):
+    def directly_has_metric(self, name):
         return name in getattr(self, self.metrics_attr)
 
-    def _directly_has_dimension(self, name):
+    def directly_has_dimension(self, name):
         return name in getattr(self, self.dimensions_attr)
 
-    def _directly_has_field(self, name):
+    def directly_has_field(self, name):
         return name in getattr(self, self.metrics_attr) or name in getattr(
             self, self.dimensions_attr
         )
@@ -395,7 +387,7 @@ class FieldManagerMixin:
         )
 
     def has_metric(self, name, adhoc_fms=None):
-        if self._directly_has_metric(name):
+        if self.directly_has_metric(name):
             return True
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm.has_metric(name):
@@ -403,7 +395,7 @@ class FieldManagerMixin:
         return False
 
     def has_dimension(self, name, adhoc_fms=None):
-        if self._directly_has_dimension(name):
+        if self.directly_has_dimension(name):
             return True
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm.has_dimension(name):
@@ -411,7 +403,7 @@ class FieldManagerMixin:
         return False
 
     def has_field(self, name, adhoc_fms=None):
-        if self._directly_has_field(name):
+        if self.directly_has_field(name):
             return True
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             if fm.has_field(name):
@@ -420,7 +412,7 @@ class FieldManagerMixin:
 
     def get_metric(self, obj, adhoc_fms=None):
         if isinstance(obj, str):
-            if self._directly_has_metric(obj):
+            if self.directly_has_metric(obj):
                 return getattr(self, self.metrics_attr)[obj]
             for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
                 if fm.has_metric(obj):
@@ -433,14 +425,14 @@ class FieldManagerMixin:
                 self.has_metric(metric.name, adhoc_fms=adhoc_fms),
                 "AdHocMetric can not use name of an existing metric: %s" % metric.name,
             )
-            metric.check_formula_fields(self, adhoc_fms=adhoc_fms)
+            metric._check_formula_fields(self, adhoc_fms=adhoc_fms)
             return metric
 
         raise InvalidFieldException("Invalid metric object: %s" % obj)
 
     def get_dimension(self, obj, adhoc_fms=None):
         if isinstance(obj, str):
-            if self._directly_has_dimension(obj):
+            if self.directly_has_dimension(obj):
                 return getattr(self, self.dimensions_attr)[obj]
             for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
                 if fm.has_dimension(obj):
@@ -479,7 +471,7 @@ class FieldManagerMixin:
     def get_field_instances(self, field, adhoc_fms=None):
         instances = {}
 
-        if self._directly_has_field(field):
+        if self.directly_has_field(field):
             instances[self] = self.get_field(field)
 
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
@@ -545,7 +537,7 @@ class FieldManagerMixin:
             return
         getattr(self, self.dimensions_attr)[dimension.name] = dimension
 
-    def populate_global_fields(self, config, force=False):
+    def _populate_global_fields(self, config, force=False):
         formula_metrics = []
         formula_dims = []
 
@@ -588,20 +580,20 @@ class FieldManagerMixin:
 
         # Defer formulas so params can be checked against existing fields
         for metric in formula_metrics:
-            metric.check_formula_fields(self)
+            metric._check_formula_fields(self)
             self.add_metric(metric, force=force)
 
         for dim in formula_dims:
-            dim.check_formula_fields(self)
+            dim._check_formula_fields(self)
             self.add_dimension(dim, force=force)
 
-    def find_field_sources(self, field, adhoc_fms=None):
+    def _find_field_sources(self, field, adhoc_fms=None):
         sources = []
-        if self._directly_has_field(field):
+        if self.directly_has_field(field):
             sources.append(self)
 
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
-            if fm._directly_has_field(field):
+            if fm.directly_has_field(field):
                 sources.append(fm)
         return sources
 

@@ -310,7 +310,7 @@ class MetricConfigSchema(BaseSchema):
     required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
     @validates_schema(skip_on_field_errors=True)
-    def validate_object(self, data, **kwargs):
+    def _validate_object(self, data, **kwargs):
         if (not data.get("type", None)) and (not data.get("formula", None)):
             raise ValidationError(
                 "Either type or formula must be specified for metric: %s" % data
@@ -345,7 +345,7 @@ class DataSourceConfigSchema(BaseSchema):
     )
 
     @pre_load
-    def check_table_refs(self, data, **kwargs):
+    def _check_table_refs(self, data, **kwargs):
         for table_name, table_config in data.get("tables", {}).items():
             if not isinstance(table_config, str):
                 continue
@@ -387,7 +387,7 @@ class WarehouseConfigSchema(BaseSchema):
     )
 
     @pre_load
-    def check_ds_refs(self, data, **kwargs):
+    def _check_ds_refs(self, data, **kwargs):
         for ds_name, ds_config in data.get("datasources", {}).items():
             if not isinstance(ds_config, str):
                 continue
@@ -453,37 +453,47 @@ class ColumnInfo(ZillionInfo, PrintMixin):
 
     def __init__(self, **kwargs):
         super(ColumnInfo, self).__init__(**kwargs)
-        self.field_map = OrderedDict()
+        self._field_map = OrderedDict()
         for field in self.fields:
-            self.add_field_to_map(field)
+            self._add_field_to_map(field)
 
     def has_field(self, field):
         if not isinstance(field, str):
             field = field["name"]
-        if field in self.field_map:
+        if field in self._field_map:
             return True
         return False
 
-    def add_field_to_map(self, field):
+    def add_field(self, field):
+        self._add_field_to_map(field)
+        self.fields.append(field)
+
+    def get_field(self, name):
+        raiseifnot(self.has_field(name), "Field %s is not in column fields" % name)
+        return self._field_map[name]
+
+    def get_fields(self):
+        return {k: v for k, v in self._field_map.items()}
+
+    def get_field_names(self):
+        return self._field_map.keys()
+
+    def field_ds_formula(self, name):
+        field = self.get_field(name)
+        if not field:
+            return None
+        return field.get("ds_formula", None)
+
+    def _add_field_to_map(self, field):
         raiseif(self.has_field(field), "Field %s is already added" % field)
         if isinstance(field, str):
-            self.field_map[field] = None
+            self._field_map[field] = None
         else:
             raiseifnot(
                 isinstance(field, dict) and "name" in field,
                 "Invalid field config: %s" % field,
             )
-            self.field_map[field["name"]] = field
-
-    def add_field(self, field):
-        self.add_field_to_map(field)
-        self.fields.append(field)
-
-    def get_fields(self):
-        return {k: v for k, v in self.field_map.items()}
-
-    def get_field_names(self):
-        return self.field_map.keys()
+            self._field_map[field["name"]] = field
 
 
 class Technical(MappingMixin, PrintMixin):
@@ -492,10 +502,10 @@ class Technical(MappingMixin, PrintMixin):
 
     @initializer
     def __init__(self, type, params):
-        self.check_params(params)
+        self._check_params(params)
 
     @classmethod
-    def check_params(cls, params):
+    def _check_params(cls, params):
         if not params:
             return
         for k, v in params.items():

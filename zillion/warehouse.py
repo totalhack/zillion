@@ -57,7 +57,7 @@ class Warehouse(FieldManagerMixin):
         """
         if_exists: only applies when an adhoc datasource will be created
         """
-        self.datasources = OrderedDict()
+        self._datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
         self._supported_dimension_cache = {}
@@ -70,10 +70,10 @@ class Warehouse(FieldManagerMixin):
             config = WarehouseConfigSchema().load(config)
             self.apply_config(config, skip_integrity_checks=True, if_exists=if_exists)
 
-        raiseifnot(self.datasources, "No datasources provided or found in config")
+        raiseifnot(self._datasources, "No datasources provided or found in config")
         self.run_integrity_checks()
 
-        self.ds_priority = ds_priority or list(self.datasources.keys())
+        self.ds_priority = ds_priority or list(self._datasources.keys())
 
         raiseifnot(
             isinstance(self.ds_priority, list),
@@ -83,29 +83,31 @@ class Warehouse(FieldManagerMixin):
             ),
         )
         raiseifnot(
-            len(self.ds_priority) == len(self.datasources),
+            len(self.ds_priority) == len(self._datasources),
             "Length mismatch between ds_priority and datasources",
         )
         for ds_name in self.ds_priority:
             raiseifnot(
-                ds_name in self.datasources,
+                ds_name in self._datasources,
                 "Datasource %s is in ds_priority but not in datasource map" % ds_name,
             )
 
     def __repr__(self):
-        return "<%s> Datasources: %s" % (
-            self.__class__.__name__,
-            self.get_datasource_names(),
-        )
+        return "<%s> Datasources: %s" % (self.__class__.__name__, self.datasource_names)
+
+    @property
+    def datasources(self):
+        return self._datasources.values()
+
+    @property
+    def datasource_names(self):
+        return self._datasources.keys()
 
     def clean_up(self):
-        for ds_name, ds in self.datasources.items():
+        for ds_name, ds in self._datasources.items():
             if ds_name in self._created_adhoc_datasources:
                 info("Cleaning up warehouse adhoc ds %s" % ds)
                 ds.clean_up()
-
-    def _clear_supported_dimension_cache(self):
-        self._supported_dimension_cache = {}
 
     def print_info(self):
         print("---- Warehouse")
@@ -114,19 +116,13 @@ class Warehouse(FieldManagerMixin):
         print("dimensions:")
         self.print_dimensions(indent=2)
 
-        for ds in self.get_datasources():
+        for ds in self.datasources:
             print()
             ds.print_info()
 
-    def get_datasources(self):
-        return self.datasources.values()
-
-    def get_datasource_names(self):
-        return self.datasources.keys()
-
     def get_datasource(self, name, adhoc_datasources=None):
-        if name in self.datasources:
-            return self.datasources[name]
+        if name in self._datasources:
+            return self._datasources[name]
 
         for adhoc_datasource in adhoc_datasources or []:
             if adhoc_datasource.name == name:
@@ -135,26 +131,169 @@ class Warehouse(FieldManagerMixin):
         raise ZillionException('Could not find datasource with name "%s"' % name)
 
     def get_child_field_managers(self):
-        return list(self.get_datasources())
+        return list(self.datasources)
 
     def add_datasource(self, ds, skip_integrity_checks=False):
         dbg("Adding datasource %s" % ds.name)
-        self.datasources[ds.name] = ds
+        self._datasources[ds.name] = ds
         self._clear_supported_dimension_cache()
         if not skip_integrity_checks:
             self.run_integrity_checks()
 
     def remove_datasource(self, ds):
         dbg("Removing datasource %s" % ds.name)
-        del self.datasources[ds.name]
+        del self._datasources[ds.name]
         self._clear_supported_dimension_cache()
 
-    def create_or_update_datasources(
+    def apply_config(self, config, skip_integrity_checks=False, if_exists="fail"):
+        self._create_or_update_datasources(
+            config.get("datasources", {}),
+            skip_integrity_checks=skip_integrity_checks,
+            if_exists=if_exists,
+        )
+        # TODO: this goes second in case any formula fields reference
+        # fields defined or created in the datasources. It may make more sense
+        # to only defer population of formula fields.
+        self._populate_global_fields(config, force=True)
+        self._clear_supported_dimension_cache()
+
+    def run_integrity_checks(self, adhoc_datasources=None):
+        errors = []
+        if adhoc_datasources:
+            for ds in adhoc_datasources:
+                if ds.name in self.datasource_names:
+                    errors.append(
+                        "Adhoc DataSource '%s' name conflicts with existing DataSource"
+                        % ds.name
+                    )
+
+        errors.extend(
+            self._check_reserved_field_names(adhoc_datasources=adhoc_datasources)
+        )
+        errors.extend(
+            self._check_conflicting_fields(adhoc_datasources=adhoc_datasources)
+        )
+        errors.extend(self._check_fields_have_type(adhoc_datasources=adhoc_datasources))
+        errors.extend(
+            self._check_primary_key_dimensions(adhoc_datasources=adhoc_datasources)
+        )
+        errors.extend(
+            self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
+        )
+        errors.extend(self._check_required_grain(adhoc_datasources=adhoc_datasources))
+        errors.extend(
+            self._check_incomplete_dimensions(adhoc_datasources=adhoc_datasources)
+        )
+
+        if errors:
+            raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
+
+    def load_report(self, report_id, adhoc_datasources=None):
+        report = Report.load(self, report_id, adhoc_datasources=adhoc_datasources)
+        return report
+
+    def delete_report(self, report_id):
+        report = Report.delete(report_id)
+        return report
+
+    def save_report(self, **kwargs):
+        report = Report(self, **kwargs)
+        report.save()
+        return report
+
+    def execute(
+        self,
+        metrics=None,
+        dimensions=None,
+        criteria=None,
+        row_filters=None,
+        rollup=None,
+        pivot=None,
+        adhoc_datasources=None,
+    ):
+        start = time.time()
+
+        report = Report(
+            self,
+            metrics=metrics,
+            dimensions=dimensions,
+            criteria=criteria,
+            row_filters=row_filters,
+            rollup=rollup,
+            pivot=pivot,
+            adhoc_datasources=adhoc_datasources,
+        )
+        result = report.execute()
+
+        dbg("warehouse report took %.3fs" % (time.time() - start))
+        return result
+
+    def execute_id(self, report_id, adhoc_datasources=None):
+        start = time.time()
+        report = self.load_report(report_id, adhoc_datasources=adhoc_datasources)
+        result = report.execute()
+        dbg("warehouse report took %.3fs" % (time.time() - start))
+        return result
+
+    def get_metric_table_set(
+        self, metric, grain, dimension_grain, adhoc_datasources=None
+    ):
+        dbg("metric:%s grain:%s" % (metric, grain))
+        ds_metric_tables = self._get_ds_tables_with_metric(
+            metric, adhoc_datasources=adhoc_datasources
+        )
+        ds_table_sets = self._get_ds_table_sets(
+            ds_metric_tables,
+            metric,
+            grain,
+            dimension_grain,
+            adhoc_datasources=adhoc_datasources,
+        )
+        if not ds_table_sets:
+            msg = self._generate_unsupported_grain_msg(
+                grain, metric, adhoc_datasources=adhoc_datasources
+            )
+            raise UnsupportedGrainException(msg)
+        table_set = self._choose_best_table_set(ds_table_sets)
+        return table_set
+
+    def get_dimension_table_set(self, grain, dimension_grain, adhoc_datasources=None):
+        """
+        This is meant to be used in cases where no metrics are requested. We only
+        allow it to look at dim tables since the assumption is joining to a metric
+        table to explore dimensions doesn't make sense and would have poor performance.
+        """
+        dbg("grain:%s" % grain)
+
+        table_set = None
+        for dim_name in grain:
+            ds_dim_tables = self._get_ds_dim_tables_with_dim(
+                dim_name, adhoc_datasources=adhoc_datasources
+            )
+            ds_table_sets = self._get_ds_table_sets(
+                ds_dim_tables,
+                dim_name,
+                grain,
+                dimension_grain,
+                adhoc_datasources=adhoc_datasources,
+            )
+            if not ds_table_sets:
+                continue
+            table_set = self._choose_best_table_set(ds_table_sets)
+            break
+
+        if not table_set:
+            raise UnsupportedGrainException(
+                "No dimension table set found to meet grain: %s" % grain
+            )
+        return table_set
+
+    def _create_or_update_datasources(
         self, ds_configs, skip_integrity_checks=False, if_exists="fail"
     ):
         for ds_name in ds_configs:
-            if ds_name in self.datasources:
-                self.datasources[ds_name].apply_config(ds_configs[ds_name])
+            if ds_name in self.datasource_names:
+                self.get_datasource(ds_name).apply_config(ds_configs[ds_name])
                 continue
 
             ds = datasource_from_config(
@@ -165,17 +304,8 @@ class Warehouse(FieldManagerMixin):
                 self._created_adhoc_datasources.add(ds.name)
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
-    def apply_config(self, config, skip_integrity_checks=False, if_exists="fail"):
-        self.create_or_update_datasources(
-            config.get("datasources", {}),
-            skip_integrity_checks=skip_integrity_checks,
-            if_exists=if_exists,
-        )
-        # TODO: this goes second in case any formula fields reference
-        # fields defined or created in the datasources. It may make more sense
-        # to only defer population of formula fields.
-        self.populate_global_fields(config, force=True)
-        self._clear_supported_dimension_cache()
+    def _clear_supported_dimension_cache(self):
+        self._supported_dimension_cache = {}
 
     def _check_reserved_field_names(self, adhoc_datasources=None):
         errors = []
@@ -358,38 +488,7 @@ class Warehouse(FieldManagerMixin):
 
         return errors
 
-    def run_integrity_checks(self, adhoc_datasources=None):
-        errors = []
-        if adhoc_datasources:
-            for ds in adhoc_datasources:
-                if ds.name in self.datasources:
-                    errors.append(
-                        "Adhoc DataSource '%s' name conflicts with existing DataSource"
-                        % ds.name
-                    )
-
-        errors.extend(
-            self._check_reserved_field_names(adhoc_datasources=adhoc_datasources)
-        )
-        errors.extend(
-            self._check_conflicting_fields(adhoc_datasources=adhoc_datasources)
-        )
-        errors.extend(self._check_fields_have_type(adhoc_datasources=adhoc_datasources))
-        errors.extend(
-            self._check_primary_key_dimensions(adhoc_datasources=adhoc_datasources)
-        )
-        errors.extend(
-            self._check_weighting_metrics(adhoc_datasources=adhoc_datasources)
-        )
-        errors.extend(self._check_required_grain(adhoc_datasources=adhoc_datasources))
-        errors.extend(
-            self._check_incomplete_dimensions(adhoc_datasources=adhoc_datasources)
-        )
-
-        if errors:
-            raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
-
-    def get_supported_dimensions_for_metric(
+    def _get_supported_dimensions_for_metric(
         self, metric, use_cache=True, adhoc_datasources=None
     ):
         dims = set()
@@ -398,7 +497,7 @@ class Warehouse(FieldManagerMixin):
         if use_cache and metric.name in self._supported_dimension_cache:
             return self._supported_dimension_cache[metric]
 
-        for ds in self.get_datasources():
+        for ds in self.datasources:
             ds_tables = ds.get_tables_with_field(metric.name)
             used_tables = set()
 
@@ -409,7 +508,7 @@ class Warehouse(FieldManagerMixin):
                     )
                     used_tables.add(ds_table.fullname)
 
-                desc_tables = nx.descendants(ds.graph, ds_table.fullname)
+                desc_tables = ds.find_descendent_tables(ds_table)
                 for desc_table in desc_tables:
                     if desc_table not in used_tables:
                         dims |= get_table_dimensions(
@@ -420,16 +519,16 @@ class Warehouse(FieldManagerMixin):
         self._supported_dimension_cache[metric] = dims
         return dims
 
-    def get_supported_dimensions(self, metrics, adhoc_datasources=None):
+    def _get_supported_dimensions(self, metrics, adhoc_datasources=None):
         dims = set()
         for metric in metrics:
-            supported_dims = self.get_supported_dimensions_for_metric(
+            supported_dims = self._get_supported_dimensions_for_metric(
                 metric, adhoc_datasources=adhoc_datasources
             )
             dims = (dims & supported_dims) if len(dims) else supported_dims
         return dims
 
-    def get_ds_tables_with_metric(self, metric, adhoc_datasources=None):
+    def _get_ds_tables_with_metric(self, metric, adhoc_datasources=None):
         ds_tables = defaultdict(list)
         count = 0
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
@@ -444,7 +543,7 @@ class Warehouse(FieldManagerMixin):
         )
         return ds_tables
 
-    def get_ds_dim_tables_with_dim(self, dim, adhoc_datasources=None):
+    def _get_ds_dim_tables_with_dim(self, dim, adhoc_datasources=None):
         ds_tables = defaultdict(list)
         count = 0
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
@@ -458,7 +557,7 @@ class Warehouse(FieldManagerMixin):
         )
         return ds_tables
 
-    def get_ds_table_sets(
+    def _get_ds_table_sets(
         self, ds_tables, field, grain, dimension_grain, adhoc_datasources=None
     ):
         """Returns all table sets that can satisfy grain in each datasource"""
@@ -474,7 +573,7 @@ class Warehouse(FieldManagerMixin):
         dbg(ds_table_sets)
         return ds_table_sets
 
-    def choose_best_data_source(self, ds_names):
+    def _choose_best_datasource(self, ds_names):
         if self.ds_priority:
             for ds_name in self.ds_priority:
                 if ds_name in ds_names:
@@ -487,8 +586,8 @@ class Warehouse(FieldManagerMixin):
         raiseifnot(ds_names, "No datasource names provided")
         return ds_names[0]
 
-    def choose_best_table_set(self, ds_table_sets):
-        ds_name = self.choose_best_data_source(list(ds_table_sets.keys()))
+    def _choose_best_table_set(self, ds_table_sets):
+        ds_name = self._choose_best_datasource(list(ds_table_sets.keys()))
         if len(ds_table_sets[ds_name]) > 1:
             # TODO: table set priorities based on expected query performance
             info(
@@ -497,7 +596,7 @@ class Warehouse(FieldManagerMixin):
             )
         return sorted(ds_table_sets[ds_name], key=lambda x: len(x))[0]
 
-    def generate_unsupported_grain_msg(self, grain, metric, adhoc_datasources=None):
+    def _generate_unsupported_grain_msg(self, grain, metric, adhoc_datasources=None):
         """
         This assumes you are in a situation where you are sure the metric can not
         meet the grain and want to generate a helpful message pinpointing the
@@ -505,7 +604,7 @@ class Warehouse(FieldManagerMixin):
         is that it just doesn't support them all in a single datasource and
         thus can't meet the grain.
         """
-        supported = self.get_supported_dimensions_for_metric(
+        supported = self._get_supported_dimensions_for_metric(
             metric, adhoc_datasources=adhoc_datasources
         )
         unsupported = grain - supported
@@ -520,103 +619,3 @@ class Warehouse(FieldManagerMixin):
                 grain,
             )
         return msg
-
-    def get_metric_table_set(
-        self, metric, grain, dimension_grain, adhoc_datasources=None
-    ):
-        dbg("metric:%s grain:%s" % (metric, grain))
-        ds_metric_tables = self.get_ds_tables_with_metric(
-            metric, adhoc_datasources=adhoc_datasources
-        )
-        ds_table_sets = self.get_ds_table_sets(
-            ds_metric_tables,
-            metric,
-            grain,
-            dimension_grain,
-            adhoc_datasources=adhoc_datasources,
-        )
-        if not ds_table_sets:
-            msg = self.generate_unsupported_grain_msg(
-                grain, metric, adhoc_datasources=adhoc_datasources
-            )
-            raise UnsupportedGrainException(msg)
-        table_set = self.choose_best_table_set(ds_table_sets)
-        return table_set
-
-    def get_dimension_table_set(self, grain, dimension_grain, adhoc_datasources=None):
-        """
-        This is meant to be used in cases where no metrics are requested. We only
-        allow it to look at dim tables since the assumption is joining to a metric
-        table to explore dimensions doesn't make sense and would have poor performance.
-        """
-        dbg("grain:%s" % grain)
-
-        table_set = None
-        for dim_name in grain:
-            ds_dim_tables = self.get_ds_dim_tables_with_dim(
-                dim_name, adhoc_datasources=adhoc_datasources
-            )
-            ds_table_sets = self.get_ds_table_sets(
-                ds_dim_tables,
-                dim_name,
-                grain,
-                dimension_grain,
-                adhoc_datasources=adhoc_datasources,
-            )
-            if not ds_table_sets:
-                continue
-            table_set = self.choose_best_table_set(ds_table_sets)
-            break
-
-        if not table_set:
-            raise UnsupportedGrainException(
-                "No dimension table set found to meet grain: %s" % grain
-            )
-        return table_set
-
-    def load_report(self, report_id, adhoc_datasources=None):
-        report = Report.load(self, report_id, adhoc_datasources=adhoc_datasources)
-        return report
-
-    def delete_report(self, report_id):
-        report = Report.delete(report_id)
-        return report
-
-    def save_report(self, **kwargs):
-        report = Report(self, **kwargs)
-        report.save()
-        return report
-
-    def execute(
-        self,
-        metrics=None,
-        dimensions=None,
-        criteria=None,
-        row_filters=None,
-        rollup=None,
-        pivot=None,
-        adhoc_datasources=None,
-    ):
-        start = time.time()
-
-        report = Report(
-            self,
-            metrics=metrics,
-            dimensions=dimensions,
-            criteria=criteria,
-            row_filters=row_filters,
-            rollup=rollup,
-            pivot=pivot,
-            adhoc_datasources=adhoc_datasources,
-        )
-        result = report.execute()
-
-        dbg("warehouse report took %.3fs" % (time.time() - start))
-        return result
-
-    def execute_id(self, report_id, adhoc_datasources=None):
-        start = time.time()
-        report = self.load_report(report_id, adhoc_datasources=adhoc_datasources)
-        result = report.execute()
-        dbg("warehouse report took %.3fs" % (time.time() - start))
-        return result

@@ -61,19 +61,19 @@ class ExecutionStateMixin:
         self._state = None
 
     @property
-    def ready(self):
+    def _ready(self):
         return self._state == ExecutionState.READY
 
     @property
-    def querying(self):
+    def _querying(self):
         return self._state == ExecutionState.QUERYING
 
     @property
-    def killed(self):
+    def _killed(self):
         return self._state == ExecutionState.KILLED
 
     @contextmanager
-    def get_lock(self, timeout=None):
+    def _get_lock(self, timeout=None):
         timeout = timeout or -1  # convert to `acquire` default if falsey
 
         result = self._lock.acquire(timeout=timeout)
@@ -85,15 +85,15 @@ class ExecutionStateMixin:
         finally:
             self._lock.release()
 
-    def raise_if_killed(self, timeout=None):
-        with self.get_lock(timeout=timeout):
-            if self.killed:
+    def _raise_if_killed(self, timeout=None):
+        with self._get_lock(timeout=timeout):
+            if self._killed:
                 raise ExecutionKilledException
 
-    def get_state(self):
+    def _get_state(self):
         return self._state
 
-    def set_state(
+    def _set_state(
         self,
         state,
         timeout=None,
@@ -107,16 +107,16 @@ class ExecutionStateMixin:
         )
         cls_name = self.__class__.__name__
 
-        with self.get_lock(timeout=timeout):
+        with self._get_lock(timeout=timeout):
             if assert_ready:
                 raiseifnot(
-                    self.ready,
+                    self._ready,
                     "%s: expected ready state, got: %s" % (cls_name, self._state),
                 )
 
             if raise_if_killed:
                 try:
-                    self.raise_if_killed()
+                    self._raise_if_killed()
                 except ExecutionKilledException:
                     if set_if_killed:
                         dbg(
@@ -139,32 +139,39 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         self.field_map = {}
         self.metrics = metrics or {}
         self.dimensions = dimensions or {}
-        self.select = self.build_select()
+        self.select = self._build_select()
         super().__init__()
-        self.set_state(ExecutionState.READY)
-
-    def get_datasource_name(self):
-        return self.table_set.datasource.name
+        self._set_state(ExecutionState.READY)
 
     def get_datasource(self):
         return self.table_set.datasource
 
-    def format_query(self):
-        return sqlformat(sqla_compile(self.select))
-
-    def get_bind(self):
-        ds = self.get_datasource()
-        raiseifnot(
-            ds.metadata.bind,
-            'Datasource "%s" does not have metadata.bind set' % ds.name,
-        )
-        return ds.metadata.bind
+    def get_datasource_name(self):
+        return self.get_datasource().name
 
     def get_dialect_name(self):
-        return self.get_bind().dialect.name
+        return self._get_bind().dialect.name
+
+    def covers_metric(self, metric):
+        if metric in self.table_set.get_covered_metrics(self.warehouse):
+            return True
+        return False
+
+    def covers_field(self, field):
+        if field in self.table_set.get_covered_fields():
+            return True
+        return False
+
+    def add_metric(self, name):
+        raiseifnot(
+            self.covers_metric(name), "Metric %s can not be covered by query" % name
+        )
+        self.table_set.target_fields.add(name)
+        self.metrics[name] = self.table_set.datasource.get_metric(name)
+        self.select = self.select.column(self._get_field_expression(name))
 
     def get_conn(self):
-        bind = self.get_bind()
+        bind = self._get_bind()
         conn = bind.connect()
         return conn
 
@@ -173,7 +180,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         is_timeout = False
         t = None
 
-        self.set_state(ExecutionState.QUERYING, assert_ready=True)
+        self._set_state(ExecutionState.QUERYING, assert_ready=True)
 
         try:
             raiseif(self._conn, "Called execute with active query connection")
@@ -183,7 +190,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                 self.select = self.select.comment(label)
 
             try:
-                info("\n" + self.format_query())
+                info("\n" + self._format_query())
 
                 def do_timeout(main_thread):
                     nonlocal is_timeout
@@ -222,7 +229,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             return DataSourceQueryResult(self, data, diff)
         finally:
             raise_if_killed = False if is_timeout else True
-            self.set_state(
+            self._set_state(
                 ExecutionState.READY,
                 raise_if_killed=raise_if_killed,
                 set_if_killed=True,
@@ -232,16 +239,16 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         # Note: if query finishes as this is processing, it should end up
         # hitting raise_if_killed once this code is done rather than causing
         # the underlying connection to die and raise an exception.
-        with self.get_lock():
-            if self.ready:
+        with self._get_lock():
+            if self._ready:
                 warn("kill called on query that isn't running")
                 return
 
-            if self.killed:
+            if self._killed:
                 warn("kill called on query already being killed")
                 return
 
-            self.set_state(ExecutionState.KILLED)
+            self._set_state(ExecutionState.KILLED)
 
         # I don't see how this could happen, but get loud if it does...
         raiseifnot(self._conn, "Attempting to kill with no active query connection")
@@ -269,24 +276,35 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         else:
             raise UnsupportedKillException("No kill support for dialect=%s" % dialect)
 
-    def build_select(self):
+    def _format_query(self):
+        return sqlformat(sqla_compile(self.select))
+
+    def _get_bind(self):
+        ds = self.get_datasource()
+        raiseifnot(
+            ds.metadata.bind,
+            'Datasource "%s" does not have metadata.bind set' % ds.name,
+        )
+        return ds.metadata.bind
+
+    def _build_select(self):
         # https://docs.sqlalchemy.org/en/latest/core/selectable.html
         select = sa.select()
 
-        join = self.get_join()
+        join = self._get_join()
         select = select.select_from(join)
 
         for dimension in self.dimensions:
-            select = select.column(self.get_field_expression(dimension))
+            select = select.column(self._get_field_expression(dimension))
 
         for metric in self.metrics:
-            select = select.column(self.get_field_expression(metric))
+            select = select.column(self._get_field_expression(metric))
 
-        select = self.add_where(select)
-        select = self.add_group_by(select)
+        select = self._add_where(select)
+        select = self._add_group_by(select)
         return select
 
-    def get_field(self, name):
+    def _get_field(self, name):
         if name in self.metrics:
             return self.metrics[name]
         elif name in self.dimensions:
@@ -296,7 +314,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                 return row[0]
         raise ZillionException("Could not find field for DataSourceQuery: %s" % name)
 
-    def column_for_field(self, field, table=None):
+    def _column_for_field(self, field, table=None):
         ts = self.table_set
 
         if table is not None:
@@ -309,7 +327,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             elif field in get_table_fields(
                 ts.datasource.get_table(ts.ds_table.fullname)
             ):
-                column = self.column_for_field(field, table=ts.ds_table)
+                column = self._column_for_field(field, table=ts.ds_table)
             else:
                 raise ZillionException(
                     "Could not determine column for field %s" % field
@@ -318,12 +336,12 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         self.field_map[field] = column
         return column
 
-    def get_field_expression(self, field, label=True):
-        column = self.column_for_field(field)
-        field_obj = self.get_field(field)
+    def _get_field_expression(self, field, label=True):
+        column = self._column_for_field(field)
+        field_obj = self._get_field(field)
         return field_obj.get_ds_expression(column, label=label)
 
-    def get_join(self):
+    def _get_join(self):
         ts = self.table_set
         sqla_join = None
         last_table = None
@@ -345,56 +363,38 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
                 conditions = []
                 for field in join_part.join_fields:
-                    last_column = self.column_for_field(field, table=last_table)
-                    column = self.column_for_field(field, table=table)
+                    last_column = self._column_for_field(field, table=last_table)
+                    column = self._column_for_field(field, table=table)
                     conditions.append(column == last_column)
                 sqla_join = sqla_join.outerjoin(table, sa.and_(*tuple(conditions)))
                 last_table = table
 
         return sqla_join
 
-    def add_where(self, select):
+    def _add_where(self, select):
         if not self.criteria:
             return select
         for row in self.criteria:
             field = row[0]
-            expr = self.get_field_expression(field.name, label=False)
+            expr = self._get_field_expression(field.name, label=False)
             clause = sa.and_(get_sqla_clause(expr, row))
             select = select.where(clause)
         return select
 
-    def add_group_by(self, select):
+    def _add_group_by(self, select):
         if not self.dimensions:
             return select
         return select.group_by(
             *[sa.text(str(x)) for x in range(1, len(self.dimensions) + 1)]
         )
 
-    def add_order_by(self, select, asc=True):
+    def _add_order_by(self, select, asc=True):
         if not self.dimensions:
             return select
         order_func = sa.asc
         if not asc:
             order_func = sa.desc
         return select.order_by(*[order_func(sa.text(x)) for x in self.dimensions])
-
-    def covers_metric(self, metric):
-        if metric in self.table_set.get_covered_metrics(self.warehouse):
-            return True
-        return False
-
-    def covers_field(self, field):
-        if field in self.table_set.get_covered_fields():
-            return True
-        return False
-
-    def add_metric(self, name):
-        raiseifnot(
-            self.covers_metric(name), "Metric %s can not be covered by query" % name
-        )
-        self.table_set.target_fields.add(name)
-        self.metrics[name] = self.table_set.datasource.get_metric(name)
-        self.select = self.select.column(self.get_field_expression(name))
 
 
 class DataSourceQuerySummary(PrintMixin):
@@ -408,11 +408,8 @@ class DataSourceQuerySummary(PrintMixin):
         self.duration = round(duration, 4)
         self.rowcount = len(data)
 
-    def format_query(self):
-        return sqlformat(sqla_compile(self.select))
-
     def format(self):
-        sql = self.format_query()
+        sql = self._format_query()
         parts = [
             "%d rows in %.4f seconds" % (self.rowcount, self.duration),
             "Datasource: %s" % self.datasource_name,
@@ -421,6 +418,9 @@ class DataSourceQuerySummary(PrintMixin):
             "\n%s" % sql,
         ]
         return "\n".join(parts)
+
+    def _format_query(self):
+        return sqlformat(sqla_compile(self.select))
 
 
 class DataSourceQueryResult(PrintMixin):
@@ -447,7 +447,7 @@ class BaseCombinedResult:
         self.primary_ds_dimensions = (
             orderedsetify(primary_ds_dimensions) if primary_ds_dimensions else []
         )
-        self.ds_dimensions, self.ds_metrics = self.get_fields()
+        self.ds_dimensions, self.ds_metrics = self._get_fields()
         self.create_table()
         self.load_table()
 
@@ -469,10 +469,10 @@ class BaseCombinedResult:
     def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
         raise NotImplementedError
 
-    def get_row_hash(self, row):
+    def _get_row_hash(self, row):
         return hash(row[: len(self.primary_ds_dimensions)])
 
-    def get_fields(self):
+    def _get_fields(self):
         dimensions = OrderedDict()
         metrics = OrderedDict()
 
@@ -489,8 +489,8 @@ class BaseCombinedResult:
 
         return dimensions, metrics
 
-    def get_field_names(self):
-        dims, metrics = self.get_fields()
+    def _get_field_names(self):
+        dims, metrics = self._get_fields()
         return list(dims.keys()) + list(metrics.keys())
 
 
@@ -532,177 +532,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             self.cursor.execute(index_sql)
         self.conn.commit()
 
-    def get_bulk_insert_sql(self, rows):
-        columns = [k for k in rows[0].keys()]
-        placeholder = "(%s)" % (", ".join(["?"] * (1 + len(columns))))
-        columns_clause = "row_hash, " + ", ".join(columns)
-
-        sql = "INSERT INTO %s (%s) VALUES %s" % (
-            self.table_name,
-            columns_clause,
-            placeholder,
-        )
-
-        update_clauses = []
-        for k in columns:
-            if k in self.primary_ds_dimensions:
-                continue
-            update_clauses.append("%s=excluded.%s" % (k, k))
-
-        if update_clauses:
-            update_clause = " ON CONFLICT(row_hash) DO UPDATE SET " + ", ".join(
-                update_clauses
-            )
-            sql = sql + update_clause
-
-        values = []
-        for row in rows:
-            row_values = [self.get_row_hash(row)]
-            for value in row.values():
-                # Note: sqlite cant handle Decimal values. Alternative approach:
-                # https://stackoverflow.com/questions/6319409/how-to-convert-python-decimal-to-sqlite-numeric
-                if isinstance(value, decimal.Decimal):
-                    value = float(value)
-                row_values.append(value)
-            values.append(row_values)
-
-        return escape_string(sql), values
-
     def load_table(self):
         for qr in self.ds_query_results:
             for rows in chunks(qr.data, zillion_config["LOAD_TABLE_CHUNK_SIZE"]):
-                insert_sql, values = self.get_bulk_insert_sql(rows)
+                insert_sql, values = self._get_bulk_insert_sql(rows)
                 self.cursor.executemany(insert_sql, values)
             self.conn.commit()
-
-    def select_all(self):
-        qr = self.cursor.execute("SELECT * FROM %s" % self.table_name)
-        return [OrderedDict(row) for row in qr.fetchall()]
-
-    def get_final_select_sql(self, columns, dimension_aliases):
-        columns_clause = ", ".join(columns)
-        order_clause = "1"
-        if dimension_aliases:
-            order_clause = ", ".join(["%s ASC" % d for d in dimension_aliases])
-        sql = "SELECT %s FROM %s GROUP BY row_hash ORDER BY %s" % (
-            columns_clause,
-            self.table_name,
-            order_clause,
-        )
-        info("\n" + sqlformat(sql))
-        return sql
-
-    def apply_row_filters(self, df, row_filters, metrics, dimensions):
-        filter_parts = []
-        for row_filter in row_filters:
-            field, op, value = row_filter
-            raiseifnot(
-                (field in metrics) or (field in dimensions),
-                'Row filter field "%s" is not in result table' % field,
-            )
-            raiseifnot(op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op)
-            filter_parts.append("(%s %s %s)" % (field, op, value))
-        return df.query(" and ".join(filter_parts))
-
-    def get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavgs):
-        # https://stackoverflow.com/questions/36489576/why-does-concatenation-of-dataframes-get-exponentially-slower
-        level_aggrs = [df]
-        dim_names = list(dimensions.keys())
-
-        for metric_name, weighting_metric in wavgs:
-            # TODO: how does this behave if weights are missing?
-            wavg = lambda x: np.average(x, weights=df.loc[x.index, weighting_metric])
-            aggrs[metric_name] = wavg
-
-        for level in range(rollup):
-            if (level + 1) == len(dimensions):
-                # Unnecessary to rollup at the most granular level
-                break
-
-            grouped = df.groupby(level=list(range(0, level + 1)))
-            level_aggr = grouped.agg(aggrs, skipna=True)
-
-            # for the remaining levels, set index cols to ROLLUP_INDEX_LABEL
-            if level != (len(dimensions) - 1):
-                new_index_dims = []
-                for dim in dim_names[level + 1 :]:
-                    level_aggr[dim] = ROLLUP_INDEX_LABEL
-                    new_index_dims.append(dim)
-                level_aggr = level_aggr.set_index(new_index_dims, append=True)
-
-            level_aggrs.append(level_aggr)
-
-        df = pd.concat(level_aggrs, sort=False, copy=False)
-        df.sort_index(inplace=True)
-        return df
-
-    def apply_rollup(self, df, rollup, metrics, dimensions):
-        raiseifnot(dimensions, "Can not rollup without dimensions")
-        aggrs = {}
-        wavgs = []
-
-        def wavg(avg_name, weight_name):
-            d = df[avg_name]
-            w = df[weight_name]
-            try:
-                return (d * w).sum() / w.sum()
-            except ZeroDivisionError:
-                return d.mean()  # Return mean if there are no weights
-
-        for metric in metrics.values():
-            if metric.weighting_metric:
-                wavgs.append((metric.name, metric.weighting_metric))
-                continue
-
-            aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
-                metric.aggregation, metric.aggregation
-            )
-            aggrs[metric.name] = aggr_func
-
-        aggr = df.agg(aggrs, skipna=True)
-        for metric_name, weighting_metric in wavgs:
-            aggr[metric_name] = wavg(metric_name, weighting_metric)
-
-        apply_totals = True
-        if rollup != ROLLUP_TOTALS:
-            df = self.get_multi_rollup_df(df, rollup, dimensions, aggrs, wavgs)
-            if rollup != len(dimensions):
-                apply_totals = False
-
-        if apply_totals:
-            totals_rollup_index = (
-                (ROLLUP_INDEX_LABEL,) * len(dimensions)
-                if len(dimensions) > 1
-                else ROLLUP_INDEX_LABEL
-            )
-            with pd.option_context("mode.chained_assignment", None):
-                df.at[totals_rollup_index, :] = aggr
-
-        return df
-
-    def apply_technicals(self, df, technicals, rounding):
-        for metric, tech in technicals.items():
-            result = tech.apply(df, metric)
-
-            if tech.type == TechnicalTypes.BOLL:
-                raiseifnot(
-                    len(result) == 2,
-                    "Expected two items in %s technical result" % tech.type,
-                )
-                lower = metric + "_lower"
-                upper = metric + "_upper"
-                if metric in rounding:
-                    # This adds some extra columns for the bounds, so we use
-                    # the same rounding as the root metric if applicable.
-                    df[lower] = round(result[0], rounding[metric])
-                    df[upper] = round(result[1], rounding[metric])
-                else:
-                    df[lower] = result[0]
-                    df[upper] = result[1]
-            else:
-                df[metric] = result
-
-        return df
 
     def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
         start = time.time()
@@ -738,18 +573,18 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 )
             )
 
-        sql = self.get_final_select_sql(columns, dimension_aliases)
+        sql = self._get_final_select_sql(columns, dimension_aliases)
 
         df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
         if row_filters:
-            df = self.apply_row_filters(df, row_filters, metrics, dimensions)
+            df = self._apply_row_filters(df, row_filters, metrics, dimensions)
 
         if technicals:
-            df = self.apply_technicals(df, technicals, rounding)
+            df = self._apply_technicals(df, technicals, rounding)
 
         if rollup:
-            df = self.apply_rollup(df, rollup, metrics, dimensions)
+            df = self._apply_rollup(df, rollup, metrics, dimensions)
 
         if rounding:
             df = df.round(rounding)
@@ -766,6 +601,171 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         self.cursor.execute(drop_sql)
         self.conn.commit()
         self.conn.close()
+
+    def _select_all(self):
+        qr = self.cursor.execute("SELECT * FROM %s" % self.table_name)
+        return [OrderedDict(row) for row in qr.fetchall()]
+
+    def _get_final_select_sql(self, columns, dimension_aliases):
+        columns_clause = ", ".join(columns)
+        order_clause = "1"
+        if dimension_aliases:
+            order_clause = ", ".join(["%s ASC" % d for d in dimension_aliases])
+        sql = "SELECT %s FROM %s GROUP BY row_hash ORDER BY %s" % (
+            columns_clause,
+            self.table_name,
+            order_clause,
+        )
+        info("\n" + sqlformat(sql))
+        return sql
+
+    def _get_bulk_insert_sql(self, rows):
+        columns = [k for k in rows[0].keys()]
+        placeholder = "(%s)" % (", ".join(["?"] * (1 + len(columns))))
+        columns_clause = "row_hash, " + ", ".join(columns)
+
+        sql = "INSERT INTO %s (%s) VALUES %s" % (
+            self.table_name,
+            columns_clause,
+            placeholder,
+        )
+
+        update_clauses = []
+        for k in columns:
+            if k in self.primary_ds_dimensions:
+                continue
+            update_clauses.append("%s=excluded.%s" % (k, k))
+
+        if update_clauses:
+            update_clause = " ON CONFLICT(row_hash) DO UPDATE SET " + ", ".join(
+                update_clauses
+            )
+            sql = sql + update_clause
+
+        values = []
+        for row in rows:
+            row_values = [self._get_row_hash(row)]
+            for value in row.values():
+                # Note: sqlite cant handle Decimal values. Alternative approach:
+                # https://stackoverflow.com/questions/6319409/how-to-convert-python-decimal-to-sqlite-numeric
+                if isinstance(value, decimal.Decimal):
+                    value = float(value)
+                row_values.append(value)
+            values.append(row_values)
+
+        return escape_string(sql), values
+
+    def _apply_row_filters(self, df, row_filters, metrics, dimensions):
+        filter_parts = []
+        for row_filter in row_filters:
+            field, op, value = row_filter
+            raiseifnot(
+                (field in metrics) or (field in dimensions),
+                'Row filter field "%s" is not in result table' % field,
+            )
+            raiseifnot(op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op)
+            filter_parts.append("(%s %s %s)" % (field, op, value))
+        return df.query(" and ".join(filter_parts))
+
+    def _get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavgs):
+        # https://stackoverflow.com/questions/36489576/why-does-concatenation-of-dataframes-get-exponentially-slower
+        level_aggrs = [df]
+        dim_names = list(dimensions.keys())
+
+        for metric_name, weighting_metric in wavgs:
+            # TODO: how does this behave if weights are missing?
+            wavg = lambda x: np.average(x, weights=df.loc[x.index, weighting_metric])
+            aggrs[metric_name] = wavg
+
+        for level in range(rollup):
+            if (level + 1) == len(dimensions):
+                # Unnecessary to rollup at the most granular level
+                break
+
+            grouped = df.groupby(level=list(range(0, level + 1)))
+            level_aggr = grouped.agg(aggrs, skipna=True)
+
+            # for the remaining levels, set index cols to ROLLUP_INDEX_LABEL
+            if level != (len(dimensions) - 1):
+                new_index_dims = []
+                for dim in dim_names[level + 1 :]:
+                    level_aggr[dim] = ROLLUP_INDEX_LABEL
+                    new_index_dims.append(dim)
+                level_aggr = level_aggr.set_index(new_index_dims, append=True)
+
+            level_aggrs.append(level_aggr)
+
+        df = pd.concat(level_aggrs, sort=False, copy=False)
+        df.sort_index(inplace=True)
+        return df
+
+    def _apply_rollup(self, df, rollup, metrics, dimensions):
+        raiseifnot(dimensions, "Can not rollup without dimensions")
+        aggrs = {}
+        wavgs = []
+
+        def wavg(avg_name, weight_name):
+            d = df[avg_name]
+            w = df[weight_name]
+            try:
+                return (d * w).sum() / w.sum()
+            except ZeroDivisionError:
+                return d.mean()  # Return mean if there are no weights
+
+        for metric in metrics.values():
+            if metric.weighting_metric:
+                wavgs.append((metric.name, metric.weighting_metric))
+                continue
+
+            aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
+                metric.aggregation, metric.aggregation
+            )
+            aggrs[metric.name] = aggr_func
+
+        aggr = df.agg(aggrs, skipna=True)
+        for metric_name, weighting_metric in wavgs:
+            aggr[metric_name] = wavg(metric_name, weighting_metric)
+
+        apply_totals = True
+        if rollup != ROLLUP_TOTALS:
+            df = self._get_multi_rollup_df(df, rollup, dimensions, aggrs, wavgs)
+            if rollup != len(dimensions):
+                apply_totals = False
+
+        if apply_totals:
+            totals_rollup_index = (
+                (ROLLUP_INDEX_LABEL,) * len(dimensions)
+                if len(dimensions) > 1
+                else ROLLUP_INDEX_LABEL
+            )
+            with pd.option_context("mode.chained_assignment", None):
+                df.at[totals_rollup_index, :] = aggr
+
+        return df
+
+    def _apply_technicals(self, df, technicals, rounding):
+        for metric, tech in technicals.items():
+            result = tech.apply(df, metric)
+
+            if tech.type == TechnicalTypes.BOLL:
+                raiseifnot(
+                    len(result) == 2,
+                    "Expected two items in %s technical result" % tech.type,
+                )
+                lower = metric + "_lower"
+                upper = metric + "_upper"
+                if metric in rounding:
+                    # This adds some extra columns for the bounds, so we use
+                    # the same rounding as the root metric if applicable.
+                    df[lower] = round(result[0], rounding[metric])
+                    df[upper] = round(result[1], rounding[metric])
+                else:
+                    df[lower] = result[0]
+                    df[upper] = result[1]
+            else:
+                df[metric] = result
+
+        return df
 
 
 class Report(ExecutionStateMixin):
@@ -834,23 +834,23 @@ class Report(ExecutionStateMixin):
         self.ds_dimensions = OrderedDict()
 
         for metric in self.metrics.values():
-            self.add_ds_fields(metric)
+            self._add_ds_fields(metric)
 
         for dim in self.dimensions.values():
-            self.add_ds_fields(dim)
+            self._add_ds_fields(dim)
 
-        self.check_required_grain()
-        self.queries = self.build_ds_queries()
+        self._check_required_grain()
+        self.queries = self._build_ds_queries()
         self.combined_query = None
         self.result = None
 
         super().__init__()
-        self.set_state(ExecutionState.READY)
+        self._set_state(ExecutionState.READY)
         dbg("Report init took %.3fs" % (time.time() - start))
 
     def get_params(self):
         used_datasources = list({q.get_datasource_name() for q in self.queries})
-        datasources = [ds.get_params() for ds in self.warehouse.get_datasources()]
+        datasources = [ds.get_params() for ds in self.warehouse.datasources]
         return dict(
             kwargs=dict(
                 metrics=self._requested_metrics,
@@ -878,46 +878,88 @@ class Report(ExecutionStateMixin):
         self.spec_id = spec_id
         return spec_id
 
-    @classmethod
-    def load_params(cls, spec_id):
-        s = sa.select([ReportSpecs.c.params]).where(ReportSpecs.c.id == spec_id)
-        conn = zillion_engine.connect()
-        try:
-            result = conn.execute(s)
-            row = result.fetchone()
-            params = json.loads(row["params"])
-            return params
-        finally:
-            conn.close()
+    def execute(self):
+        start = time.time()
 
-    @classmethod
-    def from_params(cls, warehouse, params, adhoc_datasources=None):
-        used_dses = set(params.get("used_datasources", []))
-        wh_dses = warehouse.get_datasource_names()
-        all_dses = set(wh_dses) | set([x.name for x in (adhoc_datasources or [])])
-        if not used_dses.issubset(all_dses):
-            raise ReportException(
-                "Report requires datasources that are not present: %s Found: %s"
-                % (used_dses - all_dses, all_dses)
+        self._set_state(ExecutionState.QUERYING, assert_ready=True)
+
+        try:
+            query_results = self._execute_ds_queries(self.queries)
+            summaries = [x.summary for x in query_results]
+
+            self._raise_if_killed()
+            cr = self._create_combined_result(query_results)
+
+            try:
+                self._raise_if_killed()
+                final_result = cr.get_final_result(
+                    self.metrics,
+                    self.dimensions,
+                    self.row_filters,
+                    self.rollup,
+                    self.pivot,
+                )
+                diff = time.time() - start
+                self.result = ReportResult(final_result, diff, summaries)
+                return self.result
+            finally:
+                cr.clean_up()
+        finally:
+            self._set_state(
+                ExecutionState.READY, raise_if_killed=True, set_if_killed=True
             )
-        return Report(
-            warehouse, **params["kwargs"], adhoc_datasources=adhoc_datasources
-        )
 
-    @classmethod
-    def load(cls, warehouse, spec_id, adhoc_datasources=None):
-        params = cls.load_params(spec_id)
-        result = cls.from_params(warehouse, params, adhoc_datasources=adhoc_datasources)
-        return result
+    def kill(self, soft=False, raise_if_failed=False):
+        info("killing report %s" % self.uuid)
 
-    @classmethod
-    def delete(cls, spec_id):
-        s = ReportSpecs.delete().where(ReportSpecs.c.id == spec_id)
-        conn = zillion_engine.connect()
-        try:
-            result = conn.execute(s)
-        finally:
-            conn.close()
+        with self._get_lock():
+            if self._ready:
+                warn("kill called on report that isn't running")
+                return
+
+            if self._killed:
+                warn("kill called on report already being killed")
+                return
+
+            if soft:
+                self._set_state(ExecutionState.KILLED)
+                return
+
+            querying = self._querying  # grab state before changing it
+            self._set_state(ExecutionState.KILLED)
+
+            if querying:
+                dbg("attempting kill on %d report queries" % len(self.queries))
+                exceptions = []
+
+                for query in self.queries:
+                    try:
+                        query.kill()
+                    except Exception as e:
+                        st()
+                        setattr(e, "query", query)
+                        exceptions.append(e)
+
+                if exceptions:
+                    if raise_if_failed:
+                        raise FailedKillException(exceptions)
+                    else:
+                        warn("failed to kill some queries: %s" % exceptions)
+
+    def get_grain(self):
+        if not (self.ds_dimensions or self.criteria):
+            return None
+        grain = set()
+        if self.ds_dimensions:
+            grain = grain | self.ds_dimensions.keys()
+        if self.criteria:
+            grain = grain | {x[0].name for x in self.criteria}
+        return grain
+
+    def get_dimension_grain(self):
+        if not self.dimensions:
+            return None
+        return set(self.dimensions.keys())
 
     def _get_fields_dict(self, names, field_type, adhoc_datasources=None):
         d = OrderedDict()
@@ -948,7 +990,7 @@ class Report(ExecutionStateMixin):
             final_criteria.append(row)
         return final_criteria
 
-    def add_ds_fields(self, field):
+    def _add_ds_fields(self, field):
         formula_fields, _ = field.get_formula_fields(
             self.warehouse, adhoc_fms=self.adhoc_datasources
         )
@@ -993,20 +1035,20 @@ class Report(ExecutionStateMixin):
                     "Could not find field %s in warehouse" % formula_field
                 )
 
-    def get_query_label(self, query_label):
+    def _get_query_label(self, query_label):
         return "Report: %s | Query: %s" % (str(self.uuid), query_label)
 
-    def execute_ds_queries_sequential(self, queries):
+    def _execute_ds_queries_sequential(self, queries):
         results = []
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
         for i, query in enumerate(queries):
-            self.raise_if_killed()
-            label = self.get_query_label("%s / %s" % (i + 1, len(queries)))
+            self._raise_if_killed()
+            label = self._get_query_label("%s / %s" % (i + 1, len(queries)))
             result = query.execute(timeout=timeout, label=label)
             results.append(result)
         return results
 
-    def execute_ds_queries_multithread(self, queries):
+    def _execute_ds_queries_multithread(self, queries):
         # TODO: If any query times out, the entire report fails. It might be
         # better if partial results could be returned.
         finished = {}
@@ -1016,7 +1058,7 @@ class Report(ExecutionStateMixin):
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures_map = {}
             for i, query in enumerate(queries):
-                label = self.get_query_label("%s / %s" % (i + 1, len(queries)))
+                label = self._get_query_label("%s / %s" % (i + 1, len(queries)))
                 future = executor.submit(query.execute, timeout=timeout, label=label)
                 futures_map[future] = query
 
@@ -1027,100 +1069,18 @@ class Report(ExecutionStateMixin):
 
         return finished.values()
 
-    def execute_ds_queries(self, queries):
+    def _execute_ds_queries(self, queries):
         mode = zillion_config["DATASOURCE_QUERY_MODE"]
         dbg("Executing %s datasource queries in %s mode" % (len(queries), mode))
         start = time.time()
         if mode == DataSourceQueryModes.SEQUENTIAL:
-            return self.execute_ds_queries_sequential(queries)
+            return self._execute_ds_queries_sequential(queries)
         if mode == DataSourceQueryModes.MULTITHREAD:
-            return self.execute_ds_queries_multithread(queries)
+            return self._execute_ds_queries_multithread(queries)
         dbg("DataSource queries took %.3fs" % (time.time() - start))
         raise ZillionException("Invalid DATASOURCE_QUERY_MODE: %s" % mode)
 
-    def execute(self):
-        start = time.time()
-
-        self.set_state(ExecutionState.QUERYING, assert_ready=True)
-
-        try:
-            query_results = self.execute_ds_queries(self.queries)
-            summaries = [x.summary for x in query_results]
-
-            self.raise_if_killed()
-            cr = self.create_combined_result(query_results)
-
-            try:
-                self.raise_if_killed()
-                final_result = cr.get_final_result(
-                    self.metrics,
-                    self.dimensions,
-                    self.row_filters,
-                    self.rollup,
-                    self.pivot,
-                )
-                diff = time.time() - start
-                self.result = ReportResult(final_result, diff, summaries)
-                return self.result
-            finally:
-                cr.clean_up()
-        finally:
-            self.set_state(
-                ExecutionState.READY, raise_if_killed=True, set_if_killed=True
-            )
-
-    def kill(self, soft=False, raise_if_failed=False):
-        info("killing report %s" % self.uuid)
-
-        with self.get_lock():
-            if self.ready:
-                warn("kill called on report that isn't running")
-                return
-
-            if self.killed:
-                warn("kill called on report already being killed")
-                return
-
-            if soft:
-                self.set_state(ExecutionState.KILLED)
-                return
-
-            querying = self.querying  # grab state before changing it
-            self.set_state(ExecutionState.KILLED)
-
-            if querying:
-                dbg("attempting kill on %d report queries" % len(self.queries))
-                exceptions = []
-
-                for query in self.queries:
-                    try:
-                        query.kill()
-                    except Exception as e:
-                        setattr(e, "query", query)
-                        exceptions.append(e)
-
-                if exceptions:
-                    if raise_if_failed:
-                        raise FailedKillException(exceptions)
-                    else:
-                        warn("failed to kill some queries: %s" % exceptions)
-
-    def get_grain(self):
-        if not (self.ds_dimensions or self.criteria):
-            return None
-        grain = set()
-        if self.ds_dimensions:
-            grain = grain | self.ds_dimensions.keys()
-        if self.criteria:
-            grain = grain | {x[0].name for x in self.criteria}
-        return grain
-
-    def get_dimension_grain(self):
-        if not self.dimensions:
-            return None
-        return set(self.dimensions.keys())
-
-    def check_required_grain(self):
+    def _check_required_grain(self):
         # NOTE: this only checks against dimension grain on the field level.
         # It does not check column-level grain requirements.
         # Need to make note of that in required_grain docs
@@ -1147,7 +1107,7 @@ class Report(ExecutionStateMixin):
         if grain_errors:
             raise UnsupportedGrainException(grain_errors)
 
-    def build_ds_queries(self):
+    def _build_ds_queries(self):
         grain = self.get_grain()
         dim_grain = self.get_dimension_grain()
         grain_errors = []
@@ -1207,7 +1167,7 @@ class Report(ExecutionStateMixin):
 
         return queries
 
-    def create_combined_result(self, ds_query_results):
+    def _create_combined_result(self, ds_query_results):
         start = time.time()
         result = SQLiteMemoryCombinedResult(
             self.warehouse,
@@ -1217,6 +1177,47 @@ class Report(ExecutionStateMixin):
         )
         dbg("Combined result took %.3fs" % (time.time() - start))
         return result
+
+    @classmethod
+    def from_params(cls, warehouse, params, adhoc_datasources=None):
+        used_dses = set(params.get("used_datasources", []))
+        wh_dses = warehouse.datasource_names
+        all_dses = set(wh_dses) | set([x.name for x in (adhoc_datasources or [])])
+        if not used_dses.issubset(all_dses):
+            raise ReportException(
+                "Report requires datasources that are not present: %s Found: %s"
+                % (used_dses - all_dses, all_dses)
+            )
+        return Report(
+            warehouse, **params["kwargs"], adhoc_datasources=adhoc_datasources
+        )
+
+    @classmethod
+    def load(cls, warehouse, spec_id, adhoc_datasources=None):
+        params = cls._load_params(spec_id)
+        result = cls.from_params(warehouse, params, adhoc_datasources=adhoc_datasources)
+        return result
+
+    @classmethod
+    def delete(cls, spec_id):
+        s = ReportSpecs.delete().where(ReportSpecs.c.id == spec_id)
+        conn = zillion_engine.connect()
+        try:
+            result = conn.execute(s)
+        finally:
+            conn.close()
+
+    @classmethod
+    def _load_params(cls, spec_id):
+        s = sa.select([ReportSpecs.c.params]).where(ReportSpecs.c.id == spec_id)
+        conn = zillion_engine.connect()
+        try:
+            result = conn.execute(s)
+            row = result.fetchone()
+            params = json.loads(row["params"])
+            return params
+        finally:
+            conn.close()
 
 
 class ReportResult(PrintMixin):

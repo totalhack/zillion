@@ -56,21 +56,21 @@ class TableSet(PrintMixin):
 
     @initializer
     def __init__(self, datasource, ds_table, join, grain, target_fields):
-        self.adhoc_datasources = []
+        self._adhoc_datasources = []
         if isinstance(self.datasource, AdHocDataSource):
-            self.adhoc_datasources = [self.datasource]
+            self._adhoc_datasources = [self.datasource]
 
     def get_covered_metrics(self, wh):
         # Note: we pass in WH instead of DS here since the metric/dim may only
         # be defined at the WH level even if it exists in the DS
         covered_metrics = get_table_metrics(
-            wh, self.ds_table, adhoc_fms=self.adhoc_datasources
+            wh, self.ds_table, adhoc_fms=self._adhoc_datasources
         )
         return covered_metrics
 
     def get_covered_fields(self):
         covered_fields = get_table_fields(
-            self.ds_table, adhoc_fms=self.adhoc_datasources
+            self.ds_table, adhoc_fms=self._adhoc_datasources
         )
         return covered_fields
 
@@ -175,7 +175,7 @@ def joins_from_path(ds, path, field_map=None):
             if i == (len(path) - 1):
                 break
             start, end = path[i], path[i + 1]
-            edge = ds.graph.edges[start, end]
+            edge = ds._graph.edges[start, end]
             join_part = JoinPart(ds, [start, end], edge["join_fields"])
             join_parts.append(join_part)
     return Join(join_parts, field_map=field_map)
@@ -200,10 +200,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
         reflect=False,
         skip_conversion_fields=False,
     ):
-        self.name = DataSource.check_or_create_name(name)
+        self.name = DataSource._check_or_create_name(name)
         self._metrics = {}
         self._dimensions = {}
-        self.graph = None
+        self._graph = None
 
         config = config or {}
         if config:
@@ -224,7 +224,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         )
 
         if url:
-            self.check_url(url)
+            self._check_url(url)
             self.metadata = sa.MetaData()
             self.metadata.bind = sa.create_engine(url)
         else:
@@ -238,30 +238,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 "MetaData object must have a bind (engine) attribute specified",
             )
 
-        self.reflect = reflect
+        self._reflect = reflect
         if reflect:
-            self.reflect_metadata()
+            self._reflect_metadata()
 
         self.apply_config(config, skip_conversion_fields=skip_conversion_fields)
-
-    @classmethod
-    def check_or_create_name(cls, name):
-        if not name:
-            datestr = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
-            name = "zillion_ds_%s_%s" % (datestr, random.randint(0, 1e9))
-            return name
-        raiseifnot(
-            set(name) <= DATASOURCE_ALLOWABLE_CHARS,
-            (
-                'DataSource name "%s" has invalid characters. Allowed: %s'
-                % (name, DATASOURCE_ALLOWABLE_CHARS_STR)
-            ),
-        )
-        return name
-
-    @classmethod
-    def from_config(cls, name, config):
-        return cls(name, reflect=True, config=config)
 
     @property
     def metric_tables(self):
@@ -279,29 +260,160 @@ class DataSource(FieldManagerMixin, PrintMixin):
             if table.zillion and table.zillion.type == TableTypes.DIMENSION
         }
 
+    def has_table(self, table):
+        return table.fullname in self.metadata.tables
+
+    def get_table(self, fullname):
+        return self.metadata.tables[fullname]
+
+    def get_tables_with_field(self, field_name, table_type=None):
+        tables = []
+        for table in self.metadata.tables.values():
+            if not table.zillion:
+                continue
+            if table_type and table.zillion.type != table_type:
+                continue
+            if field_name in get_table_fields(table):
+                tables.append(table)
+        return tables
+
+    def get_metric_tables_with_metric(self, metric_name):
+        return self.get_tables_with_field(metric_name, table_type=TableTypes.METRIC)
+
+    def get_dim_tables_with_dim(self, dim_name):
+        return self.get_tables_with_field(dim_name, table_type=TableTypes.DIMENSION)
+
+    def get_columns_with_field(self, field_name):
+        columns = []
+        for table in self.metadata.tables.values():
+            if not table.zillion:
+                continue
+            for col in table.c:
+                if not (getattr(col, "zillion", None) and col.zillion.active):
+                    continue
+                if field_name in col.zillion.get_field_names():
+                    columns.append(col)
+        return columns
+
+    def apply_config(self, config, skip_conversion_fields=False):
+        if config.get("tables", None):
+            self._apply_table_configs(config["tables"])
+
+        self._ensure_metadata_info()
+
+        if not skip_conversion_fields:
+            self._add_conversion_fields()
+
+        self._populate_fields(config)
+
+        self._build_graph()
+
+    def find_neighbor_tables(self, table):
+        neighbor_tables = []
+        fields = get_table_fields(table)
+
+        if table.zillion.type == TableTypes.METRIC:
+            # Find dimension tables whose primary key is contained in the
+            # metric table
+            for dim_table in self.dimension_tables.values():
+                dt_pk_fields = dim_table.zillion.primary_key
+                can_join = True
+                for field in dt_pk_fields:
+                    if field not in fields:
+                        can_join = False
+                        break
+                if can_join:
+                    neighbor_tables.append(NeighborTable(dim_table, dt_pk_fields))
+
+        # Add parent table if present
+        parent_name = table.zillion.parent
+        if parent_name:
+            parent = self.metadata.tables[parent_name]
+            pk_fields = parent.zillion.primary_key
+            for pk_field in pk_fields:
+                raiseifnot(
+                    pk_field in fields,
+                    (
+                        "Table %s is parent of %s but primary key %s is not in both"
+                        % (parent.fullname, table.fullname, pk_fields)
+                    ),
+                )
+            neighbor_tables.append(NeighborTable(parent, pk_fields))
+        return neighbor_tables
+
+    def find_descendent_tables(self, table):
+        return nx.descendants(self._graph, table.fullname)
+
+    def get_possible_joins(self, table, grain):
+        """This takes a given table (usually a metric table) and tries to find one or
+        more joins to each dimension of the grain. It's possible some of these
+        joins satisfy other parts of the grain too which leaves room for
+        consolidation, but it's also possible to have it generate independent,
+        non-overlapping joins to meet the grain.
+        """
+        raiseifnot(
+            self.has_table(table),
+            "Could not find table %s in datasource %s" % (table.fullname, self.name),
+        )
+
+        if not grain:
+            dbg("No grain specified, ignoring joins")
+            return None
+
+        possible_dim_joins = {}
+        for dimension in grain:
+            dim_joins = self._find_joins_to_dimension(table, dimension)
+            if not dim_joins:
+                dbg(
+                    "table %s can not satisfy dimension %s"
+                    % (table.fullname, dimension)
+                )
+                return None
+
+            possible_dim_joins[dimension] = dim_joins
+
+        possible_joins = self._consolidate_field_joins(grain, possible_dim_joins)
+        dbg("possible joins:")
+        dbg(possible_joins)
+        return possible_joins
+
+    def find_possible_table_sets(
+        self, ds_tables_with_field, field, grain, dimension_grain
+    ):
+        table_sets = []
+        for field_table in ds_tables_with_field:
+            if not table_field_allows_grain(field_table, field, dimension_grain):
+                continue
+
+            if (not grain) or grain.issubset(get_table_fields(field_table)):
+                table_set = TableSet(self, field_table, None, grain, set([field]))
+                table_sets.append(table_set)
+                dbg("full grain (%s) covered in %s" % (grain, field_table.fullname))
+                continue
+
+            joins = self.get_possible_joins(field_table, grain)
+            if not joins:
+                dbg("table %s can not join at grain %s" % (field_table.fullname, grain))
+                continue
+
+            dbg(
+                "adding %d possible join(s) to table %s"
+                % (len(joins), field_table.fullname)
+            )
+            for join, covered_dims in joins.items():
+                table_set = TableSet(self, field_table, join, grain, set([field]))
+                table_sets.append(table_set)
+
+        return table_sets
+
     def get_dialect_name(self):
         return self.metadata.bind.dialect.name
-
-    def check_url(self, url):
-        url = make_url(url)
-        if url.get_dialect().name == "sqlite":
-            raiseifnot(
-                os.path.isfile(url.database),
-                "SQLite DB does not exist: %s" % url.database,
-            )
-
-    def reflect_metadata(self):
-        dialect = self.get_dialect_name()
-        schemas = get_schemas(self.metadata.bind)
-        schemas = filter_dialect_schemas(schemas, dialect)
-        for schema in schemas:
-            self.metadata.reflect(schema=schema, views=True)
 
     def get_params(self):
         # TODO: does this need to store entire config?
         # TODO: is the metadata URL exposing sensitive info?
         return dict(
-            name=self.name, url=str(self.metadata.bind.url), reflect=self.reflect
+            name=self.name, url=str(self.metadata.bind.url), reflect=self._reflect
         )
 
     def print_info(self):
@@ -330,7 +442,22 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 print(format_msg(column.info["zillion"], label=None, indent=4))
 
-    def apply_table_configs(self, table_configs):
+    def _check_url(self, url):
+        url = make_url(url)
+        if url.get_dialect().name == "sqlite":
+            raiseifnot(
+                os.path.isfile(url.database),
+                "SQLite DB does not exist: %s" % url.database,
+            )
+
+    def _reflect_metadata(self):
+        dialect = self.get_dialect_name()
+        schemas = get_schemas(self.metadata.bind)
+        schemas = filter_dialect_schemas(schemas, dialect)
+        for schema in schemas:
+            self.metadata.reflect(schema=schema, views=True)
+
+    def _apply_table_configs(self, table_configs):
         """Take configs and apply them to the table/column metadata"""
 
         for table in self.metadata.tables.values():
@@ -376,7 +503,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 zillion_info["fields"] = zillion_info.get("fields", [field_name])
                 column.info["zillion"] = ColumnInfo.create(zillion_info)
 
-    def ensure_metadata_info(self):
+    def _ensure_metadata_info(self):
         """Ensure that all zillion info are of proper type"""
         for table in self.metadata.tables.values():
             zillion_info = table.info.get("zillion", None)
@@ -432,7 +559,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 "Table %s has no columns with zillion info defined" % table.fullname,
             )
 
-    def add_conversion_fields(self):
+    def _add_conversion_fields(self):
         for table in self.metadata.tables.values():
             if not table.zillion:
                 continue
@@ -487,7 +614,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         else:
                             self.add_metric(field_def)
 
-    def add_metric_column(self, column, field):
+    def _add_metric_column(self, column, field):
         if not self.has_metric(field):
             dbg(
                 "Adding metric %s from column %s.%s"
@@ -499,7 +626,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             )
             self.add_metric(metric)
 
-    def add_dimension_column(self, column, field):
+    def _add_dimension_column(self, column, field):
         if not self.has_dimension(field):
             dbg(
                 "Adding dimension %s from column %s.%s"
@@ -508,7 +635,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             dimension = Dimension(field, column.type)
             self.add_dimension(dimension)
 
-    def add_metric_table_fields(self, table):
+    def _add_metric_table_fields(self, table):
         for column in table.c:
             if not column.zillion:
                 continue
@@ -532,11 +659,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     else None
                 )
                 if is_probably_metric(column, formula=formula):
-                    self.add_metric_column(column, field)
+                    self._add_metric_column(column, field)
                 else:
-                    self.add_dimension_column(column, field)
+                    self._add_dimension_column(column, field)
 
-    def add_dimension_table_fields(self, table):
+    def _add_dimension_table_fields(self, table):
         for column in table.c:
             if not column.zillion:
                 continue
@@ -559,120 +686,39 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     # in the metrics/dimensions of the datasource.
                     continue
 
-                self.add_dimension_column(column, field)
+                self._add_dimension_column(column, field)
 
-    def populate_fields(self, config):
-        self.populate_global_fields(config, force=True)
+    def _populate_fields(self, config):
+        self._populate_global_fields(config, force=True)
 
         for table in self.metadata.tables.values():
             if not table.zillion:
                 continue
             if table.zillion.type == TableTypes.METRIC:
-                self.add_metric_table_fields(table)
+                self._add_metric_table_fields(table)
             elif table.zillion.type == TableTypes.DIMENSION:
-                self.add_dimension_table_fields(table)
+                self._add_dimension_table_fields(table)
             else:
                 raise ZillionException("Invalid table type: %s" % table.zillion.type)
 
-    def find_neighbor_tables(self, table):
-        neighbor_tables = []
-        fields = get_table_fields(table)
-
-        if table.zillion.type == TableTypes.METRIC:
-            # Find dimension tables whose primary key is contained in the
-            # metric table
-            for dim_table in self.dimension_tables.values():
-                dt_pk_fields = dim_table.zillion.primary_key
-                can_join = True
-                for field in dt_pk_fields:
-                    if field not in fields:
-                        can_join = False
-                        break
-                if can_join:
-                    neighbor_tables.append(NeighborTable(dim_table, dt_pk_fields))
-
-        # Add parent table if present
-        parent_name = table.zillion.parent
-        if parent_name:
-            parent = self.metadata.tables[parent_name]
-            pk_fields = parent.zillion.primary_key
-            for pk_field in pk_fields:
-                raiseifnot(
-                    pk_field in fields,
-                    (
-                        "Table %s is parent of %s but primary key %s is not in both"
-                        % (parent.fullname, table.fullname, pk_fields)
-                    ),
-                )
-            neighbor_tables.append(NeighborTable(parent, pk_fields))
-        return neighbor_tables
-
-    def build_graph(self):
+    def _build_graph(self):
         graph = nx.DiGraph()
-        self.graph = graph
+        self._graph = graph
         for table in self.metadata.tables.values():
             if not table.zillion:
                 continue
 
-            self.graph.add_node(table.fullname)
+            self._graph.add_node(table.fullname)
             neighbors = self.find_neighbor_tables(table)
             for neighbor in neighbors:
-                self.graph.add_node(neighbor.table.fullname)
-                self.graph.add_edge(
+                self._graph.add_node(neighbor.table.fullname)
+                self._graph.add_edge(
                     table.fullname,
                     neighbor.table.fullname,
                     join_fields=neighbor.join_fields,
                 )
 
-    def apply_config(self, config, skip_conversion_fields=False):
-        if config.get("tables", None):
-            self.apply_table_configs(config["tables"])
-
-        self.ensure_metadata_info()
-
-        if not skip_conversion_fields:
-            self.add_conversion_fields()
-
-        self.populate_fields(config)
-
-        self.build_graph()
-
-    def has_table(self, table):
-        return table.fullname in self.metadata.tables
-
-    def get_table(self, fullname):
-        return self.metadata.tables[fullname]
-
-    def get_tables_with_field(self, field_name, table_type=None):
-        tables = []
-        for table in self.metadata.tables.values():
-            if not table.zillion:
-                continue
-            if table_type and table.zillion.type != table_type:
-                continue
-            if field_name in get_table_fields(table):
-                tables.append(table)
-        return tables
-
-    def get_metric_tables_with_metric(self, metric_name):
-        return self.get_tables_with_field(metric_name, table_type=TableTypes.METRIC)
-
-    def get_dim_tables_with_dim(self, dim_name):
-        return self.get_tables_with_field(dim_name, table_type=TableTypes.DIMENSION)
-
-    def get_columns_with_field(self, field_name):
-        columns = []
-        for table in self.metadata.tables.values():
-            if not table.zillion:
-                continue
-            for col in table.c:
-                if not (getattr(col, "zillion", None) and col.zillion.active):
-                    continue
-                if field_name in col.zillion.get_field_names():
-                    columns.append(col)
-        return columns
-
-    def invert_field_joins(self, field_joins):
+    def _invert_field_joins(self, field_joins):
         """Take a map of fields to relevant joins and invert it"""
         join_fields = defaultdict(set)
         for field, joins in field_joins.items():
@@ -682,7 +728,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 join_fields[join].add(field)
         return join_fields
 
-    def populate_max_join_field_coverage(self, join_fields, grain):
+    def _populate_max_join_field_coverage(self, join_fields, grain):
         for join, covered_fields in join_fields.items():
             for field in grain:
                 if field in covered_fields:
@@ -691,7 +737,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 if field in all_covered_fields:
                     covered_fields.add(field)
 
-    def eliminate_redundant_joins(self, sorted_join_fields):
+    def _eliminate_redundant_joins(self, sorted_join_fields):
         joins_to_delete = set()
         for join, covered_fields in sorted_join_fields:
             if join in joins_to_delete:
@@ -721,7 +767,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         ]
         return sorted_join_fields
 
-    def find_join_combinations(self, sorted_join_fields, grain):
+    def _find_join_combinations(self, sorted_join_fields, grain):
         candidates = []
         for join_combo in powerset(sorted_join_fields):
             if not join_combo:
@@ -762,7 +808,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         return candidates
 
-    def choose_best_join_combination(self, candidates):
+    def _choose_best_join_combination(self, candidates):
         ordered = sorted(
             candidates, key=lambda x: len(iter_or([y[0].table_names for y in x]))
         )
@@ -773,14 +819,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
             join.add_fields(covered_fields)
         return join_fields
 
-    def consolidate_field_joins(self, grain, field_joins):
+    def _consolidate_field_joins(self, grain, field_joins):
         """This takes a mapping of fields to joins that satisfy that field
         and returns a minimized map of joins to fields satisfied by that join.
         """
 
         # Some preliminary shuffling of the inputs to support later logic
-        join_fields = self.invert_field_joins(field_joins)
-        self.populate_max_join_field_coverage(join_fields, grain)
+        join_fields = self._invert_field_joins(field_joins)
+        self._populate_max_join_field_coverage(join_fields, grain)
 
         # Sort by number of dims covered desc, number of tables involved asc
         sorted_join_fields = sorted(
@@ -794,12 +840,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
             join.add_fields(covered_fields)
             return {join: covered_fields}
 
-        sorted_join_fields = self.eliminate_redundant_joins(sorted_join_fields)
-        candidates = self.find_join_combinations(sorted_join_fields, grain)
-        join_fields = self.choose_best_join_combination(candidates)
+        sorted_join_fields = self._eliminate_redundant_joins(sorted_join_fields)
+        candidates = self._find_join_combinations(sorted_join_fields, grain)
+        join_fields = self._choose_best_join_combination(candidates)
         return join_fields
 
-    def find_joins_to_dimension(self, table, dimension):
+    def _find_joins_to_dimension(self, table, dimension):
         joins = []
 
         dim_columns = self.get_columns_with_field(dimension)
@@ -810,7 +856,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 paths = [[table.fullname]]
             else:
                 paths = nx.all_simple_paths(
-                    self.graph, table.fullname, column.table.fullname
+                    self._graph, table.fullname, column.table.fullname
                 )
 
             if not paths:
@@ -843,67 +889,24 @@ class DataSource(FieldManagerMixin, PrintMixin):
         dbg(joins)
         return joins
 
-    def get_possible_joins(self, table, grain):
-        """This takes a given table (usually a metric table) and tries to find one or
-        more joins to each dimension of the grain. It's possible some of these
-        joins satisfy other parts of the grain too which leaves room for
-        consolidation, but it's also possible to have it generate independent,
-        non-overlapping joins to meet the grain.
-        """
+    @classmethod
+    def from_config(cls, name, config):
+        return cls(name, reflect=True, config=config)
+
+    @classmethod
+    def _check_or_create_name(cls, name):
+        if not name:
+            datestr = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            name = "zillion_ds_%s_%s" % (datestr, random.randint(0, 1e9))
+            return name
         raiseifnot(
-            self.has_table(table),
-            "Could not find table %s in datasource %s" % (table.fullname, self.name),
+            set(name) <= DATASOURCE_ALLOWABLE_CHARS,
+            (
+                'DataSource name "%s" has invalid characters. Allowed: %s'
+                % (name, DATASOURCE_ALLOWABLE_CHARS_STR)
+            ),
         )
-
-        if not grain:
-            dbg("No grain specified, ignoring joins")
-            return None
-
-        possible_dim_joins = {}
-        for dimension in grain:
-            dim_joins = self.find_joins_to_dimension(table, dimension)
-            if not dim_joins:
-                dbg(
-                    "table %s can not satisfy dimension %s"
-                    % (table.fullname, dimension)
-                )
-                return None
-
-            possible_dim_joins[dimension] = dim_joins
-
-        possible_joins = self.consolidate_field_joins(grain, possible_dim_joins)
-        dbg("possible joins:")
-        dbg(possible_joins)
-        return possible_joins
-
-    def find_possible_table_sets(
-        self, ds_tables_with_field, field, grain, dimension_grain
-    ):
-        table_sets = []
-        for field_table in ds_tables_with_field:
-            if not table_field_allows_grain(field_table, field, dimension_grain):
-                continue
-
-            if (not grain) or grain.issubset(get_table_fields(field_table)):
-                table_set = TableSet(self, field_table, None, grain, set([field]))
-                table_sets.append(table_set)
-                dbg("full grain (%s) covered in %s" % (grain, field_table.fullname))
-                continue
-
-            joins = self.get_possible_joins(field_table, grain)
-            if not joins:
-                dbg("table %s can not join at grain %s" % (field_table.fullname, grain))
-                continue
-
-            dbg(
-                "adding %d possible join(s) to table %s"
-                % (len(joins), field_table.fullname)
-            )
-            for join, covered_dims in joins.items():
-                table_set = TableSet(self, field_table, join, grain, set([field]))
-                table_sets.append(table_set)
-
-        return table_sets
+        return name
 
 
 class AdHocDataTable(PrintMixin):
@@ -1056,7 +1059,7 @@ class AdHocDataSource(DataSource):
         self, datatables, name=None, config=None, coerce_float=True, if_exists="fail"
     ):
         config = config or dict(tables={})
-        ds_name = self.check_or_create_name(name)
+        ds_name = self._check_or_create_name(name)
 
         conn_url = self.get_datasource_url(ds_name)
         engine = sa.create_engine(conn_url, echo=False)

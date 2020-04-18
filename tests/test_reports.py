@@ -96,7 +96,7 @@ def test_report_kill(wh):
             wh, metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
         )
 
-        t = threading.Timer(0.1, report.kill)
+        t = threading.Timer(0.1, report.kill, kwargs=dict(raise_if_failed=True))
         t.start()
         with pytest.raises(ExecutionKilledException):
             result = report.execute()
@@ -134,7 +134,7 @@ def test_report_reuse_after_kill(wh):
     info(result.df)
 
 
-def test_report_kill_after_timeout(wh):
+def test_report_timeout_then_kill(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
     adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
