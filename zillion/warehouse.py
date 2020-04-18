@@ -47,7 +47,7 @@ from zillion.sql_utils import (
 )
 
 if zillion_config["DEBUG"]:
-    logging.getLogger().setLevel(logging.DEBUG)
+    default_logger.setLevel(logging.DEBUG)
 
 
 class Warehouse(FieldManagerMixin):

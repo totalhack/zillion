@@ -1,14 +1,17 @@
+import logging
+
 from tlbx import (
     st,
-    dbg,
-    dbgsql,
-    info,
-    warn,
-    error,
+    dbg as _dbg,
+    dbgsql as _dbgsql,
+    info as _info,
+    warn as _warn,
+    error as _error,
     pf,
     format_msg,
     sqlformat,
     rmfile,
+    get_caller,
     open_filepath_or_buffer,
     get_string_format_args,
     json,
@@ -27,6 +30,44 @@ from tlbx import (
 
 ADHOC_URL = "adhoc"
 RESERVED_FIELD_NAMES = set(["row_hash"])
+
+default_logger = logging.getLogger("zillion")
+default_logger.setLevel(logging.INFO)
+
+
+def dbg(msg, **kwargs):
+    """Call tlbx dbg with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _dbg(msg, **kwargs)
+
+
+def dbgsql(msg, **kwargs):
+    """Call tlbx dbgsql with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _dbgsql(msg, **kwargs)
+
+
+def info(msg, **kwargs):
+    """Call tlbx info with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _info(msg, **kwargs)
+
+
+def warn(msg, **kwargs):
+    """Call tlbx warn with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _warn(msg, **kwargs)
+
+
+def error(msg, **kwargs):
+    """Call tlbx error with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _error(msg, **kwargs)
 
 
 class ZillionException(Exception):

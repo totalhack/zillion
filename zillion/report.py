@@ -24,9 +24,6 @@ from zillion.sql_utils import sqla_compile, get_sqla_clause, to_sqlite_type
 
 logging.getLogger(name="stopit").setLevel(logging.ERROR)
 
-if zillion_config["DEBUG"]:
-    logging.getLogger().setLevel(logging.DEBUG)
-
 # Last unicode char - this helps get the rollup rows to sort last, but may
 # need to be replaced for presentation
 ROLLUP_INDEX_LABEL = chr(1114111)
