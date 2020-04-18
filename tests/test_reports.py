@@ -1,20 +1,9 @@
 import pytest
 import threading
 
-from tlbx import dbg, info, st
-
 from .test_utils import *
 from zillion.configs import zillion_config
-from zillion.core import (
-    UnsupportedGrainException,
-    InvalidFieldException,
-    ReportException,
-    WarehouseException,
-    DataSourceQueryTimeoutException,
-    ExecutionKilledException,
-    DisallowedSQLException,
-    DataSourceQueryModes,
-)
+from zillion.core import *
 from zillion.field import Metric
 from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
 
@@ -878,7 +867,7 @@ def test_criteria_sql_injection(wh):
         result = wh_execute(wh, locals())
 
     criteria = [("campaign_name", "select * from leads", "Campaign 2B")]
-    with pytest.raises(AssertionError):
+    with pytest.raises(ZillionException):
         result = wh_execute(wh, locals())
 
 
@@ -894,7 +883,7 @@ def test_pivot_sql_injection(wh):
     metrics = ["leads", "revenue"]
     dimensions = ["partner_name", "campaign_name"]
     pivot = ["partner_name;select * from leads"]
-    with pytest.raises(AssertionError):
+    with pytest.raises(ZillionException):
         result = wh_execute(wh, locals())
 
 

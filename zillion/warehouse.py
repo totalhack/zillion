@@ -8,19 +8,6 @@ import time
 import networkx as nx
 import pandas as pd
 import sqlalchemy as sa
-from tlbx import (
-    dbg,
-    info,
-    pf,
-    st,
-    rmfile,
-    initializer,
-    get_string_format_args,
-    iter_or,
-    powerset,
-    PrintMixin,
-    MappingMixin,
-)
 
 from zillion.configs import (
     AdHocFieldSchema,
@@ -35,15 +22,7 @@ from zillion.configs import (
     zillion_config,
     DATASOURCE_ALLOWABLE_CHARS,
 )
-from zillion.core import (
-    UnsupportedGrainException,
-    InvalidFieldException,
-    MaxFormulaDepthException,
-    WarehouseException,
-    FieldTypes,
-    TableTypes,
-    RESERVED_FIELD_NAMES,
-)
+from zillion.core import *
 from zillion.datasource import DataSource, AdHocDataSource, datasource_from_config
 from zillion.field import (
     Field,
@@ -91,21 +70,26 @@ class Warehouse(FieldManagerMixin):
             config = WarehouseConfigSchema().load(config)
             self.apply_config(config, skip_integrity_checks=True, if_exists=if_exists)
 
-        assert self.datasources, "No datasources provided or found in config"
+        raiseifnot(self.datasources, "No datasources provided or found in config")
         self.run_integrity_checks()
 
         self.ds_priority = ds_priority or list(self.datasources.keys())
 
-        assert isinstance(self.ds_priority, list), (
-            "Invalid format for ds_priority, must be list of datasource names: %s"
-            % self.ds_priority
+        raiseifnot(
+            isinstance(self.ds_priority, list),
+            (
+                "Invalid format for ds_priority, must be list of datasource names: %s"
+                % self.ds_priority
+            ),
         )
-        assert len(self.ds_priority) == len(
-            self.datasources
-        ), "Length mismatch between ds_priority and datasources"
+        raiseifnot(
+            len(self.ds_priority) == len(self.datasources),
+            "Length mismatch between ds_priority and datasources",
+        )
         for ds_name in self.ds_priority:
-            assert ds_name in self.datasources, (
-                "Datasource %s is in ds_priority but not in datasource map" % ds_name
+            raiseifnot(
+                ds_name in self.datasources,
+                "Datasource %s is in ds_priority but not in datasource map" % ds_name,
             )
 
     def __repr__(self):
@@ -148,7 +132,7 @@ class Warehouse(FieldManagerMixin):
             if adhoc_datasource.name == name:
                 return adhoc_datasource
 
-        assert False, 'Could not find datasource with name "%s"' % name
+        raise ZillionException('Could not find datasource with name "%s"' % name)
 
     def get_child_field_managers(self):
         return list(self.get_datasources())
@@ -500,7 +484,7 @@ class Warehouse(FieldManagerMixin):
         #  A) Its historically been faster
         #  B) All of the requested data can be pulled from one datasource
         info("No datasource priorities established, choosing first option")
-        assert ds_names, "No datasource names provided"
+        raiseifnot(ds_names, "No datasource names provided")
         return ds_names[0]
 
     def choose_best_table_set(self, ds_table_sets):

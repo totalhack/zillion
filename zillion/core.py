@@ -1,7 +1,84 @@
-from tlbx import ClassValueContainsMeta
+from tlbx import (
+    st,
+    dbg,
+    dbgsql,
+    info,
+    warn,
+    error,
+    pf,
+    format_msg,
+    sqlformat,
+    rmfile,
+    open_filepath_or_buffer,
+    get_string_format_args,
+    json,
+    chunks,
+    iter_or,
+    powerset,
+    is_int,
+    orderedsetify,
+    initializer,
+    PrintMixin,
+    MappingMixin,
+    ClassValueContainsMeta,
+    get_class_var_values,
+    get_class_vars,
+)
 
 ADHOC_URL = "adhoc"
 RESERVED_FIELD_NAMES = set(["row_hash"])
+
+
+class ZillionException(Exception):
+    pass
+
+
+class InvalidTechnicalException(ZillionException):
+    pass
+
+
+class WarehouseException(ZillionException):
+    pass
+
+
+class ReportException(ZillionException):
+    pass
+
+
+class UnsupportedGrainException(ZillionException):
+    pass
+
+
+class UnsupportedKillException(ZillionException):
+    pass
+
+
+class FailedKillException(ZillionException):
+    pass
+
+
+class DataSourceQueryTimeoutException(ZillionException):
+    pass
+
+
+class ExecutionKilledException(ZillionException):
+    pass
+
+
+class ExecutionLockException(ZillionException):
+    pass
+
+
+class InvalidFieldException(ZillionException):
+    pass
+
+
+class DisallowedSQLException(ZillionException):
+    pass
+
+
+class MaxFormulaDepthException(ZillionException):
+    pass
 
 
 class FieldTypes(metaclass=ClassValueContainsMeta):
@@ -43,49 +120,11 @@ class ExecutionState:
     KILLED = "killed"
 
 
-class InvalidTechnicalException(Exception):
-    pass
+def raiseif(cond, msg="", exc=ZillionException):
+    if cond:
+        raise exc(msg)
 
 
-class WarehouseException(Exception):
-    pass
-
-
-class ReportException(Exception):
-    pass
-
-
-class UnsupportedGrainException(Exception):
-    pass
-
-
-class UnsupportedKillException(Exception):
-    pass
-
-
-class FailedKillException(Exception):
-    pass
-
-
-class DataSourceQueryTimeoutException(Exception):
-    pass
-
-
-class ExecutionKilledException(Exception):
-    pass
-
-
-class ExecutionLockException(Exception):
-    pass
-
-
-class InvalidFieldException(Exception):
-    pass
-
-
-class DisallowedSQLException(Exception):
-    pass
-
-
-class MaxFormulaDepthException(Exception):
-    pass
+def raiseifnot(cond, msg="", exc=ZillionException):
+    if not cond:
+        raise exc(msg)

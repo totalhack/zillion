@@ -5,10 +5,8 @@ import pstats
 import pytest
 import time
 
-from tlbx import dbg, st
-
 from .test_utils import *
-from zillion.core import TableTypes
+from zillion.core import *
 from zillion.datasource import *
 
 

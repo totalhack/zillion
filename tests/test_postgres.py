@@ -1,10 +1,8 @@
 import pytest
 
-from tlbx import info, st
-
 from .test_utils import *
 from zillion.configs import zillion_config, load_datasource_config
-from zillion.core import DataSourceQueryTimeoutException, DataSourceQueryModes
+from zillion.core import *
 from zillion.datasource import *
 from zillion.warehouse import Warehouse
 

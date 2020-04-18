@@ -14,9 +14,8 @@ from sqlalchemy.engine import reflection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import expression as exp
 import sqlparse as sp
-from tlbx import dbg, st, get_class_vars, get_string_format_args
 
-from zillion.core import AggregationTypes
+from zillion.core import *
 
 DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
 
@@ -108,7 +107,7 @@ def type_string_to_sa_type(type_string):
     parts = type_string.split("(")
     type_args = []
     if len(parts) > 1:
-        assert len(parts) == 2, "Unable to parse type string: %s" % type_string
+        raiseifnot(len(parts) == 2, "Unable to parse type string: %s" % type_string)
         type_args = ast.literal_eval(parts[1].rstrip(")") + ",")
     type_name = parts[0]
     type_cls = getattr(sa.types, type_name, None)
@@ -134,7 +133,7 @@ def infer_aggregation_and_rounding(column):
             else:
                 aggregation = AggregationTypes.SUM
         return aggregation, rounding
-    assert False, "Column %s is not a numeric type" % column
+    raise ZillionException("Column %s is not a numeric type" % column)
 
 
 def aggregation_to_sqla_func(aggregation):
@@ -222,12 +221,12 @@ def get_sqla_clause(column, criterion, negate=False):
     elif op == "between":
         clauses = []
         for value in values:
-            assert len(value) == 2, "Between clause value must have length of 2"
+            raiseifnot(len(value) == 2, "Between clause value must have length of 2")
             clauses.append(column.between(value[0], value[1]))
     elif op == "not between":
         clauses = []
         for value in values:
-            assert len(value) == 2, "Between clause value must have length of 2"
+            raiseifnot(len(value) == 2, "Between clause value must have length of 2")
             clauses.append(sa.not_(column.between(value[0], value[1])))
     elif op == "like":
         clauses = [column.like(v) for v in values]
@@ -235,7 +234,7 @@ def get_sqla_clause(column, criterion, negate=False):
         use_or = False
         clauses = [sa.not_(column.like(v)) for v in values]
     else:
-        assert False, "Invalid criterion operand: %s" % op
+        raise ZillionException("Invalid criterion operand: %s" % op)
 
     if use_or:
         clause = sa.or_(*clauses)

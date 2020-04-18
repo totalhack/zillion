@@ -13,16 +13,9 @@ from marshmallow import (
     RAISE,
 )
 from pandas.io.common import get_filepath_or_buffer
-from tlbx import dbg, error, json, st, initializer, MappingMixin, PrintMixin
 import yaml
 
-from zillion.core import (
-    FieldTypes,
-    TableTypes,
-    AggregationTypes,
-    TechnicalTypes,
-    InvalidTechnicalException,
-)
+from zillion.core import *
 from zillion.sql_utils import (
     column_fullname,
     type_string_to_sa_type,
@@ -121,7 +114,9 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
     try:
         # This does the schema check, but has a bug in object_pairs_hook so order is not preserved
         if object_pairs_hook:
-            assert False, "Needs to support marshmallow pre_load behavior somehow"
+            raise AssertionError(
+                "Needs to support marshmallow pre_load behavior somehow"
+            )
             result = json.loads(raw, object_pairs_hook=object_pairs_hook)
         else:
             result = schema.loads(raw)
@@ -425,7 +420,7 @@ class ZillionInfo(MappingMixin):
 
     @initializer
     def __init__(self, **kwargs):
-        assert self.schema, "ZillionInfo subclass must have a schema defined"
+        raiseifnot(self.schema, "ZillionInfo subclass must have a schema defined")
         self.schema().load(self)
 
     @classmethod
@@ -440,8 +435,8 @@ class ZillionInfo(MappingMixin):
     def create(cls, zillion_info, unknown=RAISE):
         if isinstance(zillion_info, cls):
             return zillion_info
-        assert isinstance(zillion_info, dict), (
-            "Raw info must be a dict: %s" % zillion_info
+        raiseifnot(
+            isinstance(zillion_info, dict), "Raw info must be a dict: %s" % zillion_info
         )
         zillion_info = cls.schema().load(zillion_info, unknown=unknown)
         return cls(**zillion_info)
@@ -470,12 +465,13 @@ class ColumnInfo(ZillionInfo, PrintMixin):
         return False
 
     def add_field_to_map(self, field):
-        assert not self.has_field(field), "Field %s is already added" % field
+        raiseif(self.has_field(field), "Field %s is already added" % field)
         if isinstance(field, str):
             self.field_map[field] = None
         else:
-            assert isinstance(field, dict) and "name" in field, (
-                "Invalid field config: %s" % field
+            raiseifnot(
+                isinstance(field, dict) and "name" in field,
+                "Invalid field config: %s" % field,
             )
             self.field_map[field["name"]] = field
 
@@ -551,7 +547,7 @@ def create_technical(info):
         return info
     if isinstance(info, str):
         info = parse_technical_string(info)
-    assert isinstance(info, dict), "Raw info must be a dict: %s" % info
+    raiseifnot(isinstance(info, dict), "Raw info must be a dict: %s" % info)
 
     info = TechnicalInfoSchema().load(info)
 

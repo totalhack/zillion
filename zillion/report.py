@@ -16,38 +16,9 @@ from pymysql import escape_string
 import pandas as pd
 import sqlalchemy as sa
 from stopit import TimeoutException, async_raise
-from tlbx import (
-    dbg,
-    dbgsql,
-    info,
-    warn,
-    error,
-    get_class_var_values,
-    sqlformat,
-    json,
-    st,
-    chunks,
-    initializer,
-    is_int,
-    orderedsetify,
-    PrintMixin,
-)
 
 from zillion.configs import zillion_config
-from zillion.core import (
-    UnsupportedGrainException,
-    UnsupportedKillException,
-    ReportException,
-    FailedKillException,
-    ExecutionKilledException,
-    ExecutionLockException,
-    ExecutionState,
-    AggregationTypes,
-    DataSourceQueryModes,
-    DataSourceQueryTimeoutException,
-    FieldTypes,
-    TechnicalTypes,
-)
+from zillion.core import *
 from zillion.field import get_table_fields, get_table_field_column, FormulaField
 from zillion.sql_utils import sqla_compile, get_sqla_clause, to_sqlite_type
 
@@ -130,16 +101,17 @@ class ExecutionStateMixin:
         raise_if_killed=False,
         set_if_killed=False,
     ):
-        assert state in get_class_var_values(ExecutionState), (
-            "Invalid state value: %s" % state
+        raiseifnot(
+            state in get_class_var_values(ExecutionState),
+            "Invalid state value: %s" % state,
         )
         cls_name = self.__class__.__name__
 
         with self.get_lock(timeout=timeout):
             if assert_ready:
-                assert self.ready, "%s: expected ready state, got: %s" % (
-                    cls_name,
-                    self._state,
+                raiseifnot(
+                    self.ready,
+                    "%s: expected ready state, got: %s" % (cls_name, self._state),
                 )
 
             if raise_if_killed:
@@ -182,8 +154,9 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def get_bind(self):
         ds = self.get_datasource()
-        assert ds.metadata.bind, (
-            'Datasource "%s" does not have metadata.bind set' % ds.name
+        raiseifnot(
+            ds.metadata.bind,
+            'Datasource "%s" does not have metadata.bind set' % ds.name,
         )
         return ds.metadata.bind
 
@@ -203,7 +176,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         self.set_state(ExecutionState.QUERYING, assert_ready=True)
 
         try:
-            assert not self._conn, "Called execute with active query connection"
+            raiseif(self._conn, "Called execute with active query connection")
             self._conn = self.get_conn()
 
             if label:
@@ -271,7 +244,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             self.set_state(ExecutionState.KILLED)
 
         # I don't see how this could happen, but get loud if it does...
-        assert self._conn, "Attempting to kill with no active query connection"
+        raiseifnot(self._conn, "Attempting to kill with no active query connection")
         raw_conn = self._conn.connection
 
         dialect = self.get_dialect_name()
@@ -321,7 +294,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         for row in self.criteria:
             if row[0].name == name:
                 return row[0]
-        assert False, "Could not find field for DataSourceQuery: %s" % name
+        raise ZillionException("Could not find field for DataSourceQuery: %s" % name)
 
     def column_for_field(self, field, table=None):
         ts = self.table_set
@@ -338,7 +311,9 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             ):
                 column = self.column_for_field(field, table=ts.ds_table)
             else:
-                assert False, "Could not determine column for field %s" % field
+                raise ZillionException(
+                    "Could not determine column for field %s" % field
+                )
 
         self.field_map[field] = column
         return column
@@ -414,7 +389,9 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         return False
 
     def add_metric(self, name):
-        assert self.covers_metric(name), "Metric %s can not be covered by query" % name
+        raiseifnot(
+            self.covers_metric(name), "Metric %s can not be covered by query" % name
+        )
         self.table_set.target_fields.add(name)
         self.metrics[name] = self.table_set.datasource.get_metric(name)
         self.select = self.select.column(self.get_field_expression(name))
@@ -619,10 +596,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         filter_parts = []
         for row_filter in row_filters:
             field, op, value = row_filter
-            assert (field in metrics) or (field in dimensions), (
-                'Row filter field "%s" is not in result table' % field
+            raiseifnot(
+                (field in metrics) or (field in dimensions),
+                'Row filter field "%s" is not in result table' % field,
             )
-            assert op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op
+            raiseifnot(op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op)
             filter_parts.append("(%s %s %s)" % (field, op, value))
         return df.query(" and ".join(filter_parts))
 
@@ -659,7 +637,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         return df
 
     def apply_rollup(self, df, rollup, metrics, dimensions):
-        assert dimensions, "Can not rollup without dimensions"
+        raiseifnot(dimensions, "Can not rollup without dimensions")
         aggrs = {}
         wavgs = []
 
@@ -707,8 +685,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             result = tech.apply(df, metric)
 
             if tech.type == TechnicalTypes.BOLL:
-                assert len(result) == 2, (
-                    "Expected two items in %s technical result" % tech.type
+                raiseifnot(
+                    len(result) == 2,
+                    "Expected two items in %s technical result" % tech.type,
                 )
                 lower = metric + "_lower"
                 upper = metric + "_upper"
@@ -820,9 +799,10 @@ class Report(ExecutionStateMixin):
             dimensions, FieldTypes.DIMENSION, adhoc_datasources=adhoc_datasources
         )
 
-        assert (
-            self.metrics or self.dimensions
-        ), "One of metrics or dimensions must be specified for Report"
+        raiseifnot(
+            self.metrics or self.dimensions,
+            "One of metrics or dimensions must be specified for Report",
+        )
 
         self.criteria = self._populate_criteria_fields(
             criteria or [], adhoc_datasources=adhoc_datasources
@@ -831,10 +811,11 @@ class Report(ExecutionStateMixin):
 
         self.rollup = None
         if rollup is not None:
-            assert dimensions, "Must specify dimensions in order to use rollup"
+            raiseifnot(dimensions, "Must specify dimensions in order to use rollup")
             if rollup != ROLLUP_TOTALS:
-                assert is_int(rollup) and (0 < int(rollup) <= len(dimensions)), (
-                    "Invalid rollup value: %s" % rollup
+                raiseifnot(
+                    is_int(rollup) and (0 < int(rollup) <= len(dimensions)),
+                    "Invalid rollup value: %s" % rollup,
                 )
                 self.rollup = int(rollup)
             else:
@@ -842,9 +823,10 @@ class Report(ExecutionStateMixin):
 
         self.pivot = pivot or []
         if pivot:
-            assert set(self.pivot).issubset(
-                set(self.dimensions)
-            ), "Pivot columms must be a subset of dimensions"
+            raiseifnot(
+                set(self.pivot).issubset(set(self.dimensions)),
+                "Pivot columms must be a subset of dimensions",
+            )
 
         self.adhoc_datasources = adhoc_datasources or []
 
@@ -890,7 +872,7 @@ class Report(ExecutionStateMixin):
         try:
             result = conn.execute(ReportSpecs.insert(), params=self.get_json())
             spec_id = result.inserted_primary_key[0]
-            assert spec_id, "No report spec ID found!"
+            raiseifnot(spec_id, "No report spec ID found!")
         finally:
             conn.close()
         self.spec_id = spec_id
@@ -945,7 +927,7 @@ class Report(ExecutionStateMixin):
             elif field_type == FieldTypes.DIMENSION:
                 field = self.warehouse.get_dimension(name, adhoc_fms=adhoc_datasources)
             else:
-                assert False, "Invalid field type: %s" % field_type
+                raise ZillionException("Invalid field type: %s" % field_type)
             d[field.name] = field
         return d
 
@@ -986,7 +968,7 @@ class Report(ExecutionStateMixin):
                 elif field.field_type == FieldTypes.DIMENSION:
                     self.ds_dimensions[formula_field] = field
                 else:
-                    assert False, "Invalid field_type: %s" % field.field_type
+                    raise ZillionException("Invalid field_type: %s" % field.field_type)
                 continue
 
             if self.warehouse.has_metric(
@@ -1007,7 +989,9 @@ class Report(ExecutionStateMixin):
                     formula_field, adhoc_fms=self.adhoc_datasources
                 )
             else:
-                assert False, "Could not find field %s in warehouse" % formula_field
+                raise ZillionException(
+                    "Could not find field %s in warehouse" % formula_field
+                )
 
     def get_query_label(self, query_label):
         return "Report: %s | Query: %s" % (str(self.uuid), query_label)
@@ -1052,7 +1036,7 @@ class Report(ExecutionStateMixin):
         if mode == DataSourceQueryModes.MULTITHREAD:
             return self.execute_ds_queries_multithread(queries)
         dbg("DataSource queries took %.3fs" % (time.time() - start))
-        assert False, "Invalid DATASOURCE_QUERY_MODE: %s" % mode
+        raise ZillionException("Invalid DATASOURCE_QUERY_MODE: %s" % mode)
 
     def execute(self):
         start = time.time()

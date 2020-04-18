@@ -10,17 +10,6 @@ import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
 from sqlalchemy.engine.url import make_url
-from tlbx import (
-    PrintMixin,
-    dbg,
-    pf,
-    st,
-    format_msg,
-    rmfile,
-    initializer,
-    open_filepath_or_buffer,
-    get_string_format_args,
-)
 
 from zillion.configs import (
     DATASOURCE_ALLOWABLE_CHARS,
@@ -37,7 +26,7 @@ from zillion.configs import (
     ADHOC_TABLE_CONFIG_PARAMS,
     EXCLUDE,
 )
-from zillion.core import TableTypes, ADHOC_URL
+from zillion.core import *
 from zillion.field import (
     Field,
     Metric,
@@ -115,9 +104,12 @@ class Join(PrintMixin):
             if not self.datasource:
                 self.datasource = join_part.datasource
             else:
-                assert join_part.datasource.name == self.datasource.name, (
-                    "Can not form %s using join_parts from different datasources"
-                    % self.__class__
+                raiseifnot(
+                    join_part.datasource.name == self.datasource.name,
+                    (
+                        "Can not form %s using join_parts from different datasources"
+                        % self.__class__
+                    ),
                 )
             for table_name in join_part.table_names:
                 self.table_names.add(table_name)
@@ -144,7 +136,7 @@ class Join(PrintMixin):
         return fields
 
     def add_field(self, field):
-        assert field not in self.field_map, "Field %s is already in field map" % field
+        raiseif(field in self.field_map, "Field %s is already in field map" % field)
         for table_name in self.table_names:
             table = self.datasource.metadata.tables[table_name]
             covered_fields = get_table_fields(table)
@@ -152,9 +144,8 @@ class Join(PrintMixin):
                 column = get_table_field_column(table, field)
                 self.field_map[field] = column
                 return
-        assert False, "Field %s is not in any join tables: %s" % (
-            field,
-            self.table_names,
+        raise ZillionException(
+            "Field %s is not in any join tables: %s" % (field, self.table_names)
         )
 
     def add_fields(self, fields):
@@ -226,24 +217,26 @@ class DataSource(FieldManagerMixin, PrintMixin):
         if url and get_string_format_args(url):
             url = url.format(**ds_config_context)
 
-        assert url != ADHOC_URL, "Unsupported datasource URL: '%s'" % url
-        assert metadata or url, "You must pass metadata or config->url"
-        assert not (
-            url and metadata
-        ), "Only one of metadata or config->url may be specified"
+        raiseifnot(url != ADHOC_URL, "Unsupported datasource URL: '%s'" % url)
+        raiseifnot(metadata or url, "You must pass metadata or config->url")
+        raiseif(
+            url and metadata, "Only one of metadata or config->url may be specified"
+        )
 
         if url:
             self.check_url(url)
             self.metadata = sa.MetaData()
             self.metadata.bind = sa.create_engine(url)
         else:
-            assert isinstance(metadata, sa.MetaData), (
-                "Invalid MetaData object: %s" % metadata
+            raiseifnot(
+                isinstance(metadata, sa.MetaData),
+                "Invalid MetaData object: %s" % metadata,
             )
             self.metadata = metadata
-            assert (
-                self.metadata.bind
-            ), "MetaData object must have a bind (engine) attribute specified"
+            raiseifnot(
+                self.metadata.bind,
+                "MetaData object must have a bind (engine) attribute specified",
+            )
 
         self.reflect = reflect
         if reflect:
@@ -257,9 +250,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
             datestr = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
             name = "zillion_ds_%s_%s" % (datestr, random.randint(0, 1e9))
             return name
-        assert set(name) <= DATASOURCE_ALLOWABLE_CHARS, (
-            'DataSource name "%s" has invalid characters. Allowed: %s'
-            % (name, DATASOURCE_ALLOWABLE_CHARS_STR)
+        raiseifnot(
+            set(name) <= DATASOURCE_ALLOWABLE_CHARS,
+            (
+                'DataSource name "%s" has invalid characters. Allowed: %s'
+                % (name, DATASOURCE_ALLOWABLE_CHARS_STR)
+            ),
         )
         return name
 
@@ -289,8 +285,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def check_url(self, url):
         url = make_url(url)
         if url.get_dialect().name == "sqlite":
-            assert os.path.isfile(url.database), (
-                "SQLite DB does not exist: %s" % url.database
+            raiseifnot(
+                os.path.isfile(url.database),
+                "SQLite DB does not exist: %s" % url.database,
             )
 
     def reflect_metadata(self):
@@ -342,9 +339,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             table_config = table_configs[table.fullname]
             for param in ADHOC_TABLE_CONFIG_PARAMS:
-                assert not table_config.get(param, None), (
-                    "AdHoc table config param '%s' passed to non-adhoc datasource"
-                    % param
+                raiseif(
+                    table_config.get(param, None),
+                    (
+                        "AdHoc table config param '%s' passed to non-adhoc datasource"
+                        % param
+                    ),
                 )
 
             table_info = TableInfo.schema_load(table_config, unknown=EXCLUDE)
@@ -393,9 +393,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 zillion_info = column.info.get("zillion", None) or {}
                 if not zillion_info:
                     if not table.zillion.create_fields:
-                        assert not column.primary_key, (
-                            "Primary key column %s must have zillion info defined"
-                            % column_fullname(column)
+                        raiseif(
+                            column.primary_key,
+                            (
+                                "Primary key column %s must have zillion info defined"
+                                % column_fullname(column)
+                            ),
                         )
                         # If create_fields IS set the zillion info would
                         # automatically get created on the column and fields
@@ -413,16 +416,20 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 zillion_info["fields"] = zillion_info.get("fields", [field_name])
                 if column.primary_key:
-                    assert zillion_info["fields"], (
-                        "Primary key column %s must have fields defined and one must be a valid dimension"
-                        % column_fullname(column)
+                    raiseifnot(
+                        zillion_info["fields"],
+                        (
+                            "Primary key column %s must have fields defined and one must be a valid dimension"
+                            % column_fullname(column)
+                        ),
                     )
                 column.info["zillion"] = ColumnInfo.create(zillion_info)
                 setattr(column, "zillion", column.info["zillion"])
                 column_count += 1
 
-            assert column_count, (
-                "Table %s has no columns with zillion info defined" % table.fullname
+            raiseifnot(
+                column_count,
+                "Table %s has no columns with zillion info defined" % table.fullname,
             )
 
     def add_conversion_fields(self):
@@ -442,9 +449,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 convs = get_dialect_type_conversions(self.get_dialect_name(), column)
                 if convs:
-                    assert not type(column.type) in types_converted, (
-                        "Table %s has multiple columns of same type allowing conversions"
-                        % table.fullname
+                    raiseif(
+                        type(column.type) in types_converted,
+                        (
+                            "Table %s has multiple columns of same type allowing conversions"
+                            % table.fullname
+                        ),
                     )
                     types_converted.add(type(column.type))
 
@@ -536,7 +546,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             for field in column.zillion.get_field_names():
                 if self.has_metric(field):
-                    assert False, "Dimension table has metric field: %s" % field
+                    raise ZillionException(
+                        "Dimension table has metric field: %s" % field
+                    )
 
                 if self.has_dimension(field):
                     continue
@@ -560,7 +572,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             elif table.zillion.type == TableTypes.DIMENSION:
                 self.add_dimension_table_fields(table)
             else:
-                assert False, "Invalid table type: %s" % table.zillion.type
+                raise ZillionException("Invalid table type: %s" % table.zillion.type)
 
     def find_neighbor_tables(self, table):
         neighbor_tables = []
@@ -585,9 +597,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
             parent = self.metadata.tables[parent_name]
             pk_fields = parent.zillion.primary_key
             for pk_field in pk_fields:
-                assert pk_field in fields, (
-                    "Table %s is parent of %s but primary key %s is not in both"
-                    % (parent.fullname, table.fullname, pk_fields)
+                raiseifnot(
+                    pk_field in fields,
+                    (
+                        "Table %s is parent of %s but primary key %s is not in both"
+                        % (parent.fullname, table.fullname, pk_fields)
+                    ),
                 )
             neighbor_tables.append(NeighborTable(parent, pk_fields))
         return neighbor_tables
@@ -810,7 +825,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         field_map = {dimension: dim_column_table_map[table_name]}
                         break
 
-                assert field_map, "Could not map dimension %s to column" % dimension
+                raiseifnot(
+                    field_map, "Could not map dimension %s to column" % dimension
+                )
                 join = joins_from_path(self, path, field_map=field_map)
                 if table.zillion.incomplete_dimensions:
                     join_fields = join.join_fields_for_table(table.fullname)
@@ -833,9 +850,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
         consolidation, but it's also possible to have it generate independent,
         non-overlapping joins to meet the grain.
         """
-        assert self.has_table(table), "Could not find table %s in datasource %s" % (
-            table.fullname,
-            self.name,
+        raiseifnot(
+            self.has_table(table),
+            "Could not find table %s in datasource %s" % (table.fullname, self.name),
         )
 
         if not grain:
@@ -966,7 +983,7 @@ class SQLiteDataTable(AdHocDataTable):
         raise NotImplementedError
 
     def to_sql(self, engine, **kwargs):
-        assert self.table_exists(engine), "SQLiteDataTable table does not exist"
+        raiseifnot(self.table_exists(engine), "SQLiteDataTable table does not exist")
 
 
 class CSVDataTable(AdHocDataTable):
@@ -1004,8 +1021,8 @@ class HTMLDataTable(AdHocDataTable):
         # Expects this format by default:
         # df.reset_index().to_html("dma_zip.html", index=False)
         dfs = pd.read_html(self.data, **self.df_kwargs)
-        assert dfs, "No html table found"
-        assert len(dfs) == 1, "More than one html table found"
+        raiseifnot(dfs, "No html table found")
+        raiseifnot(len(dfs) == 1, "More than one html table found")
         df = dfs[0]
         if self.primary_key and df.index.names != self.primary_key:
             df = df.set_index(self.primary_key)
@@ -1024,7 +1041,7 @@ class GoogleSheetsDataTable(AdHocDataTable):
             )
             url = urlunparse(parsed)
         else:
-            raise Exception("Unsupported google docs URL: %s" % url)
+            raise ZillionException("Unsupported google docs URL: %s" % url)
 
         return pd.read_csv(
             url,
@@ -1058,9 +1075,10 @@ class AdHocDataSource(DataSource):
     @classmethod
     def from_config(cls, name, config, if_exists="fail"):
         for table_name, table_config in config["tables"].items():
-            assert table_config.get(
-                "url", None
-            ), "All tables in an adhoc datasource config must have a url"
+            raiseifnot(
+                table_config.get("url", None),
+                "All tables in an adhoc datasource config must have a url",
+            )
 
         ds_config_context = zillion_config.get("DATASOURCE_CONTEXTS", {}).get(name, {})
 
@@ -1075,7 +1093,7 @@ class AdHocDataSource(DataSource):
             if "." in table_name:
                 parts = table_name.split(".")
                 # This is also checked in config, should never happen
-                assert len(parts) == 2, "Invalid table name: %s" % table_name
+                raiseifnot(len(parts) == 2, "Invalid table name: %s" % table_name)
                 schema, table_name = parts
 
             dt = datatable_from_config(table_name, cfg, schema=schema)
@@ -1105,9 +1123,10 @@ def datasource_from_config(name, config, if_exists="fail"):
 
 
 def datatable_from_config(name, config, schema=None, **kwargs):
-    assert config.get(
-        "create_fields", True
-    ), "AdHocDataTables must have create_fields=True"
+    raiseifnot(
+        config.get("create_fields", True),
+        "AdHocDataTables must have create_fields=True",
+    )
 
     url = config["url"]
     if url.endswith("csv"):

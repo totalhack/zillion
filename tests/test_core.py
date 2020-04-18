@@ -3,17 +3,10 @@ import pytest
 import time
 
 import sqlalchemy as sa
-from tlbx import dbg, st, pp
 
 from .test_utils import *
 from zillion.configs import TableInfo, ColumnInfo
-from zillion.core import (
-    WarehouseException,
-    UnsupportedGrainException,
-    InvalidFieldException,
-    TableTypes,
-    ADHOC_URL,
-)
+from zillion.core import *
 from zillion.datasource import *
 from zillion.sql_utils import contains_aggregation, contains_sql_keywords
 from zillion.warehouse import Warehouse
@@ -212,14 +205,14 @@ def test_reuse_existing_remote_table(adhoc_config):
 
 def test_adhoc_config_to_ds_init(adhoc_config):
     ds_config = adhoc_config["datasources"]["test_adhoc_db"]
-    with pytest.raises(AssertionError):
+    with pytest.raises(ZillionException):
         ds = DataSource("test", config=ds_config)
 
 
 def test_adhoc_table_url_to_ds_init(config):
     ds_config = config["datasources"]["testdb1"]
     ds_config["tables"]["main.sales"]["url"] = "test"
-    with pytest.raises(AssertionError):
+    with pytest.raises(ZillionException):
         ds = DataSource("test", config=ds_config, reflect=True)
 
 
@@ -234,7 +227,7 @@ def test_no_create_fields_no_columns(config):
     table_config = config["datasources"]["testdb1"]["tables"]["main.partners"]
     del table_config["columns"]
     table_config["create_fields"] = False
-    with pytest.raises(AssertionError):
+    with pytest.raises(ZillionException):
         wh = Warehouse(config=config)
 
 
@@ -265,7 +258,7 @@ def test_create_fields_no_columns(config):
     del table_config["columns"]
     table_config["primary_key"] = ["fake_field"]
     # Primary key mismatch in parent/child relationship with partners/campaigns
-    with pytest.raises(AssertionError):
+    with pytest.raises(ZillionException):
         wh = Warehouse(config=config)
 
 

@@ -2,16 +2,7 @@ from collections import OrderedDict
 import inspect
 
 import sqlalchemy as sa
-from tlbx import (
-    MappingMixin,
-    PrintMixin,
-    initializer,
-    warn,
-    info,
-    format_msg,
-    st,
-    get_string_format_args,
-)
+
 from zillion.configs import (
     MetricConfigSchema,
     DimensionConfigSchema,
@@ -21,14 +12,7 @@ from zillion.configs import (
     is_valid_field_name,
     zillion_config,
 )
-from zillion.core import (
-    InvalidFieldException,
-    MaxFormulaDepthException,
-    DisallowedSQLException,
-    AggregationTypes,
-    TableTypes,
-    FieldTypes,
-)
+from zillion.core import *
 from zillion.sql_utils import (
     aggregation_to_sqla_func,
     contains_aggregation,
@@ -114,9 +98,10 @@ class Metric(Field):
         **kwargs
     ):
         if weighting_metric:
-            assert aggregation == AggregationTypes.AVG, (
+            raiseifnot(
+                aggregation == AggregationTypes.AVG,
                 'Weighting metrics are only supported for "%s" aggregation type'
-                % AggregationTypes.AVG
+                % AggregationTypes.AVG,
             )
 
         if technical:
@@ -252,7 +237,7 @@ class FormulaField(Field):
             warehouse.get_field(field, adhoc_fms=adhoc_fms)
 
     def get_ds_expression(self, column, label=True):
-        assert False, "Formula-based Fields do not support get_ds_expression"
+        raise ZillionException("Formula-based Fields do not support get_ds_expression")
 
     def get_final_select_clause(self, warehouse, adhoc_fms=None):
         formula_fields, raw_formula = self.get_formula_fields(
@@ -444,8 +429,9 @@ class FieldManagerMixin:
 
         if isinstance(obj, dict):
             metric = AdHocMetric.create(obj)
-            assert not self.has_metric(metric.name, adhoc_fms=adhoc_fms), (
-                "AdHocMetric can not use name of an existing metric: %s" % metric.name
+            raiseif(
+                self.has_metric(metric.name, adhoc_fms=adhoc_fms),
+                "AdHocMetric can not use name of an existing metric: %s" % metric.name,
             )
             metric.check_formula_fields(self, adhoc_fms=adhoc_fms)
             return metric
@@ -464,9 +450,9 @@ class FieldManagerMixin:
         if isinstance(obj, dict):
             raise InvalidFieldException("AdHocDimensions are not currently supported")
             # dim = AdHocDimension.create(obj)
-            # assert not self.has_dimension(dim.name, adhoc_fms=adhoc_fms), (
-            #     "AdHocDimension can not use name of an existing dimension: %s"
-            #     % dim.name
+            # raiseif(
+            #     self.has_dimension(dim.name, adhoc_fms=adhoc_fms),
+            #     "AdHocDimension can not use name of an existing dimension: %s" % dim.name
             # )
             # return dim
 
@@ -482,8 +468,9 @@ class FieldManagerMixin:
 
         if isinstance(obj, dict):
             field = AdHocField.create(obj)
-            assert not self.has_field(field.name, adhoc_fms=adhoc_fms), (
-                "AdHocField can not use name of an existing field: %s" % field.name
+            raiseif(
+                self.has_field(field.name, adhoc_fms=adhoc_fms),
+                "AdHocField can not use name of an existing field: %s" % field.name,
             )
             return field
 
@@ -568,9 +555,10 @@ class FieldManagerMixin:
                 metric_def = schema.load(metric_def)
                 metric = create_metric(metric_def)
             else:
-                assert isinstance(
-                    metric_def, Metric
-                ), "Metric definition must be a dict-like object or a Metric object"
+                raiseifnot(
+                    isinstance(metric_def, Metric),
+                    "Metric definition must be a dict-like object or a Metric object",
+                )
                 metric = metric_def
 
             if isinstance(metric, FormulaMetric):
@@ -584,9 +572,10 @@ class FieldManagerMixin:
                 dim_def = schema.load(dim_def)
                 dim = create_dimension(dim_def)
             else:
-                assert isinstance(
-                    dim_def, Dimension
-                ), "Dimension definition must be a dict-like object or a Dimension object"
+                raiseifnot(
+                    isinstance(dim_def, Dimension),
+                    "Dimension definition must be a dict-like object or a Dimension object",
+                )
                 dim = dim_def
 
             if isinstance(dim, FormulaDimension):
@@ -656,9 +645,8 @@ def get_table_field_column(table, field_name):
         for field in col.zillion.get_field_names():
             if field == field_name:
                 return col
-    assert False, "Field %s inactive or not found in table %s" % (
-        field_name,
-        table.fullname,
+    raise ZillionException(
+        "Field %s inactive or not found in table %s" % (field_name, table.fullname)
     )
 
 
@@ -695,8 +683,9 @@ def get_dialect_type_conversions(dialect, column):
         if not conv:
             continue
         format_args = get_string_format_args(conv)
-        assert not any([x != "" for x in format_args]), (
-            "Field conversion has non-named format arguments: %s" % conv
+        raiseif(
+            any([x != "" for x in format_args]),
+            "Field conversion has non-named format arguments: %s" % conv,
         )
         if format_args:
             conv = conv.format(*[column_fullname(column) for i in format_args])
