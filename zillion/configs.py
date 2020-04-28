@@ -246,6 +246,15 @@ def parse_technical_string(val):
     return result
 
 
+def is_active(obj):
+    """Helper to test if an object is an active part of the zillion config"""
+    if not getattr(obj, "zillion", None):
+        return False
+    if not obj.zillion.active:
+        return False
+    return True
+
+
 def is_valid_table_type(val):
     if val in TableTypes:
         return True

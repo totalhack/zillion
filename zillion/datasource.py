@@ -22,6 +22,7 @@ from zillion.configs import (
     DimensionConfigSchema,
     default_field_name,
     is_valid_field_name,
+    is_active,
     zillion_config,
     ADHOC_TABLE_CONFIG_PARAMS,
     EXCLUDE,
@@ -333,7 +334,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return {
             table_name: table
             for table_name, table in self.metadata.tables.items()
-            if table.zillion and table.zillion.type == TableTypes.METRIC
+            if is_active(table) and table.zillion.type == TableTypes.METRIC
         }
 
     @property
@@ -342,7 +343,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return {
             table_name: table
             for table_name, table in self.metadata.tables.items()
-            if table.zillion and table.zillion.type == TableTypes.DIMENSION
+            if is_active(table) and table.zillion.type == TableTypes.DIMENSION
         }
 
     def has_table(self, table):
@@ -357,8 +358,13 @@ class DataSource(FieldManagerMixin, PrintMixin):
         -------
         bool
             True if the table's fullname is in the metadata.tables map
+
         """
-        return table.fullname in self.metadata.tables
+        if isinstance(table, str):
+            name = table
+        else:
+            name = table.fullname
+        return name in self.metadata.tables and is_active(self.metadata.tables[name])
 
     def get_table(self, fullname):
         """Get the table object from the datasource's metadata
@@ -374,7 +380,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
             The SQLAlchemy table object from the metadata
 
         """
-        return self.metadata.tables[fullname]
+        table = self.metadata.tables[fullname]
+        if not is_active(table):
+            raise ZillionException("Table %s is not active" % fullname)
+        return table
 
     def get_tables_with_field(self, field_name, table_type=None):
         """Get a list of Tables that have a field
@@ -394,7 +403,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         """
         tables = []
         for table in self.metadata.tables.values():
-            if not table.zillion:
+            if not is_active(table):
                 continue
             if table_type and table.zillion.type != table_type:
                 continue
@@ -414,10 +423,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
         """Get a list of column objects that support a field"""
         columns = []
         for table in self.metadata.tables.values():
-            if not table.zillion:
+            if not is_active(table):
                 continue
+
             for col in table.c:
-                if not (getattr(col, "zillion", None) and col.zillion.active):
+                if not is_active(col):
                     continue
                 if field_name in col.zillion.get_field_names():
                     columns.append(col)
@@ -755,14 +765,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def _add_conversion_fields(self):
         """Add conversion fields where they are supported"""
         for table in self.metadata.tables.values():
-            if not table.zillion:
+            if not is_active(table):
                 continue
 
             table_fields = get_table_fields(table)
             types_converted = set()
 
             for column in table.c:
-                if not column.zillion:
+                if not is_active(column):
                     continue
 
                 if not column.zillion.allow_type_conversions:
@@ -834,10 +844,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def _add_metric_table_fields(self, table):
         """Populate fields from a metric table"""
         for column in table.c:
-            if not column.zillion:
-                continue
-
-            if not column.zillion.active:
+            if not is_active(column):
                 continue
 
             for field, field_def in column.zillion.get_fields().items():
@@ -863,10 +870,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def _add_dimension_table_fields(self, table):
         """Populate fields from a dimension table"""
         for column in table.c:
-            if not column.zillion:
-                continue
-
-            if not column.zillion.active:
+            if not is_active(column):
                 continue
 
             for field in column.zillion.get_field_names():
@@ -891,7 +895,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         self._populate_global_fields(config, force=True)
 
         for table in self.metadata.tables.values():
-            if not table.zillion:
+            if not is_active(table):
                 continue
             if table.zillion.type == TableTypes.METRIC:
                 self._add_metric_table_fields(table)
@@ -907,7 +911,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         graph = nx.DiGraph()
         self._graph = graph
         for table in self.metadata.tables.values():
-            if not table.zillion:
+            if not is_active(table):
                 continue
 
             self._graph.add_node(table.fullname)

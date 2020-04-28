@@ -223,6 +223,13 @@ def test_column_config_override(config):
     assert not "sales" in wh.get_datasource("testdb1").get_tables_with_field("revenue")
 
 
+def test_table_config_override(config):
+    table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
+    table_config["active"] = False
+    wh = Warehouse(config=config)
+    assert not wh.get_datasource("testdb1").has_table("main.sales")
+
+
 def test_no_create_fields_no_columns(config):
     table_config = config["datasources"]["testdb1"]["tables"]["main.partners"]
     del table_config["columns"]

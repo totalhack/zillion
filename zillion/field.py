@@ -10,6 +10,7 @@ from zillion.configs import (
     AdHocFieldSchema,
     create_technical,
     is_valid_field_name,
+    is_active,
     zillion_config,
 )
 from zillion.core import *
@@ -926,7 +927,7 @@ def get_table_metrics(fm, table, adhoc_fms=None):
     """
     metrics = set()
     for col in table.c:
-        if not (getattr(col, "zillion", None) and col.zillion.active):
+        if not is_active(col):
             continue
         for field in col.zillion.get_field_names():
             if fm.has_metric(field, adhoc_fms=adhoc_fms):
@@ -954,7 +955,7 @@ def get_table_dimensions(fm, table, adhoc_fms=None):
     """
     dims = set()
     for col in table.c:
-        if not (getattr(col, "zillion", None) and col.zillion.active):
+        if not is_active(col):
             continue
         for field in col.zillion.get_field_names():
             if fm.has_dimension(field, adhoc_fms=adhoc_fms):
@@ -978,7 +979,7 @@ def get_table_fields(table):
     """
     fields = set()
     for col in table.c:
-        if not (getattr(col, "zillion", None) and col.zillion.active):
+        if not is_active(col):
             continue
         for field in col.zillion.get_field_names():
             fields.add(field)
@@ -1002,7 +1003,7 @@ def get_table_field_column(table, field_name):
 
     """
     for col in table.c:
-        if not (getattr(col, "zillion", None) and col.zillion.active):
+        if not is_active(col):
             continue
         for field in col.zillion.get_field_names():
             if field == field_name:

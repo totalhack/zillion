@@ -332,6 +332,20 @@ def test_report_incomplete_dimensions(config):
         wh = Warehouse(config=config)
 
 
+def test_report_inactive_table(config):
+    table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
+    table_config["active"] = False
+    del config["datasources"]["testdb2"]
+    wh = Warehouse(config=config)
+    metrics = ["revenue"]
+    dimensions = ["partner_name"]
+    with pytest.raises(UnsupportedGrainException):
+        result = wh_execute(wh, locals())
+
+    metrics = ["leads"]
+    result = wh_execute(wh, locals())
+
+
 def test_report_count_metric(wh):
     metrics = ["leads"]
     dimensions = ["campaign_name"]

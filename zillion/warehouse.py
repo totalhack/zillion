@@ -19,6 +19,7 @@ from zillion.configs import (
     DimensionConfigSchema,
     parse_technical_string,
     is_valid_field_name,
+    is_active,
     zillion_config,
     DATASOURCE_ALLOWABLE_CHARS,
 )
@@ -569,11 +570,11 @@ class Warehouse(FieldManagerMixin):
 
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
-                if not table.zillion:
+                if not is_active(table):
                     continue
 
                 for column in table.c:
-                    if not column.zillion:
+                    if not is_active(column):
                         continue
 
                     for field in column.zillion.get_field_names():
@@ -594,7 +595,7 @@ class Warehouse(FieldManagerMixin):
 
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
-                if not table.zillion:
+                if not is_active(table):
                     continue
 
                 primary_key = table.zillion.primary_key
@@ -659,11 +660,11 @@ class Warehouse(FieldManagerMixin):
 
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
-                if not table.zillion:
+                if not is_active(table):
                     continue
 
                 for column in table.c:
-                    if not column.zillion:
+                    if not is_active(column):
                         continue
                     if not column.zillion.required_grain:
                         continue
@@ -683,7 +684,7 @@ class Warehouse(FieldManagerMixin):
 
         for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
             for table in ds.metadata.tables.values():
-                if not table.zillion:
+                if not is_active(table):
                     continue
 
                 if not table.zillion.incomplete_dimensions:
