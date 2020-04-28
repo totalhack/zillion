@@ -67,6 +67,19 @@ class InvalidSQLAlchemyTypeString(Exception):
 
 
 def contains_sql_keywords(sql):
+    """Determine whether a SQL query contains special SQL keywords (DML, DDL, etc.)
+
+    Parameters
+    ----------
+    sql : str or sqlparse result
+        The SQL query to check for keywords
+
+    Returns
+    -------
+    bool
+        True if the SQL string contains keywords
+
+    """
     if isinstance(sql, str):
         sql = sp.parse(sql)
 
@@ -82,6 +95,19 @@ def contains_sql_keywords(sql):
 
 
 def contains_aggregation(sql):
+    """Determine whether a SQL query contains aggregation functions
+
+    Parameters
+    ----------
+    sql : str or sqlparse result
+        The SQL query to check for aggregation functions
+
+    Returns
+    -------
+    bool
+        True if the SQL string contains aggregation
+
+    """
     if isinstance(sql, str):
         sql = sp.parse(sql)
 
@@ -101,9 +127,22 @@ def contains_aggregation(sql):
 
 
 def type_string_to_sa_type(type_string):
-    # This only checks the top level sqlalchemy module for matching type
-    # classes. Therefore you can not specify dialect-specific types at this
-    # time.
+    """Convert a field type string to a SQLAlchemy type. The type string will
+    be evaluated as a python statement or class name to init from the
+    SQLAlchemy top level module. Dialect-specific SQLAlchemy types are not
+    currently supported.
+
+    Parameters
+    ----------
+    type_string : str
+        A string representing a SQLAlchemy type, such as "Integer", or "String(32)".
+
+    Returns
+    -------
+    SQLAlchemy type object
+        An init'd SQLAlchemy type object
+
+    """
     parts = type_string.split("(")
     type_args = []
     if len(parts) > 1:
@@ -119,6 +158,19 @@ def type_string_to_sa_type(type_string):
 
 
 def infer_aggregation_and_rounding(column):
+    """Infer the aggregation and rounding settings based on the column type
+
+    Parameters
+    ----------
+    column : SQLAlchemy column
+        The column to analyze
+
+    Returns
+    -------
+    AggregationType, int
+        A 2-item tuple of the aggregation type and rounding to use
+
+    """
     if isinstance(column.type, tuple(INTEGER_SA_TYPES)):
         return AggregationTypes.SUM, 0
     if isinstance(column.type, tuple(FLOAT_SA_TYPES)):
@@ -137,16 +189,36 @@ def infer_aggregation_and_rounding(column):
 
 
 def aggregation_to_sqla_func(aggregation):
+    """Convert an AggregationType string to a SQLAlchemy function"""
     return AGGREGATION_SQLA_FUNC_MAP[aggregation]
 
 
 def is_numeric_type(type):
+    """Determine if this is a numeric SQLAlchemy type"""
     if isinstance(type, tuple(NUMERIC_SA_TYPES)):
         return True
     return False
 
 
 def is_probably_metric(column, formula=None):
+    """Determine if a column is probably a metric. This is used when trying to
+    automatically init/reflect a datasource and determine the field types for
+    columns. The logic is very coarse, and should not be relied on for more
+    than quick/convenient use cases.
+
+    Parameters
+    ----------
+    column : SQLAlchemy column
+        The column to analyze
+    formula : str, optional
+        A formula to calculate the column
+
+    Returns
+    -------
+    bool
+        True if the column is probably a metric
+
+    """
     if formula and contains_aggregation(formula):
         return True
     if not isinstance(column.type, tuple(NUMERIC_SA_TYPES)):
@@ -159,25 +231,85 @@ def is_probably_metric(column, formula=None):
 
 
 def sqla_compile(expr):
+    """Compile a SQL expression
+
+    Parameters
+    ----------
+    expr : SQLAlchemy expression
+        The SQLAlchemy expression to compile
+
+    Returns
+    -------
+    str
+        The compiled expression string
+
+    """
     return str(expr.compile(compile_kwargs={"literal_binds": True}))
 
 
 def printexpr(expr):
+    """Print a SQLAlchemy expression"""
     print(sqla_compile(expr))
 
 
 def column_fullname(column, prefix=None):
+    """Get a fully qualified name for a column
+
+    Parameters
+    ----------
+    column : SQLAlchemy column
+        A SQLAlchemy column object to get the full name for
+    prefix : str, optional
+        If specified, a manual prefix to prepend to the output string. This
+        will automatically be separted with a ".".
+
+    Returns
+    -------
+    str
+        A fully qualified column name. The exact format will vary depending on
+        your SQLAlchemy metadata, but an example would be: schema.table.column
+
+    """
     name = "%s.%s" % (column.table.fullname, column.name)
     if prefix:
         name = prefix + "." + name
     return name
 
 
-def get_sqla_clause(column, criterion, negate=False):
-    """
-    TODO: Postgresql "like" is case sensitive, but mysql "like" is not.
-    Postgresql also supports "ilike" to specify case insensitive, so one
-    option is to look at the dialect to determine the function.
+def get_sqla_criterion_expr(column, criterion, negate=False):
+    """Create a SQLAlchemy criterion expression
+
+    Parameters
+    ----------
+    column : SQLAlchemy column
+        A SQLAlchemy column object to be used in the expression
+    criterion : 3-item iterable
+        A 3-item tuple or list of the format [field, operation, value(s)]. The
+        supported operations are: =, !=, >, <, >=, <=, in, not in, between,
+        not between, like, not like. The value item may take on different
+        formats depending on the operation. In most cases passing an iterable
+        will result in multiple criteria of that operation being formed. For
+        example, ("my_field", "=", [1,2,3]) would logically or 3 conditions of
+        equality to the 3 values in the list. The "between" operations expect
+        each value to be a 2-item iterable representing the lower and upper
+        bound of the criterion.
+
+        TODO: more complete documentation of options/examples
+    negate : bool, optional
+        Negate the expression
+
+    Note
+    ----
+    Postgresql "like" is case sensitive, but mysql "like" is not. Postgresql
+    also supports "ilike" to specify case insensitive, so one option is to
+    look at the dialect to determine the function, but that is not supported
+    yet.
+
+    Returns
+    -------
+    SQLAlchemy expression
+        A SQLALchemy expression representing the criterion
+
     """
     field, op, values = criterion
     op = op.lower()
@@ -247,8 +379,8 @@ def get_sqla_clause(column, criterion, negate=False):
     return clause
 
 
-# https://github.com/sqlalchemy/sqlalchemy/wiki/CompiledComments
 def comment(self, comment):
+    """See https://github.com/sqlalchemy/sqlalchemy/wiki/CompiledComments"""
     self._added_comment = comment
     return self
 
@@ -258,6 +390,8 @@ exp.ClauseElement._added_comment = None
 
 
 def _compile_element(elem, prepend_newline=False):
+    """See https://github.com/sqlalchemy/sqlalchemy/wiki/CompiledComments"""
+
     @compiles(elem)
     def add_comment(element, compiler, **kw):
         meth = getattr(compiler, "visit_%s" % element.__visit_name__)
@@ -280,6 +414,7 @@ _compile_element(exp.Exists)
 
 
 def get_schemas(engine):
+    """Inspect the SQLAlchemy engine to get a list of schemas"""
     insp = reflection.Inspector.from_engine(engine)
     return insp.get_schema_names()
 
@@ -288,18 +423,36 @@ def get_schemas(engine):
 
 
 def to_mysql_type(type):
+    """Compile into a MySQL SQLAlchemy type"""
     return type.compile(dialect=mysql_dialect())
 
 
 def to_postgresql_type(type):
+    """Compile into a PostgreSQL SQLAlchemy type"""
     return type.compile(dialect=postgresql_dialect())
 
 
 def to_sqlite_type(type):
+    """Compile into a SQLite SQLAlchemy type"""
     return type.compile(dialect=sqlite_dialect())
 
 
 def filter_dialect_schemas(schemas, dialect):
+    """Filter out a set of baseline/system schemas for a dialect
+
+    Parameters
+    ----------
+    schemas : list
+        A list of schema names
+    dialect : str
+        The name of a SQLAlchemy dialect
+
+    Returns
+    -------
+    list
+        A filtered list of schema names
+
+    """
     ignores = DIALECT_IGNORE_SCHEMAS.get(dialect, None)
     if not ignores:
         return schemas
@@ -318,6 +471,7 @@ def filter_dialect_schemas(schemas, dialect):
 
 
 def get_postgres_schemas(conn):
+    """Helper to list PostgreSQL schemas"""
     qr = conn.execute(
         sa.text(
             "SELECT schema_name FROM information_schema.schemata "
@@ -328,6 +482,7 @@ def get_postgres_schemas(conn):
 
 
 def get_postgres_pid(conn):
+    """Helper to get the PostgreSQL connection PID"""
     qr = conn.execute("select pg_backend_pid()")
     pid = qr.fetchone()[0]
     return pid

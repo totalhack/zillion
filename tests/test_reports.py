@@ -658,26 +658,26 @@ def test_report_save_and_load(wh):
     metrics = ["revenue", "leads", "sales"]
     dimensions = ["partner_name"]
     report = Report(wh, metrics=metrics, dimensions=dimensions)
-    report_id = report.save()
+    spec_id = report.save()
     try:
-        result = wh.execute_id(report_id)
+        result = wh.execute_id(spec_id)
         assert result
         info(result.df)
     finally:
-        wh.delete_report(report_id)
+        wh.delete_report(spec_id)
 
 
 def test_report_save_and_load_adhoc_metric(wh):
     metrics = ["revenue", {"formula": "{revenue} > 3*{lead_id}", "name": "testmetric"}]
     dimensions = ["partner_name", "lead_id"]
     report = Report(wh, metrics=metrics, dimensions=dimensions)
-    report_id = report.save()
+    spec_id = report.save()
     try:
-        result = wh.execute_id(report_id)
+        result = wh.execute_id(spec_id)
         assert result
         info(result.df)
     finally:
-        wh.delete_report(report_id)
+        wh.delete_report(spec_id)
 
 
 def test_report_adhoc_datasource(wh, adhoc_ds):
@@ -694,13 +694,13 @@ def test_report_save_and_load_adhoc_datasource(wh, adhoc_ds):
     report = wh.save_report(
         metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
     )
-    report_id = report.save()
+    spec_id = report.save()
     try:
-        result = wh.execute_id(report_id, adhoc_datasources=[adhoc_ds])
+        result = wh.execute_id(spec_id, adhoc_datasources=[adhoc_ds])
         assert result
         info(result.df)
     finally:
-        wh.delete_report(report_id)
+        wh.delete_report(spec_id)
 
 
 def test_report_missing_adhoc_datasource_save_and_load(wh, adhoc_ds):
@@ -709,12 +709,12 @@ def test_report_missing_adhoc_datasource_save_and_load(wh, adhoc_ds):
     report = wh.save_report(
         metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
     )
-    report_id = report.save()
+    spec_id = report.save()
     try:
         with pytest.raises(ReportException):
-            result = wh.execute_id(report_id)
+            result = wh.execute_id(spec_id)
     finally:
-        wh.delete_report(report_id)
+        wh.delete_report(spec_id)
 
 
 def test_report_invalid_adhoc_datasource(wh, adhoc_ds):

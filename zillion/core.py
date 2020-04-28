@@ -28,7 +28,7 @@ from tlbx import (
     get_class_vars,
 )
 
-ADHOC_URL = "adhoc"
+ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
 RESERVED_FIELD_NAMES = set(["row_hash"])
 
 default_logger = logging.getLogger("zillion")
@@ -123,16 +123,22 @@ class MaxFormulaDepthException(ZillionException):
 
 
 class FieldTypes(metaclass=ClassValueContainsMeta):
+    """Allowed field types"""
+
     DIMENSION = "dimension"
     METRIC = "metric"
 
 
 class TableTypes(metaclass=ClassValueContainsMeta):
+    """Allowed table types"""
+
     DIMENSION = "dimension"
     METRIC = "metric"
 
 
 class AggregationTypes(metaclass=ClassValueContainsMeta):
+    """Allowed aggregation types"""
+
     AVG = "avg"
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
@@ -142,6 +148,8 @@ class AggregationTypes(metaclass=ClassValueContainsMeta):
 
 
 class TechnicalTypes(metaclass=ClassValueContainsMeta):
+    """Allowed technical types"""
+
     MA = "MA"
     SUM = "SUM"
     CUMSUM = "CUMSUM"
@@ -151,21 +159,27 @@ class TechnicalTypes(metaclass=ClassValueContainsMeta):
 
 
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
+    """Allowed datasource query modes"""
+
     SEQUENTIAL = "sequential"
     MULTITHREAD = "multithread"
 
 
 class ExecutionState:
+    """Allowed report/query execution states"""
+
     READY = "ready"
     QUERYING = "querying"
     KILLED = "killed"
 
 
 def raiseif(cond, msg="", exc=ZillionException):
+    """Convenience assert-like utility"""
     if cond:
         raise exc(msg)
 
 
 def raiseifnot(cond, msg="", exc=ZillionException):
+    """Convenience assert-like utility"""
     if not cond:
         raise exc(msg)
