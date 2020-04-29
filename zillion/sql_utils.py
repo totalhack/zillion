@@ -317,11 +317,7 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
         values = [values]
 
     use_or = True
-    has_null = False
-    for v in values:
-        # len() check is to avoid calling string.lower() on huge strings
-        if v is None or (isinstance(v, str) and len(v) == 4 and v.lower() == "null"):
-            has_null = True
+    has_null = any([v is None for v in values])
 
     if op == "=":
         clauses = [column == v if v is not None else column._is(None) for v in values]

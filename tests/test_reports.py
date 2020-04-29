@@ -5,7 +5,7 @@ from .test_utils import *
 from zillion.configs import zillion_config
 from zillion.core import *
 from zillion.field import Metric
-from zillion.report import ROLLUP_INDEX_LABEL, ROLLUP_TOTALS
+from zillion.report import ROLLUP_INDEX_LABEL
 
 
 def test_basic_report(wh):
@@ -13,7 +13,7 @@ def test_basic_report(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 11)]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -175,7 +175,7 @@ def test_report_pivot(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 11)]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     pivot = ["partner_name"]
     result = wh_execute(wh, locals())
     assert result
@@ -189,7 +189,7 @@ def test_report_technical_ma(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 8)]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -205,7 +205,7 @@ def test_report_technical_ma_adhoc(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 8)]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -218,7 +218,7 @@ def test_report_technical_ma_formula(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = [("revenue", ">", 8)]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -231,7 +231,7 @@ def test_report_technical_rolling_sum(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -244,7 +244,7 @@ def test_report_technical_cumsum(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -257,7 +257,7 @@ def test_report_technical_diff(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -270,7 +270,7 @@ def test_report_technical_pct_diff(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -283,7 +283,7 @@ def test_report_technical_bollinger(wh):
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     row_filters = None
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -524,7 +524,7 @@ def test_report_weighted_metric(wh):
 def test_report_weighted_rollup(wh):
     metrics = ["main_sales_quantity", "revenue_avg", "leads"]
     dimensions = ["partner_name"]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
@@ -554,7 +554,7 @@ def test_report_rollup(wh):
     metrics = ["revenue"]
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    rollup = ROLLUP_TOTALS
+    rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     info(result.df)
     revenue = result.rollup_rows.iloc[-1]["revenue"]
@@ -567,6 +567,18 @@ def test_report_multi_rollup(wh):
     dimensions = ["partner_name", "campaign_name", "lead_id"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
     rollup = 3
+    result = wh_execute(wh, locals())
+    info(result.df)
+    revenue = result.rollup_rows.iloc[-1]["revenue"]
+    revenue_sum = result.non_rollup_rows.sum()["revenue"]
+    assert revenue == revenue_sum
+
+
+def test_report_all_rollup(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "campaign_name", "lead_id"]
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+    rollup = RollupTypes.ALL
     result = wh_execute(wh, locals())
     info(result.df)
     revenue = result.rollup_rows.iloc[-1]["revenue"]
@@ -603,7 +615,7 @@ def test_report_multi_rollup_pivot(wh):
 #     dimensions = [
 #         {"name": "testdim", "formula": "CASE WHEN ({partner_name} LIKE '%B%' OR {partner_name} LIKE '%C%') THEN 'Match' ELSE {partner_name} END"}
 #     ]
-#     rollup = ROLLUP_TOTALS
+#     rollup = RollupTypes.TOTALS
 #     result = wh_execute(wh, locals())
 #     assert result
 #     info(result.df)

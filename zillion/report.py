@@ -28,7 +28,6 @@ logging.getLogger(name="stopit").setLevel(logging.ERROR)
 # need to be replaced for presentation.
 ROLLUP_INDEX_LABEL = chr(1114111)
 ROLLUP_INDEX_PRETTY_LABEL = "::"
-ROLLUP_TOTALS = "totals"
 
 ROW_FILTER_OPS = [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
 
@@ -1095,7 +1094,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             aggr[metric_name] = wavg(metric_name, weighting_metric)
 
         apply_totals = True
-        if rollup != ROLLUP_TOTALS:
+        if rollup != RollupTypes.TOTALS:
             df = self._get_multi_rollup_df(df, rollup, dimensions, aggrs, wavgs)
             if rollup != len(dimensions):
                 apply_totals = False
@@ -1210,11 +1209,13 @@ class Report(ExecutionStateMixin):
             ["a", "b", "c"]:
 
                 * **rollup="totals"** - adds a single, final rollup row
+                * **rollup="all"** - rolls up all dimension levels
                 * **rollup=1** - rolls up the first dimension only
                 * **rollup=2** - rolls up the first two dimensions
                 * **rollup=3** - rolls up all three dimensions. This is like
                     adding a totals row to the last case, as a totals row is a
-                    rollup of all dimension levels.
+                    rollup of all dimension levels. Setting rollup=len(dims)
+                    is equivalent to rollup="all".
                 * Any other non-None value would raise an error
         pivot : list, optional
             A list of dimensions to pivot to columns
@@ -1254,13 +1255,15 @@ class Report(ExecutionStateMixin):
         self.rollup = None
         if rollup is not None:
             raiseifnot(dimensions, "Must specify dimensions in order to use rollup")
-            if rollup != ROLLUP_TOTALS:
+            if rollup not in RollupTypes:
                 raiseifnot(
                     is_int(rollup) and (0 < int(rollup) <= len(dimensions)),
                     "Invalid rollup value: %s" % rollup,
                 )
                 self.rollup = int(rollup)
             else:
+                if rollup == RollupTypes.ALL:
+                    rollup = len(dimensions)
                 self.rollup = rollup
 
         self.pivot = pivot or []

@@ -158,6 +158,13 @@ class TechnicalTypes(metaclass=ClassValueContainsMeta):
     PCT_DIFF = "PCT_DIFF"
 
 
+class RollupTypes(metaclass=ClassValueContainsMeta):
+    """Allowed Rollup Types """
+
+    TOTALS = "totals"
+    ALL = "all"
+
+
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     """Allowed datasource query modes"""
 
