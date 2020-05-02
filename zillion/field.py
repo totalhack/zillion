@@ -172,9 +172,9 @@ class Metric(Field):
         """
         if weighting_metric:
             raiseifnot(
-                aggregation == AggregationTypes.AVG,
+                aggregation == AggregationTypes.MEAN,
                 'Weighting metrics are only supported for "%s" aggregation type'
-                % AggregationTypes.AVG,
+                % AggregationTypes.MEAN,
             )
 
         if technical:

@@ -17,7 +17,7 @@ import sqlparse as sp
 
 from zillion.core import *
 
-DIGIT_THRESHOLD_FOR_AVG_AGGR = 1
+DIGIT_THRESHOLD_FOR_MEAN_AGGR = 1
 
 INTEGER_SA_TYPES = [
     sa.BigInteger,
@@ -47,13 +47,28 @@ DATETIME_SA_TYPES = [sa.DateTime, sa.DATETIME, sa.Time, sa.TIME, sa.TIMESTAMP]
 DATE_SA_TYPES = [sa.Date, sa.DATE]
 
 AGGREGATION_SQLA_FUNC_MAP = {
-    AggregationTypes.AVG: sa.func.avg,
+    AggregationTypes.MEAN: sa.func.avg,
     AggregationTypes.COUNT: sa.func.count,
     AggregationTypes.COUNT_DISTINCT: lambda x: sa.func.count(sa.distinct(x)),
     AggregationTypes.MIN: sa.func.min,
     AggregationTypes.MAX: sa.func.max,
     AggregationTypes.SUM: sa.func.sum,
 }
+
+SQL_AGGREGATION_FUNCS = set(
+    [
+        "AVG",
+        "SUM",
+        "MIN",
+        "MAX",
+        "COUNT",
+        "COUNT_DISTINCT",
+        "STD",
+        "MEDIAN",
+        "MODE",
+        "VAR",
+    ]
+)
 
 # This establishes a baseline of schemas to ignore during reflection
 DIALECT_IGNORE_SCHEMAS = {
@@ -95,7 +110,10 @@ def contains_sql_keywords(sql):
 
 
 def contains_aggregation(sql):
-    """Determine whether a SQL query contains aggregation functions
+    """Determine whether a SQL query contains aggregation functions.
+
+    WARNING: this relies on a non-exhaustive list of SQL aggregation
+    functions to look for. This will likely need updating.
 
     Parameters
     ----------
@@ -111,13 +129,10 @@ def contains_aggregation(sql):
     if isinstance(sql, str):
         sql = sp.parse(sql)
 
-    aggr_types = {x.lower() for x in get_class_vars(AggregationTypes)}
-
     for token in sql:
         if isinstance(token, sp.sql.Function):
             name = token.get_name()
-            # NOTE: If AggregationTypes naming is changed, this could fail
-            if name.lower() in aggr_types:
+            if name.upper() in SQL_AGGREGATION_FUNCS:
                 return True
         if isinstance(token, sp.sql.TokenList):
             token_result = contains_aggregation(token)
@@ -180,8 +195,8 @@ def infer_aggregation_and_rounding(column):
             aggregation = AggregationTypes.SUM
         else:
             whole_digits = precision - rounding
-            if whole_digits <= DIGIT_THRESHOLD_FOR_AVG_AGGR:
-                aggregation = AggregationTypes.AVG
+            if whole_digits <= DIGIT_THRESHOLD_FOR_MEAN_AGGR:
+                aggregation = AggregationTypes.MEAN
             else:
                 aggregation = AggregationTypes.SUM
         return aggregation, rounding

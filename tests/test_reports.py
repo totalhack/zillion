@@ -195,20 +195,76 @@ def test_report_technical_ma(wh):
     info(result.df)
 
 
-def test_report_technical_ma_adhoc(wh):
-    metrics = [
-        "revenue",
-        {"formula": "{revenue}", "technical": "MA-5", "name": "my_revenue_ma_5"},
-    ]
-    # TODO: it doesnt make sense to use these dimensions, but no date/time
-    # dims have been added as of the time of creating this test.
-    dimensions = ["partner_name", "campaign_name"]
+def test_report_adhoc_technicals(wh):
+    dim_groups = [["partner_name", "campaign_name", "sale_id"], ["sale_id"]]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = [("revenue", ">", 8)]
     rollup = RollupTypes.TOTALS
-    result = wh_execute(wh, locals())
-    assert result
-    info(result.df)
+
+    technical_strings = [
+        "MEAN(5, 1)",
+        "SUM(2)",
+        "MEDIAN(3)",
+        "STD(2)",
+        "VAR(2)",
+        "MIN(2)",
+        "MAX(2)",
+        "BOLL(2)",
+        "DIFF(1)",
+        "PCT_CHANGE",
+        "CUMSUM",
+        "CUMMIN",
+        "CUMMAX",
+        "RANK",
+        "PCT_RANK",
+    ]
+
+    for tech in technical_strings:
+        for mode in (TechnicalModes.GROUP, TechnicalModes.ALL):
+            for dimensions in dim_groups:
+                tech_str = tech + ":" + mode
+                metrics = [
+                    "revenue",
+                    {
+                        "formula": "{revenue}",
+                        "technical": tech_str,
+                        "name": "my_revenue_tech",
+                    },
+                ]
+                result = wh_execute(wh, locals())
+                assert result
+                info("Technical: %s Mode: %s Dims: %s" % (tech_str, mode, dimensions))
+                info(result.df)
+
+
+def test_report_no_dimension_technical(wh):
+    dimensions = None
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+
+    technical_strings = [
+        "MEAN(5, 1)",
+        "DIFF(1)",
+        "PCT_CHANGE",
+        "BOLL(2)",
+        "CUMSUM",
+        "RANK",
+        "PCT_RANK",
+    ]
+
+    for tech in technical_strings:
+        for mode in (TechnicalModes.GROUP, TechnicalModes.ALL):
+            tech_str = tech + ":" + mode
+            metrics = [
+                "revenue",
+                {
+                    "formula": "{revenue}",
+                    "technical": tech_str,
+                    "name": "my_revenue_tech",
+                },
+            ]
+            result = wh_execute(wh, locals())
+            assert result
+            info("Technical: %s Mode: %s" % (tech_str, mode))
+            info(result.df)
 
 
 def test_report_technical_ma_formula(wh):
@@ -355,7 +411,7 @@ def test_report_count_metric(wh):
 
 
 def test_report_alias_metric(wh):
-    metrics = ["revenue_avg"]
+    metrics = ["revenue_mean"]
     dimensions = ["partner_name"]
     result = wh_execute(wh, locals())
     assert result
@@ -439,7 +495,7 @@ def test_report_metric_formula_with_dim(config):
         {
             "name": "revenue_formula_with_dim",
             "type": "Numeric(10,2)",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "formula": "1.0*{revenue}*IFNULL({campaign_name}, 0)",
         }
     )
@@ -505,7 +561,7 @@ def test_report_weighted_formula_metric(wh):
 
 
 def test_report_weighted_ds_metric_formula(wh):
-    metrics = ["revenue_avg", "revenue_avg_ds_weighted"]
+    metrics = ["revenue_mean", "revenue_mean_ds_weighted"]
     dimensions = ["partner_name"]
     result = wh_execute(wh, locals())
     assert result
@@ -513,33 +569,33 @@ def test_report_weighted_ds_metric_formula(wh):
 
 
 def test_report_weighted_metric(wh):
-    metrics = ["main_sales_quantity", "revenue_avg", "revenue", "leads"]
+    metrics = ["main_sales_quantity", "revenue_mean", "revenue", "leads"]
     dimensions = ["partner_name"]
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
-    assert result.df.loc["Partner A"]["revenue_avg"] == 8.35
+    assert result.df.loc["Partner A"]["revenue_mean"] == 14.67
 
 
 def test_report_weighted_rollup(wh):
-    metrics = ["main_sales_quantity", "revenue_avg", "leads"]
+    metrics = ["main_sales_quantity", "revenue_mean", "leads"]
     dimensions = ["partner_name"]
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
-    assert result.rollup_rows["revenue_avg"][0] == 8.39
+    assert result.rollup_rows["revenue_mean"][0] == 17.08
 
 
 def test_report_weighted_multi_rollup(wh):
-    metrics = ["main_sales_quantity", "revenue_avg", "leads"]
+    metrics = ["main_sales_quantity", "revenue_mean", "leads"]
     dimensions = ["partner_name", "campaign_name", "lead_id"]
     rollup = 2
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
     test_row = result.df.loc["Partner A", ROLLUP_INDEX_LABEL, ROLLUP_INDEX_LABEL]
-    assert test_row["revenue_avg"] == 8.35
+    assert test_row["revenue_mean"] == 14.67
 
 
 def test_report_multi_dimension(wh):
@@ -671,7 +727,7 @@ def test_report_datasource_priority(wh):
 
 
 def test_report_multi_datasource(wh):
-    metrics = ["revenue", "leads", "sales", "revenue_avg"]
+    metrics = ["revenue", "leads", "sales", "revenue_mean"]
     dimensions = ["partner_name"]
     report = Report(wh, metrics=metrics, dimensions=dimensions)
     assert len(report.queries) == 2
@@ -831,7 +887,7 @@ def test_metric_formula_sql_injection(config):
     config["metrics"].append(
         dict(
             name="rpl_injection",
-            aggregation="avg",
+            aggregation="mean",
             rounding=2,
             formula="{revenue}/{leads};select * from leads",
         )
@@ -848,7 +904,7 @@ def test_weighting_metric_sql_injection(config):
     config["metrics"].append(
         dict(
             name="rpl_injection",
-            aggregation="avg",
+            aggregation="mean",
             rounding=2,
             formula="{revenue}/{leads}",
             weighting_metric="main_sales_quantity;select * from leads",
@@ -917,7 +973,7 @@ def test_metric_name_sql_injection(config):
     config["metrics"].append(
         dict(
             name="select * from leads",
-            aggregation="avg",
+            aggregation="mean",
             rounding=2,
             formula="{revenue}/{leads}",
         )

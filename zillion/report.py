@@ -32,7 +32,6 @@ ROLLUP_INDEX_PRETTY_LABEL = "::"
 ROW_FILTER_OPS = [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
-    AggregationTypes.AVG: "mean",
     AggregationTypes.COUNT: "sum",
     AggregationTypes.COUNT_DISTINCT: "sum",
 }
@@ -843,19 +842,19 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
-        if row_filters:
+        if row_filters and not df.empty:
             df = self._apply_row_filters(df, row_filters, metrics, dimensions)
 
-        if technicals:
+        if technicals and not df.empty:
             df = self._apply_technicals(df, technicals, rounding)
 
-        if rollup:
+        if rollup and not df.empty:
             df = self._apply_rollup(df, rollup, metrics, dimensions)
 
-        if rounding:
+        if rounding and not df.empty:
             df = df.round(rounding)
 
-        if pivot:
+        if pivot and not df.empty:
             df = df.unstack(pivot)
 
         dbg(df)
@@ -984,7 +983,10 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             )
             raiseifnot(op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op)
             filter_parts.append("(%s %s %s)" % (field, op, value))
-        return df.query(" and ".join(filter_parts))
+        result = df.query(" and ".join(filter_parts))
+        # https://stackoverflow.com/questions/28772494/how-do-you-update-the-levels-of-a-pandas-multiindex-after-slicing-its-dataframe
+        result.index = result.index.remove_unused_levels()
+        return result
 
     def _get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavgs):
         """Calculate and insert multi level rollup rows to a DataFrame.
@@ -1080,6 +1082,10 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 return d.mean()  # Return mean if there are no weights
 
         for metric in metrics.values():
+            if metric.technical:
+                # Skip rollups of technicals since they often dont make sense
+                continue
+
             if metric.weighting_metric:
                 wavgs.append((metric.name, metric.weighting_metric))
                 continue
@@ -1089,9 +1095,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             )
             aggrs[metric.name] = aggr_func
 
-        aggr = df.agg(aggrs, skipna=True)
+        totals = df.agg(aggrs, skipna=True)
         for metric_name, weighting_metric in wavgs:
-            aggr[metric_name] = wavg(metric_name, weighting_metric)
+            totals[metric_name] = wavg(metric_name, weighting_metric)
 
         apply_totals = True
         if rollup != RollupTypes.TOTALS:
@@ -1106,7 +1112,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 else ROLLUP_INDEX_LABEL
             )
             with pd.option_context("mode.chained_assignment", None):
-                df.at[totals_rollup_index, :] = aggr
+                df.at[totals_rollup_index, :] = totals
 
         return df
 
@@ -1131,26 +1137,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             that show lower and upper bounds.
         """
         for metric, tech in technicals.items():
-            result = tech.apply(df, metric)
-
-            if tech.type == TechnicalTypes.BOLL:
-                raiseifnot(
-                    len(result) == 2,
-                    "Expected two items in %s technical result" % tech.type,
-                )
-                lower = metric + "_lower"
-                upper = metric + "_upper"
-                if metric in rounding:
-                    # This adds some extra columns for the bounds, so we use
-                    # the same rounding as the root metric if applicable.
-                    df[lower] = round(result[0], rounding[metric])
-                    df[upper] = round(result[1], rounding[metric])
-                else:
-                    df[lower] = result[0]
-                    df[upper] = result[1]
-            else:
-                df[metric] = result
-
+            tech.apply(df, metric, rounding=rounding)
         return df
 
 

@@ -2,35 +2,35 @@
     "metrics": [
         {
             "name": "rpl",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}"
         },
         {
             "name": "rpl_weighted",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
             "weighting_metric": "main_sales_quantity"
         },
         {
             "name": "rpl_squared",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{rpl}*{rpl}"
         },
         {
             "name": "rpl_unsquared",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{rpl_squared}/{rpl}"
         },
         {
             "name": "rpl_ma_5",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "technical": "MA-5"
+            "technical": "MEAN(5)"
         },
         {
             "name": "revenue",
@@ -43,14 +43,14 @@
             "type": "Numeric(10,2)",
             "aggregation": "sum",
             "rounding": 2,
-            "technical": "MA-5"
+            "technical": "MEAN(5)"
         },
         {
             "name": "revenue_sum_5",
             "type": "Numeric(10,2)",
             "aggregation": "sum",
             "rounding": 2,
-            "technical": "SUM-5"
+            "technical": "SUM(5)"
         },
         {
             "name": "revenue_cumsum",
@@ -64,7 +64,7 @@
             "type": "Numeric(10,2)",
             "aggregation": "sum",
             "rounding": 2,
-            "technical": "BOLL-5"
+            "technical": "BOLL(5)"
         },
         {
             "name": "revenue_diff",
@@ -78,7 +78,7 @@
             "type": "Numeric(10,2)",
             "aggregation": "sum",
             "rounding": 2,
-            "technical": "PCT_DIFF"
+            "technical": "PCT_CHANGE"
         },
         {
             "name": "revenue_ds",
@@ -105,14 +105,14 @@
         {
             "name": "revenue_per_lead_required_grain",
             "type": "Numeric(10,2)",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "formula": "1.0*{revenue}/{leads}",
             "required_grain": ["campaign_name"]
         },
         {
             "name": "revenue_formula_required_grain",
             "type": "Numeric(10,2)",
-            "aggregation": "avg",
+            "aggregation": "mean",
             "formula": "1.0*{revenue_required_grain}"
         }
     ],
@@ -134,16 +134,16 @@
                     "aggregation": "sum"
                 },
                 {
-                    "name": "revenue_avg",
+                    "name": "revenue_mean",
                     "type": "Numeric(10,2)",
-                    "aggregation": "avg",
+                    "aggregation": "mean",
                     "rounding": 2,
                     "weighting_metric": "main_sales_quantity"
                 },
                 {
-                    "name": "revenue_avg_ds_weighted",
+                    "name": "revenue_mean_ds_weighted",
                     "type": "Numeric(10,2)",
-                    "aggregation": "avg",
+                    "aggregation": "mean",
                     "rounding": 2,
                     "weighting_metric": "main_sales_quantity"
                 }
@@ -234,10 +234,10 @@
                                 "revenue_cumsum",
                                 "revenue_diff",
                                 "revenue_pct_diff",
-                                "revenue_avg",
+                                "revenue_mean",
                                 "revenue_required_grain",
                                 {"name": "revenue_ds", "ds_formula": "IFNULL(sales.revenue, 0)"},
-                                {"name": "revenue_avg_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},
+                                {"name": "revenue_mean_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},
                                 {"name": "revenue_decile", "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}
                             ]
                         }

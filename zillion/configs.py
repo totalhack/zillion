@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import os
 import string
 
@@ -184,68 +184,6 @@ def default_field_name(column):
     return field_safe_name(column_fullname(column))
 
 
-def parse_technical_string(val):
-    """Parse Technical args from a shorthand string
-
-    Parameters
-    ----------
-    val : str
-        The string to parse. The general format is: type-arg1-arg2.
-        The type must be a valid value in TechnicalTypes. The arg1
-        and arg2 requirements vary by type, and are optional in some
-        cases. Examples:
-
-            * "MA-5" for moving average, window=5
-            * "MA-5-2" for moving average, window=5, min_period=2
-            * "CUMSUM" for cumulative sum (no args)
-
-    Returns
-    -------
-    dict
-        A dict of Technical args
-
-    """
-    arg1 = None
-    arg2 = None
-
-    if "-" in val:
-        parts = val.split("-")
-        if len(parts) == 2:
-            ttype, arg1 = parts
-        elif len(parts) == 3:
-            ttype, arg1, arg2 = parts
-    else:
-        ttype = val
-
-    result = dict(type=ttype, params={})
-
-    if ttype == TechnicalTypes.CUMSUM:
-        if arg1 or arg2:
-            raise InvalidTechnicalException(
-                "Invalid %s technical string: %s, no args allowed" % (ttype, val)
-            )
-    elif ttype in (TechnicalTypes.DIFF, TechnicalTypes.PCT_DIFF):
-        if arg2 is not None:
-            raise InvalidTechnicalException(
-                "Invalid %s technical string: %s, only 1 arg allowed" % (ttype, val)
-            )
-        if arg1 is not None:
-            result["params"] = dict(periods=int(arg1))
-    elif ttype in TechnicalTypes:
-        window = int(arg1) if arg1 is not None else None
-        if window is None:
-            raise InvalidTechnicalException(
-                "Invalid %s technical string: %s, window arg required" % (ttype, val)
-            )
-        result["params"] = dict(window=window, min_periods=1)
-        if arg2 is not None:
-            result["params"]["min_periods"] = int(arg2)
-    else:
-        raise InvalidTechnicalException("Invalid technical type: %s" % ttype)
-
-    return result
-
-
 def is_active(obj):
     """Helper to test if an object is an active part of the zillion config"""
     if not getattr(obj, "zillion", None):
@@ -309,6 +247,12 @@ def is_valid_technical_type(val):
     raise ValidationError("Invalid technical type: %s" % val)
 
 
+def is_valid_technical_mode(val):
+    if val in TechnicalModes:
+        return True
+    raise ValidationError("Invalid technical mode: %s" % val)
+
+
 def is_valid_technical(val):
     try:
         tech = create_technical(val)
@@ -337,6 +281,7 @@ class TechnicalInfoSchema(BaseSchema):
 
     type = mfields.String(required=True, validate=is_valid_technical_type)
     params = mfields.Dict(keys=mfields.Str(), default=None, missing=None)
+    mode = mfields.String(validate=is_valid_technical_mode, default=None, missing=None)
 
 
 class TechnicalField(mfields.Field):
@@ -574,10 +519,13 @@ class MetricConfigSchema(BaseSchema):
                 "Either type or formula must be specified for metric: %s" % data
             )
 
-        if data["weighting_metric"] and not data["aggregation"] == AggregationTypes.AVG:
+        if (
+            data["weighting_metric"]
+            and not data["aggregation"] == AggregationTypes.MEAN
+        ):
             raise ValidationError(
                 'only "%s" aggregation type is allowed with weighting metrics: %s'
-                % (AggregationTypes.AVG, data)
+                % (AggregationTypes.MEAN, data)
             )
 
 
@@ -875,6 +823,9 @@ class ColumnInfo(ZillionInfo, PrintMixin):
             self._field_map[field["name"]] = field
 
 
+# TODO: might be a better home for some of the Technical stuff
+
+
 class Technical(MappingMixin, PrintMixin):
     """A technical computation on a DataFrame column
 
@@ -884,6 +835,10 @@ class Technical(MappingMixin, PrintMixin):
         The TechnicalType
     params : dict
         Params for the technical computation
+    mode : str
+        The mode that controls how to apply the technical computation across
+        the data's dimensions. See TechnicalModes for options. If None, the
+        default mode will be set based on the technical type.
 
     Attributes
     ----------
@@ -892,11 +847,16 @@ class Technical(MappingMixin, PrintMixin):
 
     """
 
-    repr_attrs = ["type", "params"]
+    repr_attrs = ["type", "params", "mode"]
     allowed_params = set()
 
     @initializer
-    def __init__(self, type, params):
+    def __init__(self, type, params, mode=None):
+        if mode is None:
+            self.mode = self.get_default_mode()
+        raiseifnot(
+            self.mode in TechnicalModes, "Invalid Technical mode: %s" % self.mode
+        )
         self._check_params(params)
 
     @classmethod
@@ -908,30 +868,102 @@ class Technical(MappingMixin, PrintMixin):
             if k not in cls.allowed_params:
                 raise InvalidTechnicalException("Invalid param for %s: %s" % (cls, k))
 
-    def apply(self, df, column):
+    @classmethod
+    def parse_technical_string_params(cls, val):
+        """Return named params from a technical string"""
+        ttype, params, mode = _extract_technical_string_parts(val)
+        if params:
+            raise InvalidTechnicalException(
+                "Invalid %s technical string: %s, no args allowed" % (ttype, val)
+            )
+        return {}
+
+    @classmethod
+    def get_default_mode(cls):
+        return TechnicalModes.GROUP
+
+    def _apply(self, df, column, indexer, rounding=None):
+        """Apply the technical computation along a target slice of a dataframe"""
         raise NotImplementedError
 
+    def apply(self, df, column, rounding=None):
+        """Apply a technical computation to a dataframe. If the dataframe
+        has a multilevel index and the technical is being applied in group
+        mode, then the data will be sliced along the second to last level
+        and the technical applied to each subgroup. Otherwise the technical
+        is applied across the entire dataframe. The technical is applied to
+        the dataframe in place.
 
-class CumulativeTechnical(Technical):
-    """A Technical that computes a cumulative sum"""
+        Parameters
+        ----------
+        df : DataFrame
+            A DataFrame to apply a technical computation to
+        column : str
+            The name of the target column for the technical computation
+        rounding : dict, optional
+            The rounding settings for the report's columns
 
-    def apply(self, df, column):
-        """Get the cumsum of a DataFrame column"""
-        return df[column].cumsum()
+        """
+        if df.empty:
+            return
+
+        if self.mode == TechnicalModes.GROUP and hasattr(df.index, "levels"):
+            raiseif(df.index.empty, "Need support for empty index")
+            index_len = len(df.index.levels)
+            level = max(index_len - 2, 0)
+            index_vals = df.index.levels[level]
+
+            for val in index_vals:
+                slice_parts = []
+                for i in range(index_len):
+                    if i != level:
+                        slice_parts.append(slice(None))
+                    else:
+                        slice_parts.append(val)
+
+                indexer = tuple(slice_parts)
+                self._apply(df, column, indexer, rounding=rounding)
+        else:
+            indexer = slice(None)
+            self._apply(df, column, indexer, rounding=rounding)
 
 
-class DiffTechnical(Technical):
+class PandasTechnical(Technical):
+    """A generic Technical runs a pandas method"""
+
+    def _apply(self, df, column, indexer, **kwargs):
+        """This assumes the Technical type string matches the pandas method
+        name"""
+        method = getattr(df.loc[indexer, column], self.type.lower())
+        df.loc[indexer, column] = method(**self.params)
+
+
+class RankTechnical(PandasTechnical):
+    """A Technical specific to the pandas rank function"""
+
+    def _apply(self, df, column, indexer, **kwargs):
+        params = {}
+        if self.type == TechnicalTypes.PCT_RANK:
+            params = {"pct": True}
+        df.loc[indexer, column] = df.loc[indexer, column].rank(**params)
+
+
+class DiffTechnical(PandasTechnical):
     """A Technical that computes a periodic diff on a DataFrame"""
 
     allowed_params = set(["periods"])
 
-    def apply(self, df, column):
-        """Get the diff or pct_change of a DataFrame column"""
-        if self.type == TechnicalTypes.DIFF:
-            return df[column].diff(**self.params)
-        elif self.type == TechnicalTypes.PCT_DIFF:
-            return df[column].pct_change(**self.params)
-        raise InvalidTechnicalException("Invalid DiffTechnical type: %s" % self.type)
+    @classmethod
+    def parse_technical_string_params(cls, val):
+        """Return named params from a technical string"""
+        ttype, params, mode = _extract_technical_string_parts(val)
+        if len(params) > 1:
+            raise InvalidTechnicalException(
+                "Invalid %s technical string: %s, only 1 arg allowed" % (ttype, val)
+            )
+        if params and params[0] is not None:
+            return dict(periods=int(params[0]))
+        return {}
 
 
 class RollingTechnical(Technical):
@@ -939,22 +971,129 @@ class RollingTechnical(Technical):
 
     allowed_params = set(["window", "min_periods", "center"])
 
-    def apply(self, df, column):
+    def _apply(self, df, column, indexer, rounding=None):
         """Apply a rolling function to a column of a DataFrame"""
-        rolling = df[column].rolling(**self.params)
+        rolling = df.loc[indexer, column].rolling(**self.params)
+        method = getattr(rolling, self.type.lower())
+        df.loc[indexer, column] = method()
 
-        if self.type == TechnicalTypes.MA:
-            return rolling.mean()
-        elif self.type == TechnicalTypes.SUM:
-            return rolling.sum()
-        elif self.type == TechnicalTypes.BOLL:
-            ma = rolling.mean()
-            std = rolling.std()
-            lower = ma - 2 * std
-            upper = ma + 2 * std
-            return lower, upper
+    @classmethod
+    def parse_technical_string_params(cls, val):
+        """Return named params from a technical string"""
+        ttype, params, mode = _extract_technical_string_parts(val)
+        if len(params) not in (1, 2):
+            raise InvalidTechnicalException(
+                "Invalid %s technical string: %s, 1 or 2 args allowed" % (ttype, val)
+            )
+        result = dict(window=int(params[0]), min_periods=1)
+        if len(params) == 2:
+            result["min_periods"] = int(params[1])
+        return result
 
-        raise InvalidTechnicalException("Invalid RollingTechnical type: %s" % self.type)
+
+class BollingerTechnical(RollingTechnical):
+    """Compute a rolling average and bollinger bands for a column. This adds
+    additional columns to the input dataframe."""
+
+    def _apply(self, df, column, indexer, rounding=None):
+        rolling = df.loc[indexer, column].rolling(**self.params)
+        ma = rolling.mean()
+        std = rolling.std()
+        lower = ma - 2 * std
+        upper = ma + 2 * std
+        col_lower = column + "_lower"
+        col_upper = column + "_upper"
+
+        df.loc[indexer, column] = ma
+        if rounding and column in rounding:
+            # This adds some extra columns for the bounds, so we use
+            # the same rounding as the root column if applicable.
+            df.loc[indexer, col_lower] = round(lower, rounding[column])
+            df.loc[indexer, col_upper] = round(upper, rounding[column])
+        else:
+            df.loc[indexer, col_lower] = lower
+            df.loc[indexer, col_upper] = upper
+
+
+ROLLING_TECHNICALS = set(
+    [
+        TechnicalTypes.MEAN,
+        TechnicalTypes.SUM,
+        TechnicalTypes.MEDIAN,
+        TechnicalTypes.MIN,
+        TechnicalTypes.MAX,
+        TechnicalTypes.STD,
+        TechnicalTypes.VAR,
+        TechnicalTypes.BOLL,
+    ]
+)
+
+DIFF_TECHNICALS = set([TechnicalTypes.DIFF, TechnicalTypes.PCT_CHANGE])
+
+RANK_TECHNICALS = set([TechnicalTypes.RANK, TechnicalTypes.PCT_RANK])
+
+TECHNICAL_CLASS_MAP = defaultdict(lambda: PandasTechnical)
+TECHNICAL_CLASS_MAP.update({k: RollingTechnical for k in ROLLING_TECHNICALS})
+TECHNICAL_CLASS_MAP.update({k: DiffTechnical for k in DIFF_TECHNICALS})
+TECHNICAL_CLASS_MAP.update({k: RankTechnical for k in RANK_TECHNICALS})
+
+TECHNICAL_CLASS_MAP[TechnicalTypes.BOLL] = BollingerTechnical
+
+
+def _extract_technical_string_parts(val):
+    """Extract params for a technical from shorthand string
+
+    General format: TYPE(PARAM1, ...):MODE
+
+    Params and mode are optional.
+    """
+    params = []
+    mode = None
+
+    if ":" in val:
+        tech_params, mode = val.split(":")
+    else:
+        tech_params = val
+
+    if "(" in tech_params:
+        parts = tech_params.rstrip(")").split("(")
+        ttype = parts[0]
+        params = [x.strip() for x in parts[1].split(",") if x]
+    else:
+        ttype = tech_params
+
+    raiseifnot(ttype, "No technical type could be parsed from string: %s" % val)
+    return ttype, params, mode
+
+
+def parse_technical_string(val):
+    """Parse Technical args from a shorthand string
+
+    Parameters
+    ----------
+    val : str
+        The string to parse. The general format is: type-arg1-arg2.
+        The type must be a valid value in TechnicalTypes. The arg1
+        and arg2 requirements vary by type, and are optional in some
+        cases. Examples:
+
+            * "MA-5" for moving average, window=5
+            * "MA-5-2" for moving average, window=5, min_period=2
+            * "CUMSUM" for cumulative sum (no args)
+
+    Returns
+    -------
+    dict
+        A dict of Technical args
+
+    """
+    ttype, params, mode = _extract_technical_string_parts(val)
+    if not ttype in TechnicalTypes:
+        raise InvalidTechnicalException("Invalid technical type: %s" % ttype)
+    result = dict(type=ttype, params={}, mode=mode)
+    cls = TECHNICAL_CLASS_MAP[ttype]
+    result["params"] = cls.parse_technical_string_params(val)
+    return result
 
 
 def create_technical(info):
@@ -979,14 +1118,8 @@ def create_technical(info):
     raiseifnot(isinstance(info, dict), "Raw info must be a dict: %s" % info)
 
     info = TechnicalInfoSchema().load(info)
-
-    if info["type"] == TechnicalTypes.CUMSUM:
-        cls = CumulativeTechnical
-    elif info["type"] in (TechnicalTypes.DIFF, TechnicalTypes.PCT_DIFF):
-        cls = DiffTechnical
-    elif info["type"] in TechnicalTypes:
-        cls = RollingTechnical
-    else:
+    if info["type"] not in TechnicalTypes:
         raise InvalidTechnicalException("Invalid technical type: %s" % info["type"])
 
-    return cls(info["type"], info.get("params", {}))
+    cls = TECHNICAL_CLASS_MAP[info["type"]]
+    return cls(info["type"], info.get("params", {}), info.get("mode", None))

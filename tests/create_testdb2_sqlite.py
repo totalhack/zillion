@@ -32,7 +32,7 @@ if __name__ == "__main__":
     conn = connect("testdb2")
     cursor = conn.cursor()
 
-    with open("common.sql", "r") as sql_file:
+    with open("common.sqlite.sql", "r") as sql_file:
         sql_script = sql_file.read()
     cursor.executescript(sql_script)
     conn.commit()

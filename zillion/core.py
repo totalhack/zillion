@@ -137,25 +137,52 @@ class TableTypes(metaclass=ClassValueContainsMeta):
 
 
 class AggregationTypes(metaclass=ClassValueContainsMeta):
-    """Allowed aggregation types"""
+    """Allowed aggregation types. These aggregations are limited
+    by what can be done in most SQL databases"""
 
-    AVG = "avg"
-    COUNT = "count"
-    COUNT_DISTINCT = "count_distinct"
+    MEAN = "mean"
+    SUM = "sum"
     MIN = "min"
     MAX = "max"
-    SUM = "sum"
+    COUNT = "count"
+    COUNT_DISTINCT = "count_distinct"
 
 
 class TechnicalTypes(metaclass=ClassValueContainsMeta):
     """Allowed technical types"""
 
-    MA = "MA"
+    MEAN = "MEAN"
     SUM = "SUM"
-    CUMSUM = "CUMSUM"
+    MEDIAN = "MEDIAN"
+    STD = "STD"
+    VAR = "VAR"
+    MIN = "MIN"
+    MAX = "MAX"
     BOLL = "BOLL"
     DIFF = "DIFF"
-    PCT_DIFF = "PCT_DIFF"
+    PCT_CHANGE = "PCT_CHANGE"
+    CUMSUM = "CUMSUM"
+    CUMMIN = "CUMMIN"
+    CUMMAX = "CUMMAX"
+    RANK = "RANK"
+    PCT_RANK = "PCT_RANK"
+
+
+class TechnicalModes(metaclass=ClassValueContainsMeta):
+    """Allowed Technical modes
+
+    Attributes
+    ----------
+    GROUP : str
+        Apply the technical to the last grouping of the data for a
+        multi-dimensional report
+    ALL : str
+        Apply the technical across all result data
+
+    """
+
+    GROUP = "GROUP"
+    ALL = "ALL"
 
 
 class RollupTypes(metaclass=ClassValueContainsMeta):
