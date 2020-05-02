@@ -45,7 +45,7 @@ ReportSpecs = sa.Table(
     zillion_metadata,
     sa.Column("id", sa.Integer, primary_key=True),
     sa.Column("params", sa.Text),
-    sa.Column("created_at", sa.DateTime, server_default=sa.func.now()),
+    sa.Column("created_at", sa.DateTime, server_default=sa.func.NOW()),
 )
 zillion_metadata.create_all(zillion_engine)
 
@@ -1091,7 +1091,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 continue
 
             aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
-                metric.aggregation, metric.aggregation
+                metric.aggregation.lower(), metric.aggregation.lower()
             )
             aggrs[metric.name] = aggr_func
 
@@ -1189,14 +1189,14 @@ class Report(ExecutionStateMixin):
         rollup : str or int, optional
             Controls how metrics are rolled up / aggregated by dimension
             depth. If not passed no rollup will be computed. If the special
-            value "totals" is passed, only a final tally rollup row will be
+            value "TOTALS" is passed, only a final tally rollup row will be
             added. If an int, then it controls the maximum depth to roll up
             the data, starting from the most granular (last) dimension of
             the report. For example, if you ran a report with dimensions
             ["a", "b", "c"]:
 
-                * **rollup="totals"** - adds a single, final rollup row
-                * **rollup="all"** - rolls up all dimension levels
+                * **rollup="TOTALS"** - adds a single, final rollup row
+                * **rollup="ALL"** - rolls up all dimension levels
                 * **rollup=1** - rolls up the first dimension only
                 * **rollup=2** - rolls up the first two dimensions
                 * **rollup=3** - rolls up all three dimensions. This is like

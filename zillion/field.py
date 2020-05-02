@@ -250,9 +250,9 @@ class Metric(Field):
                 w_column_name = column_fullname(w_column)
                 # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
                 # to integer values improperly by some database dialects such as sqlite
-                expr = sa.func.sum(
+                expr = sa.func.SUM(
                     sa.text("1.0") * expr * sa.text(w_column_name)
-                ) / sa.func.sum(sa.text(w_column_name))
+                ) / sa.func.SUM(sa.text(w_column_name))
             else:
                 expr = aggr(expr)
 

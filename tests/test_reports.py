@@ -170,6 +170,14 @@ def test_impossible_report(wh):
         result = wh_execute(wh, locals())
 
 
+def test_report_count_aggr(wh):
+    metrics = ["leads", "lead_count", "lead_count_distinct"]
+    dimensions = ["campaign_name"]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
 def test_report_pivot(wh):
     metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]
@@ -495,7 +503,7 @@ def test_report_metric_formula_with_dim(config):
         {
             "name": "revenue_formula_with_dim",
             "type": "Numeric(10,2)",
-            "aggregation": "mean",
+            "aggregation": AggregationTypes.MEAN,
             "formula": "1.0*{revenue}*IFNULL({campaign_name}, 0)",
         }
     )
@@ -887,7 +895,7 @@ def test_metric_formula_sql_injection(config):
     config["metrics"].append(
         dict(
             name="rpl_injection",
-            aggregation="mean",
+            aggregation=AggregationTypes.MEAN,
             rounding=2,
             formula="{revenue}/{leads};select * from leads",
         )
@@ -904,7 +912,7 @@ def test_weighting_metric_sql_injection(config):
     config["metrics"].append(
         dict(
             name="rpl_injection",
-            aggregation="mean",
+            aggregation=AggregationTypes.MEAN,
             rounding=2,
             formula="{revenue}/{leads}",
             weighting_metric="main_sales_quantity;select * from leads",
@@ -973,7 +981,7 @@ def test_metric_name_sql_injection(config):
     config["metrics"].append(
         dict(
             name="select * from leads",
-            aggregation="mean",
+            aggregation=AggregationTypes.MEAN,
             rounding=2,
             formula="{revenue}/{leads}",
         )
@@ -1011,7 +1019,7 @@ def test_table_name_sql_injection(config):
     # Since this table doesn't actually match a table name it shouldn't ever
     # become a part of the warehouse.
     tables["select * from leads;--"] = {
-        "type": "metric",
+        "type": TableTypes.METRIC,
         "create_fields": True,
         "columns": {
             "id": {

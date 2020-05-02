@@ -125,27 +125,27 @@ class MaxFormulaDepthException(ZillionException):
 class FieldTypes(metaclass=ClassValueContainsMeta):
     """Allowed field types"""
 
-    DIMENSION = "dimension"
-    METRIC = "metric"
+    DIMENSION = "DIMENSION"
+    METRIC = "METRIC"
 
 
 class TableTypes(metaclass=ClassValueContainsMeta):
     """Allowed table types"""
 
-    DIMENSION = "dimension"
-    METRIC = "metric"
+    DIMENSION = "DIMENSION"
+    METRIC = "METRIC"
 
 
 class AggregationTypes(metaclass=ClassValueContainsMeta):
     """Allowed aggregation types. These aggregations are limited
     by what can be done in most SQL databases"""
 
-    MEAN = "mean"
-    SUM = "sum"
-    MIN = "min"
-    MAX = "max"
-    COUNT = "count"
-    COUNT_DISTINCT = "count_distinct"
+    MEAN = "MEAN"
+    SUM = "SUM"
+    MIN = "MIN"
+    MAX = "MAX"
+    COUNT = "COUNT"
+    COUNT_DISTINCT = "COUNT_DISTINCT"
 
 
 class TechnicalTypes(metaclass=ClassValueContainsMeta):
@@ -188,23 +188,23 @@ class TechnicalModes(metaclass=ClassValueContainsMeta):
 class RollupTypes(metaclass=ClassValueContainsMeta):
     """Allowed Rollup Types """
 
-    TOTALS = "totals"
-    ALL = "all"
+    TOTALS = "TOTALS"
+    ALL = "ALL"
 
 
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     """Allowed datasource query modes"""
 
-    SEQUENTIAL = "sequential"
-    MULTITHREAD = "multithread"
+    SEQUENTIAL = "SEQUENTIAL"
+    MULTITHREAD = "MULTITHREAD"
 
 
 class ExecutionState:
     """Allowed report/query execution states"""
 
-    READY = "ready"
-    QUERYING = "querying"
-    KILLED = "killed"
+    READY = "READY"
+    QUERYING = "QUERYING"
+    KILLED = "KILLED"
 
 
 def raiseif(cond, msg="", exc=ZillionException):

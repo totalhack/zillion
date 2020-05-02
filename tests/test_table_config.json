@@ -1,11 +1,13 @@
 {
-    "type": "metric",
+    "type": "METRIC",
     "create_fields": true,
     "primary_key": ["lead_id"],
     "columns": {
         "id": {
             "fields": [
                 "lead_id",
+                "lead_count",
+                "lead_count_distinct",
                 {"name": "leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
             ]
         },

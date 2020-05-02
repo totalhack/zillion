@@ -33,10 +33,10 @@ def test_datasource_metadata_init(config):
 
     # Create zillion info directly on metadata
     partners_info = TableInfo.create(
-        dict(type="dimension", create_fields=True, primary_key=["partner_id"])
+        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["partner_id"])
     )
     campaigns_info = TableInfo.create(
-        dict(type="dimension", create_fields=True, primary_key=["campaign_id"])
+        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["campaign_id"])
     )
 
     metadata.tables["main.partners"].info["zillion"] = partners_info
@@ -56,10 +56,10 @@ def test_datasource_metadata_and_config_init(config):
 
     # Create zillion info directly on metadata
     partners_info = TableInfo.create(
-        dict(type="dimension", create_fields=True, primary_key=["partner_id"])
+        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["partner_id"])
     )
     campaigns_info = TableInfo.create(
-        dict(type="dimension", primary_key=["campaign_id"])
+        dict(type=TableTypes.DIMENSION, primary_key=["campaign_id"])
     )
     metadata.tables["main.partners"].info["zillion"] = partners_info
     metadata.tables["main.campaigns"].info["zillion"] = campaigns_info
@@ -103,7 +103,7 @@ def test_warehouse_has_zillion_info_no_config(config):
 
 def test_reserved_field_name(config):
     config["datasources"]["testdb1"]["metrics"].append(
-        {"name": "row_hash", "type": "Integer", "aggregation": "sum"}
+        {"name": "row_hash", "type": "Integer", "aggregation": AggregationTypes.SUM}
     )
     ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
     with pytest.raises(WarehouseException):
@@ -115,7 +115,7 @@ def test_warehouse_technical_within_formula(config):
         {
             "name": "revenue_ma_5_sum_5",
             "type": "Numeric(10,2)",
-            "aggregation": "sum",
+            "aggregation": AggregationTypes.SUM,
             "rounding": 2,
             "formula": "{revenue_ma_5}/{revenue_sum_5}",
         }

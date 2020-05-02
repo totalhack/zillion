@@ -4,7 +4,7 @@
             "url": "adhoc",
             "tables": {
                 "main.dma_zip": {
-                    "type": "dimension",
+                    "type": "DIMENSION",
                     "create_fields": true,
                     "primary_key": ["Zip_Code"],
                     "columns": {

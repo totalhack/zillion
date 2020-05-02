@@ -47,12 +47,12 @@ DATETIME_SA_TYPES = [sa.DateTime, sa.DATETIME, sa.Time, sa.TIME, sa.TIMESTAMP]
 DATE_SA_TYPES = [sa.Date, sa.DATE]
 
 AGGREGATION_SQLA_FUNC_MAP = {
-    AggregationTypes.MEAN: sa.func.avg,
-    AggregationTypes.COUNT: sa.func.count,
-    AggregationTypes.COUNT_DISTINCT: lambda x: sa.func.count(sa.distinct(x)),
-    AggregationTypes.MIN: sa.func.min,
-    AggregationTypes.MAX: sa.func.max,
-    AggregationTypes.SUM: sa.func.sum,
+    AggregationTypes.MEAN: sa.func.AVG,
+    AggregationTypes.COUNT: sa.func.COUNT,
+    AggregationTypes.COUNT_DISTINCT: lambda x: sa.func.COUNT(sa.distinct(x)),
+    AggregationTypes.MIN: sa.func.MIN,
+    AggregationTypes.MAX: sa.func.MAX,
+    AggregationTypes.SUM: sa.func.SUM,
 }
 
 SQL_AGGREGATION_FUNCS = set(
