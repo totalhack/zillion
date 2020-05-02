@@ -1,81 +1,44 @@
 from collections import defaultdict, OrderedDict
-import copy
-import datetime
 import logging
-import random
 import time
 
-import networkx as nx
-import pandas as pd
-import sqlalchemy as sa
-
-from zillion.configs import (
-    AdHocFieldSchema,
-    AdHocMetricSchema,
-    WarehouseConfigSchema,
-    ColumnInfo,
-    TableInfo,
-    MetricConfigSchema,
-    DimensionConfigSchema,
-    parse_technical_string,
-    is_valid_field_name,
-    is_active,
-    zillion_config,
-    DATASOURCE_ALLOWABLE_CHARS,
-)
+from zillion.configs import WarehouseConfigSchema, is_active, zillion_config
 from zillion.core import *
-from zillion.datasource import DataSource, AdHocDataSource, datasource_from_config
-from zillion.field import (
-    Field,
-    Metric,
-    Dimension,
-    FormulaMetric,
-    create_metric,
-    create_dimension,
-    get_table_metrics,
-    get_table_dimensions,
-    get_table_fields,
-    FieldManagerMixin,
-)
+from zillion.datasource import AdHocDataSource, datasource_from_config
+from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.report import Report
-from zillion.sql_utils import (
-    infer_aggregation_and_rounding,
-    aggregation_to_sqla_func,
-    is_probably_metric,
-    is_numeric_type,
-    sqla_compile,
-    column_fullname,
-)
+from zillion.sql_utils import is_numeric_type, column_fullname
 
 if zillion_config["DEBUG"]:
     default_logger.setLevel(logging.DEBUG)
 
 
 class Warehouse(FieldManagerMixin):
+    """A reporting warehouse that contains various datasources to run queries
+    against and combine data in report results. The warehouse may contain
+    global definitions for metrics and dimensions, and will also perform
+    integrity checks of any added datasources.
+
+    Parameters
+    ----------
+    config : dict, optional
+        A dict adhering to the WarehouseConfigSchema
+    datasources : list, optional
+        A list of DataSources that will make up the warehouse
+    ds_priority : list, optional
+        An ordered list of datasource names establishing querying
+        priority. This comes into play when part of a report may be
+        satisfied by multiple datasources. Datasources earlier in this
+        list will be higher priority.
+    if_exists : str, optional
+        When creating datasources from configs, pass this through to control
+        adhoc datasource creation behavior if necessary
+
+    """
+
     def __init__(
         self, config=None, datasources=None, ds_priority=None, if_exists="fail"
     ):
-        """A reporting warehouse that contains various datasources to run queries
-        against and combine data in report results. The warehouse may contain
-        global definitions for metrics and dimensions, and will also perform
-        integrity checks of any added datasources.
-
-        Parameters
-        ----------
-        config : dict, optional
-            A dict adhering to the WarehouseConfigSchema
-        datasources : list, optional
-            A list of DataSources that will make up the warehouse
-        ds_priority : list, optional
-            An ordered list of datasource names establishing querying
-            priority. This comes into play when part of a report may be
-            satisfied by multiple datasources. Datasources earlier in this
-            list will be higher priority.
-        if_exists : str, optional
-            When creating datasources from configs, pass this through to control
-            adhoc datasource creation behavior if necessary
-
-        """
         self._datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
@@ -768,7 +731,7 @@ class Warehouse(FieldManagerMixin):
             supported_dims = self._get_supported_dimensions_for_metric(
                 metric, adhoc_datasources=adhoc_datasources
             )
-            dims = (dims & supported_dims) if len(dims) else supported_dims
+            dims = (dims & supported_dims) if len(dims) > 0 else supported_dims
         return dims
 
     def _get_ds_tables_with_metric(self, metric, adhoc_datasources=None):
@@ -921,7 +884,7 @@ class Warehouse(FieldManagerMixin):
                 "Picking smallest of %d available table sets"
                 % len(ds_table_sets[ds_name])
             )
-        return sorted(ds_table_sets[ds_name], key=lambda x: len(x))[0]
+        return sorted(ds_table_sets[ds_name], key=len)[0]
 
     def _generate_unsupported_grain_msg(self, grain, metric, adhoc_datasources=None):
         """Generate a messaged that aims to help pinpoint why a metric can not

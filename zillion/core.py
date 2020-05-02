@@ -1,3 +1,4 @@
+# pylint: disable=unused-import,missing-class-docstring
 import logging
 
 from tlbx import (

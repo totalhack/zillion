@@ -1,4 +1,3 @@
-from collections import OrderedDict
 import inspect
 
 import sqlalchemy as sa
@@ -11,7 +10,6 @@ from zillion.configs import (
     create_technical,
     is_valid_field_name,
     is_active,
-    zillion_config,
 )
 from zillion.core import *
 from zillion.sql_utils import (
@@ -19,7 +17,6 @@ from zillion.sql_utils import (
     contains_aggregation,
     contains_sql_keywords,
     type_string_to_sa_type,
-    is_probably_metric,
     sqla_compile,
     column_fullname,
 )
@@ -29,26 +26,27 @@ MAX_FORMULA_DEPTH = 3
 
 
 class Field(PrintMixin):
+    """Represents the concept a column is capturing, which may be shared
+    by columns in other tables or datasources. For example, you may have a
+    several columns in your databases/tables that represent the concept of
+    "revenue". In other words, a column is like an instance of a Field.
+
+    Parameters
+    ----------
+    name : str
+        The name of the field
+    type : str or SQLAlchemy type
+        The column type for the field
+    **kwargs
+        Additional attributes stored on the field object
+
+    """
+
     repr_attrs = ["name"]
     field_type = None
 
     @initializer
     def __init__(self, name, type, **kwargs):
-        """Represents the concept a column is capturing, which may be shared
-        by columns in other tables or datasources. For example, you may have a
-        several columns in your databases/tables that represent the concept of
-        "revenue". In other words, a column is like an instance of a Field.
-
-        Parameters
-        ----------
-        name : str
-            The name of the field
-        type : str or SQLAlchemy type
-            The column type for the field
-        **kwargs
-            Additional attributes stored on the field object
-
-        """
         is_valid_field_name(name)
         if isinstance(type, str):
             self.type = type_string_to_sa_type(type)
@@ -57,6 +55,7 @@ class Field(PrintMixin):
             self.type = type()
 
     def copy(self):
+        """Copy this field"""
         raise NotImplementedError
 
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
@@ -276,19 +275,20 @@ class Dimension(Field):
 
 
 class FormulaField(Field):
+    """A field defined by a formula
+
+    Parameters
+    ----------
+    name : str
+        The name of the field
+    formula : str
+        The formula used to calculate the field
+    **kwargs
+        kwargs passed to the super class
+
+    """
+
     def __init__(self, name, formula, **kwargs):
-        """A field defined by a formula
-
-        Parameters
-        ----------
-        name : str
-            The name of the field
-        formula : str
-            The formula used to calculate the field
-        **kwargs
-            kwargs passed to the super class
-
-        """
         super(FormulaField, self).__init__(name, None, formula=formula, **kwargs)
 
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
@@ -389,23 +389,23 @@ class FormulaField(Field):
 
 
 class FormulaDimension(FormulaField):
+    """A dimension defined by a formula
+
+    Parameters
+    ----------
+    name : str
+        The name of the dimension
+    formula : str
+        The formula used to calculate the dimension
+    **kwargs
+        kwargs passed to super class
+
+    """
+
     repr_atts = ["name", "formula"]
     field_type = FieldTypes.DIMENSION
 
     def __init__(self, name, formula, **kwargs):
-        """A dimension defined by a formula
-
-        Parameters
-        ----------
-        name : str
-            The name of the dimension
-        formula : str
-            The formula used to calculate the dimension
-        **kwargs
-            kwargs passed to super class
-
-        """
-
         # super(FormulaDimension, self).__init__(
         #     name,
         #     formula,
@@ -415,6 +415,31 @@ class FormulaDimension(FormulaField):
 
 
 class FormulaMetric(FormulaField):
+    """A metric defined by a formula
+
+    Parameters
+    ----------
+    name : str
+        The name of the metric
+    formula : str
+        The formula used to calculate the metric
+    aggregation : str, optional
+        The AggregationType to apply to the metric
+    rounding : int, optional
+        If specified, the number of decimal places to round to
+    weighting_metric : str, optional
+        A reference to a metric to use for weighting when aggregating averages
+    technical : object, optional
+        A Technical object or definition used to defined a technical computation
+        to be applied to the metric
+    required_grain : list of str, optional
+        If specified, a list of dimensions that must be present in the
+        dimension grain of any report that aims to include this metric.
+    **kwargs
+        kwargs passed to super class
+
+    """
+
     repr_atts = ["name", "formula", "technical"]
     field_type = FieldTypes.METRIC
 
@@ -429,30 +454,6 @@ class FormulaMetric(FormulaField):
         required_grain=None,
         **kwargs
     ):
-        """A metric defined by a formula
-
-        Parameters
-        ----------
-        name : str
-            The name of the metric
-        formula : str
-            The formula used to calculate the metric
-        aggregation : str, optional
-            The AggregationType to apply to the metric
-        rounding : int, optional
-            If specified, the number of decimal places to round to
-        weighting_metric : str, optional
-            A reference to a metric to use for weighting when aggregating averages
-        technical : object, optional
-            A Technical object or definition used to defined a technical computation
-            to be applied to the metric
-        required_grain : list of str, optional
-            If specified, a list of dimensions that must be present in the
-            dimension grain of any report that aims to include this metric.
-        **kwargs
-            kwargs passed to super class
-
-        """
         if technical:
             technical = create_technical(technical)
 
@@ -473,6 +474,7 @@ class AdHocField(FormulaField):
 
     @classmethod
     def create(cls, obj):
+        """Copy this AdHocField"""
         schema = AdHocFieldSchema()
         field_def = schema.load(obj)
         return cls(field_def["name"], field_def["formula"])
@@ -597,9 +599,7 @@ def create_dimension(dim_def):
     if dim_def.get("formula", None):
         # dim = FormulaDimension(dim_def["name"], dim_def["formula"])
         raise InvalidFieldException("FormulaDimensions are not currently supported")
-    else:
-        dim = Dimension(dim_def["name"], dim_def["type"])
-    return dim
+    return Dimension(dim_def["name"], dim_def["type"])
 
 
 class FieldManagerMixin:
@@ -868,8 +868,7 @@ class FieldManagerMixin:
                 raise InvalidFieldException(
                     "FormulaDimensions are not currently supported"
                 )
-            else:
-                self.add_dimension(dim, force=force)
+            self.add_dimension(dim, force=force)
 
         # Defer formulas so params can be checked against existing fields
         for metric in formula_metrics:

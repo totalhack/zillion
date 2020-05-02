@@ -1,5 +1,4 @@
-from collections import defaultdict, OrderedDict
-import copy
+from collections import defaultdict
 import datetime
 import os
 import random
@@ -18,8 +17,6 @@ from zillion.configs import (
     ColumnInfo,
     DataSourceConfigSchema,
     TableConfigSchema,
-    MetricConfigSchema,
-    DimensionConfigSchema,
     default_field_name,
     is_valid_field_name,
     is_active,
@@ -29,14 +26,9 @@ from zillion.configs import (
 )
 from zillion.core import *
 from zillion.field import (
-    Field,
     Metric,
     Dimension,
-    FormulaMetric,
-    create_metric,
-    create_dimension,
     get_table_metrics,
-    get_table_dimensions,
     get_table_fields,
     get_table_field_column,
     get_dialect_type_conversions,
@@ -53,28 +45,29 @@ from zillion.sql_utils import (
 
 
 class TableSet(PrintMixin):
+    """A set of tables in a datasource that can meet a grain and provide
+    target fields.
+
+    Parameters
+    ----------
+    datasource : DataSource
+        The DataSource containing all tables
+    ds_table : Table
+        A table containing a desired metric or dimension
+    join : Join
+        A join to related tables that satisfies the grain and provides
+        the target fields
+    grain : list of str
+        A list of dimensions that must be supported by the join
+    target_fields : list of str
+        A list of fields being targeted
+
+    """
+
     repr_attrs = ["datasource", "join", "grain", "target_fields"]
 
     @initializer
     def __init__(self, datasource, ds_table, join, grain, target_fields):
-        """A set of tables in a datasource that can meet a grain and provide
-        target fields.
-
-        Parameters
-        ----------
-        datasource : DataSource
-            The DataSource containing all tables
-        ds_table : Table
-            A table containing a desired metric or dimension
-        join : Join
-            A join to related tables that satisfies the grain and provides
-            the target fields
-        grain : list of str
-            A list of dimensions that must be supported by the join
-        target_fields : list of str
-            A list of fields being targeted
-
-        """
         self._adhoc_datasources = []
         if isinstance(self.datasource, AdHocDataSource):
             self._adhoc_datasources = [self.datasource]
@@ -100,10 +93,7 @@ class TableSet(PrintMixin):
 
     def get_covered_fields(self):
         """Get a list of all covered fields in this table set"""
-        covered_fields = get_table_fields(
-            self.ds_table, adhoc_fms=self._adhoc_datasources
-        )
-        return covered_fields
+        return get_table_fields(self.ds_table)
 
     def __len__(self):
         if not self.join:
@@ -749,9 +739,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     raiseifnot(
                         zillion_info["fields"],
                         (
-                            "Primary key column %s must have fields defined and one must be a valid dimension"
-                            % column_fullname(column)
-                        ),
+                            "Primary key column %s must have fields defined and"
+                            "one must be a valid dimension"
+                        )
+                        % column_fullname(column),
                     )
                 column.info["zillion"] = ColumnInfo.create(zillion_info)
                 setattr(column, "zillion", column.info["zillion"])
@@ -1007,9 +998,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 # a candidate if there isn't an existing candidate that is a a
                 # subset of these joins
                 skip = False
-                joins = set([x[0] for x in join_combo])
+                joins = {x[0] for x in join_combo}
                 for other_join_combo in candidates:
-                    other_joins = set([x[0] for x in other_join_combo])
+                    other_joins = {x[0] for x in other_join_combo}
                     if other_joins.issubset(joins):
                         skip = True
                 if skip:
@@ -1314,7 +1305,7 @@ class GoogleSheetsDataTable(AdHocDataTable):
         parsed = urlparse(self.data)
         params = parse_qs(parsed.query)
         if params.get("format", None) == ["csv"]:
-            cls = CSVDataTable
+            pass
         elif parsed.path.endswith("/edit"):
             parsed = parsed._replace(
                 path=parsed.path.replace("/edit", "/export"), query="format=csv"
@@ -1332,24 +1323,25 @@ class GoogleSheetsDataTable(AdHocDataTable):
 
 
 class AdHocDataSource(DataSource):
+    """Create an adhoc (temporary) datasource from a set of adhoc data
+    tables. The main use case for this is when temporarily augmenting a
+    report or set of reports with some temporary data that is not meant to
+    be permanently added to the warehouse.
+
+    Parameters
+    ----------
+    datatables : list of AdHocDataTables
+        The AdHocDataTables that make up the datasource
+    name : str, optional
+        A name for the datasources. If missing a unique name will be provided.
+    config : dict, optional
+        A datasource config that describes this datasources.
+    if_exists : str, optional
+        Passed through to the AdHocDataTable's to_sql method
+
+    """
+
     def __init__(self, datatables, name=None, config=None, if_exists="fail"):
-        """Create an adhoc (temporary) datasource from a set of adhoc data
-        tables. The main use case for this is when temporarily augmenting a
-        report or set of reports with some temporary data that is not meant to
-        be permanently added to the warehouse.
-
-        Parameters
-        ----------
-        datatables : list of AdHocDataTables
-            The AdHocDataTables that make up the datasource
-        name : str, optional
-            A name for the datasources. If missing a unique name will be provided.
-        config : dict, optional
-            A datasource config that describes this datasources.
-        if_exists : str, optional
-            Passed through to the AdHocDataTable's to_sql method
-
-        """
         config = config or dict(tables={})
         ds_name = self._check_or_create_name(name)
 

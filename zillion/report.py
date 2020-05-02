@@ -2,7 +2,6 @@ from collections import OrderedDict
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from contextlib import contextmanager
 import decimal
-import inspect
 import logging
 import random
 from sqlite3 import connect, Row
@@ -11,11 +10,10 @@ import time
 import uuid
 
 import numpy as np
-from orderedset import OrderedSet
 from pymysql import escape_string
 import pandas as pd
 import sqlalchemy as sa
-from stopit import TimeoutException, async_raise
+from stopit import async_raise
 
 from zillion.configs import zillion_config
 from zillion.core import *
@@ -51,8 +49,9 @@ zillion_metadata.create_all(zillion_engine)
 
 
 class ExecutionStateMixin:
+    """A mixin to manage the state of a report or query"""
+
     def __init__(self):
-        """A mixin to manage the state of a report or query"""
         self._lock = threading.RLock()
         self._state = None
 
@@ -168,28 +167,29 @@ class ExecutionStateMixin:
 
 
 class DataSourceQuery(ExecutionStateMixin, PrintMixin):
+    """Build a query to run against a particular datasource
+
+    Parameters
+    ----------
+    warehouse : Warehouse
+        A zillion warehouse
+    metrics : OrderedDict
+        An OrderedDict mapping metric names to Metric objects
+    dimensions : OrderedDict
+        An OrderedDict mapping dimension names to Dimension objects
+    criteria : list
+        A list of criteria to be applied when querying. See the
+        Report docs for more details.
+    table_set : TableSet
+        Build the query against this set of tables that supports the
+        requested metrics and grain
+
+    """
+
     repr_attrs = ["metrics", "dimensions", "criteria"]
 
     @initializer
     def __init__(self, warehouse, metrics, dimensions, criteria, table_set):
-        """Build a query to run against a particular datasource
-
-        Parameters
-        ----------
-        warehouse : Warehouse
-            A zillion warehouse
-        metrics : OrderedDict
-            An OrderedDict mapping metric names to Metric objects
-        dimensions : OrderedDict
-            An OrderedDict mapping dimension names to Dimension objects
-        criteria : list
-            A list of criteria to be applied when querying. See the
-            Report docs for more details.
-        table_set : TableSet
-            Build the query against this set of tables that supports the
-            requested metrics and grain
-
-        """
         self._conn = None
         self.field_map = {}
         self.metrics = metrics or {}
@@ -336,7 +336,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             info("Got %d rows in %.3fs" % (len(data), diff))
             return DataSourceQueryResult(self, data, diff)
         finally:
-            raise_if_killed = False if is_timeout else True
+            raise_if_killed = not is_timeout
             self._set_state(
                 ExecutionState.READY,
                 raise_if_killed=raise_if_killed,
@@ -445,11 +445,14 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         """
         if name in self.metrics:
             return self.metrics[name]
-        elif name in self.dimensions:
+
+        if name in self.dimensions:
             return self.dimensions[name]
+
         for row in self.criteria:
             if row[0].name == name:
                 return row[0]
+
         raise ZillionException("Could not find field for DataSourceQuery: %s" % name)
 
     def _column_for_field(self, field, table=None):
@@ -570,21 +573,22 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
 
 class DataSourceQuerySummary(PrintMixin):
+    """A summary of the execution results for a DataSourceQuery
+
+    Parameters
+    ----------
+    query : DataSourceQuery
+        The DataSourceQuery that was executed
+    data : iterable
+        The result rows
+    duration : float
+        The duration of the query execution in seconds
+
+    """
+
     repr_attrs = ["datasource_name", "rowcount", "duration"]
 
     def __init__(self, query, data, duration):
-        """A summary of the execution results for a DataSourceQuery
-
-        Parameters
-        ----------
-        query : DataSourceQuery
-            The DataSourceQuery that was executed
-        data : iterable
-            The result rows
-        duration : float
-            The duration of the query execution in seconds
-
-        """
         self.datasource_name = query.get_datasource_name()
         self.metrics = query.metrics
         self.dimensions = query.dimensions
@@ -610,46 +614,48 @@ class DataSourceQuerySummary(PrintMixin):
 
 
 class DataSourceQueryResult(PrintMixin):
+    """The results for a DataSourceQuery
+
+    Parameters
+    ----------
+    query : DataSourceQuery
+        The DataSourceQuery that was executed
+    data : iterable
+        The result rows
+    duration : float
+        The duration of the query execution in seconds
+
+    """
+
     repr_attrs = ["summary"]
 
     def __init__(self, query, data, duration):
-        """The results for a DataSourceQuery
-
-        Parameters
-        ----------
-        query : DataSourceQuery
-            The DataSourceQuery that was executed
-        data : iterable
-            The result rows
-        duration : float
-            The duration of the query execution in seconds
-
-        """
         self.query = query
         self.data = data
         self.summary = DataSourceQuerySummary(query, data, duration)
 
 
 class BaseCombinedResult:
+    """A combination of datasource query results
+
+    Parameters
+    ----------
+    warehouse : Warehouse
+        A zillion warehouse
+    ds_query_results : list
+        A list of DataSourceQueryResult objects
+    primary_ds_dimensions : list
+        A list of dimensions that will be used to create the hash primary key
+        of the combined result table
+    adhoc_datasources : list, optional
+        A list of FieldManagers specific to this combined result
+
+    """
+
     @initializer
     def __init__(
         self, warehouse, ds_query_results, primary_ds_dimensions, adhoc_datasources=None
     ):
-        """A combination of datasource query results
-
-        Parameters
-        ----------
-        warehouse : Warehouse
-            A zillion warehouse
-        ds_query_results : list
-            A list of DataSourceQueryResult objects
-        primary_ds_dimensions : list
-            A list of dimensions that will be used to create the hash primary key
-            of the combined result table
-        adhoc_datasources : list, optional
-            A list of FieldManagers specific to this combined result
-
-        """
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
         self.adhoc_datasources = adhoc_datasources or []
@@ -734,6 +740,8 @@ class BaseCombinedResult:
 
 
 class SQLiteMemoryCombinedResult(BaseCombinedResult):
+    """Combine query results in an in-memory SQLite database"""
+
     def get_conn(self):
         """Get a SQLite memory database connection"""
         return connect(":memory:")
@@ -918,7 +926,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             parameter replacement
 
         """
-        columns = [k for k in rows[0].keys()]
+        columns = list(rows[0].keys())
         placeholder = "(%s)" % (", ".join(["?"] * (1 + len(columns))))
         columns_clause = "row_hash, " + ", ".join(columns)
 
@@ -1022,7 +1030,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         for metric_name, weighting_metric in wavgs:
             # TODO: how does this behave if weights are missing?
-            wavg = lambda x: np.average(x, weights=df.loc[x.index, weighting_metric])
+            wavg = lambda x, wm=weighting_metric: np.average(
+                x, weights=df.loc[x.index, wm]
+            )
             aggrs[metric_name] = wavg
 
         for level in range(rollup):
@@ -1142,6 +1152,64 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
 
 class Report(ExecutionStateMixin):
+    """Build a report against a warehouse. On init DataSource queries are
+    built, but nothing is executed.
+
+    Parameters
+    ----------
+    warehouse : Warehouse
+        A zillion warehouse object to run the report against
+    metrics : list, optional
+        A list of metric names, or dicts in the case of
+        AdHocMetrics. These will be the measures of your report, or the
+        statistics you are interested in computing at the given dimension
+        grain.
+    dimensions : list, optional
+        A list of dimension names to control the grain of the report. You
+        can think of dimensions similarly to the "group by" in a SQL
+        query.
+    criteria : list, optional
+        A list of criteria to be applied when querying. Each criteria in
+        the list is represented by a 3-item list or tuple. Some examples:
+
+            * ["field_a", ">", 1]
+            * ["field_b", "=", "2020-04-01"]
+            * ["field_c", "like", "%example%"]
+            * ["field_d", "in", ["a", "b", "c"]]
+
+        See `sql_utils.get_sqla_criterion_expr` for all supported
+        operations. Note that some operations, such as "like", have
+        varying behavior by datasource dialect.
+    row_filters : list, optional
+        A list of criteria to apply at the final step (combined query
+        layer) to filter which rows get returned. The format here is the
+        same as for the criteria arg, though the operations are limited to:
+        [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
+    rollup : str or int, optional
+        Controls how metrics are rolled up / aggregated by dimension
+        depth. If not passed no rollup will be computed. If the special
+        value "TOTALS" is passed, only a final tally rollup row will be
+        added. If an int, then it controls the maximum depth to roll up
+        the data, starting from the most granular (last) dimension of
+        the report. For example, if you ran a report with dimensions
+        ["a", "b", "c"]:
+
+            * **rollup="TOTALS"** - adds a single, final rollup row
+            * **rollup="ALL"** - rolls up all dimension levels
+            * **rollup=1** - rolls up the first dimension only
+            * **rollup=2** - rolls up the first two dimensions
+            * **rollup=3** - rolls up all three dimensions. This is like
+                adding a totals row to the last case, as a totals row is a
+                rollup of all dimension levels. Setting rollup=len(dims)
+                is equivalent to rollup="all".
+            * Any other non-None value would raise an error
+    pivot : list, optional
+        A list of dimensions to pivot to columns
+    adhoc_datasources : list, optional
+        A list of FieldManagers specific to this report
+
+    """
+
     def __init__(
         self,
         warehouse,
@@ -1153,63 +1221,6 @@ class Report(ExecutionStateMixin):
         pivot=None,
         adhoc_datasources=None,
     ):
-        """Build a report against a warehouse. On init DataSource queries are
-        built, but nothing is executed.
-
-        Parameters
-        ----------
-        warehouse : Warehouse
-            A zillion warehouse object to run the report against
-        metrics : list, optional
-            A list of metric names, or dicts in the case of
-            AdHocMetrics. These will be the measures of your report, or the
-            statistics you are interested in computing at the given dimension
-            grain.
-        dimensions : list, optional
-            A list of dimension names to control the grain of the report. You
-            can think of dimensions similarly to the "group by" in a SQL
-            query.
-        criteria : list, optional
-            A list of criteria to be applied when querying. Each criteria in
-            the list is represented by a 3-item list or tuple. Some examples:
-
-                * ["field_a", ">", 1]
-                * ["field_b", "=", "2020-04-01"]
-                * ["field_c", "like", "%example%"]
-                * ["field_d", "in", ["a", "b", "c"]]
-
-            See `sql_utils.get_sqla_criterion_expr` for all supported
-            operations. Note that some operations, such as "like", have
-            varying behavior by datasource dialect.
-        row_filters : list, optional
-            A list of criteria to apply at the final step (combined query
-            layer) to filter which rows get returned. The format here is the
-            same as for the criteria arg, though the operations are limited to:
-            [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
-        rollup : str or int, optional
-            Controls how metrics are rolled up / aggregated by dimension
-            depth. If not passed no rollup will be computed. If the special
-            value "TOTALS" is passed, only a final tally rollup row will be
-            added. If an int, then it controls the maximum depth to roll up
-            the data, starting from the most granular (last) dimension of
-            the report. For example, if you ran a report with dimensions
-            ["a", "b", "c"]:
-
-                * **rollup="TOTALS"** - adds a single, final rollup row
-                * **rollup="ALL"** - rolls up all dimension levels
-                * **rollup=1** - rolls up the first dimension only
-                * **rollup=2** - rolls up the first two dimensions
-                * **rollup=3** - rolls up all three dimensions. This is like
-                    adding a totals row to the last case, as a totals row is a
-                    rollup of all dimension levels. Setting rollup=len(dims)
-                    is equivalent to rollup="all".
-                * Any other non-None value would raise an error
-        pivot : list, optional
-            A list of dimensions to pivot to columns
-        adhoc_datasources : list, optional
-            A list of FieldManagers specific to this report
-
-        """
         start = time.time()
         self.spec_id = None
         self.uuid = uuid.uuid1()
@@ -1396,8 +1407,7 @@ class Report(ExecutionStateMixin):
                 if exceptions:
                     if raise_if_failed:
                         raise FailedKillException(exceptions)
-                    else:
-                        warn("failed to kill some queries: %s" % exceptions)
+                    warn("failed to kill some queries: %s" % exceptions)
 
     def get_grain(self):
         """Get the grain of this report, which accounts for dimension fields
@@ -1513,7 +1523,10 @@ class Report(ExecutionStateMixin):
             ):
                 if formula_field not in self.dimensions:
                     raise ReportException(
-                        "Formula for field %s uses dimension %s that is not included in requested report dimensions"
+                        (
+                            "Formula for field %s uses dimension %s that is not included in "
+                            "requested report dimensions"
+                        )
                         % (field.name, formula_field)
                     )
                 self.ds_dimensions[formula_field] = self.warehouse.get_dimension(
@@ -1739,7 +1752,7 @@ class Report(ExecutionStateMixin):
         """
         used_dses = set(params.get("used_datasources", []))
         wh_dses = warehouse.datasource_names
-        all_dses = set(wh_dses) | set([x.name for x in (adhoc_datasources or [])])
+        all_dses = set(wh_dses) | {x.name for x in (adhoc_datasources or [])}
         if not used_dses.issubset(all_dses):
             raise ReportException(
                 "Report requires datasources that are not present: %s Found: %s"
@@ -1784,7 +1797,7 @@ class Report(ExecutionStateMixin):
         s = ReportSpecs.delete().where(ReportSpecs.c.id == spec_id)
         conn = zillion_engine.connect()
         try:
-            result = conn.execute(s)
+            conn.execute(s)
         finally:
             conn.close()
 
@@ -1815,23 +1828,24 @@ class Report(ExecutionStateMixin):
 
 
 class ReportResult(PrintMixin):
+    """Encapsulates a report result as well as some additional helpers
+    and summary statistics.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The DataFrame containing the final report result
+    duration : float
+        The report execution duration in seconds
+    query_summaries : list of DataSourceQuerySummary
+        Summaries of the underyling query results.
+
+    """
+
     repr_attrs = ["rowcount", "duration", "query_summaries"]
 
     @initializer
     def __init__(self, df, duration, query_summaries):
-        """Encapsulates a report result as well as some additional helpers
-        and summary statistics.
-
-        Parameters
-        ----------
-        df : DataFrame
-            The DataFrame containing the final report result
-        duration : float
-            The report execution duration in seconds
-        query_summaries : list of DataSourceQuerySummary
-            Summaries of the underyling query results.
-
-        """
         self.duration = round(duration, 4)
         self.rowcount = len(df)
 
@@ -1840,7 +1854,7 @@ class ReportResult(PrintMixin):
         """Get a mask of rows that contain the rollup marker"""
         mask = None
         index = self.df.index
-        for i, level in enumerate(range(index.nlevels)):
+        for i in range(index.nlevels):
             if mask is None:
                 mask = index.isin([ROLLUP_INDEX_LABEL], i)
             else:

@@ -194,18 +194,21 @@ def is_active(obj):
 
 
 def is_valid_table_type(val):
+    """Validate table type"""
     if val in TableTypes:
         return True
     raise ValidationError("Invalid table type: %s" % val)
 
 
 def is_valid_table_name(val):
+    """Validate table name"""
     if val.count(".") > 1:
         raise ValidationError("Table name has more than one period: %s" % val)
     return True
 
 
 def is_valid_field_name(val):
+    """Validate field name"""
     if val is None:
         raise ValidationError("Field name can not be null")
     if set(val) <= FIELD_ALLOWABLE_CHARS:
@@ -217,21 +220,24 @@ def is_valid_field_name(val):
 
 
 def is_valid_sqlalchemy_type(val):
+    """Validate SQLAlchemy type string"""
     if val is not None:
         try:
-            sa_type = type_string_to_sa_type(val)
+            type_string_to_sa_type(val)
         except InvalidSQLAlchemyTypeString:
             raise ValidationError("Invalid table type: %s" % val)
     return True
 
 
 def is_valid_aggregation(val):
+    """Validate aggregation type"""
     if val in AggregationTypes:
         return True
     raise ValidationError("Invalid aggregation: %s" % val)
 
 
 def is_valid_column_field_config(val):
+    """Validate column field config"""
     if isinstance(val, str):
         return True
     if isinstance(val, dict):
@@ -242,26 +248,30 @@ def is_valid_column_field_config(val):
 
 
 def is_valid_technical_type(val):
+    """Validate technical type"""
     if val in TechnicalTypes:
         return True
     raise ValidationError("Invalid technical type: %s" % val)
 
 
 def is_valid_technical_mode(val):
+    """Validate technical mode"""
     if val in TechnicalModes:
         return True
     raise ValidationError("Invalid technical mode: %s" % val)
 
 
 def is_valid_technical(val):
+    """Validate technical"""
     try:
-        tech = create_technical(val)
+        create_technical(val)
     except InvalidTechnicalException as e:
         raise ValidationError("Invalid technical: %s" % val) from e
     return True
 
 
 def is_valid_datasource_config(val):
+    """Validate datasource config"""
     if not isinstance(val, dict):
         raise ValidationError("Invalid datasource config: %s" % val)
     schema = DataSourceConfigSchema()
@@ -270,6 +280,8 @@ def is_valid_datasource_config(val):
 
 
 class BaseSchema(Schema):
+    """Base Schema with custom JSON module"""
+
     class Meta:
         """Use the json module as imported from tlbx"""
 
@@ -880,6 +892,7 @@ class Technical(MappingMixin, PrintMixin):
 
     @classmethod
     def get_default_mode(cls):
+        """Get the default mode for applying the technical calculation"""
         return TechnicalModes.GROUP
 
     def _apply(self, df, column, indexer, rounding=None):

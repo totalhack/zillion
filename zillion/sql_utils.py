@@ -1,8 +1,3 @@
-"""
-Useful reference around SQLAlchemy types by dialect:
-https://github.com/zzzeek/sqlalchemy/blob/master/lib/sqlalchemy/dialects/type_migration_guidelines.txt
-"""
-
 import ast
 import re
 
@@ -390,9 +385,9 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
     return clause
 
 
-def comment(self, comment):
+def comment(self, c):
     """See https://github.com/sqlalchemy/sqlalchemy/wiki/CompiledComments"""
-    self._added_comment = comment
+    self._added_comment = c
     return self
 
 
