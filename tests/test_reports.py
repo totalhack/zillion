@@ -190,6 +190,15 @@ def test_report_pivot(wh):
     info(result.df)
 
 
+def test_report_df_display(wh):
+    metrics = ["revenue", "main_sales_quantity"]
+    dimensions = ["partner_name", "campaign_name"]
+    rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df_display)
+
+
 def test_report_technical_ma(wh):
     metrics = ["revenue", "revenue_ma_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time

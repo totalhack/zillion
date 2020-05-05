@@ -25,7 +25,9 @@ logging.getLogger(name="stopit").setLevel(logging.ERROR)
 # Last unicode char - this helps get the rollup rows to sort last, but may
 # need to be replaced for presentation.
 ROLLUP_INDEX_LABEL = chr(1114111)
-ROLLUP_INDEX_PRETTY_LABEL = "::"
+# This is more friendly for front-end viewing, but has a better chance of
+# conflicting with actual report data.
+ROLLUP_INDEX_DISPLAY_LABEL = "::"
 
 ROW_FILTER_OPS = [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
 
@@ -1871,3 +1873,10 @@ class ReportResult(PrintMixin):
     def non_rollup_rows(self):
         """Get the rows of the dataframe that are not rollups"""
         return self.df.loc[~self.rollup_mask]
+
+    @property
+    def df_display(self):
+        """Get the rows of the dataframe with data in display format.
+        Currently this only means replacing rollup markers with display
+        values"""
+        return self.df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})

@@ -71,7 +71,7 @@ def linkcode_resolve(domain, info):
 # -- Project information -----------------------------------------------------
 
 project = "zillion"
-copyright = "2019, totalhack"
+copyright = "2020, totalhack"
 author = "totalhack"
 
 version = zillion.__version__
@@ -113,6 +113,22 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 html_theme = "sphinx_rtd_theme"
 
 # https://sphinx-rtd-theme.readthedocs.io/en/latest/configuring.html
+html_theme_options = {
+    #'canonical_url': '',
+    #'analytics_id': 'UA-XXXXXXX-1',  #  Provided by Google in your dashboard
+    #'logo_only': False,
+    #'display_version': True,
+    #'prev_next_buttons_location': 'bottom',
+    #'style_external_links': False,
+    #'vcs_pageview_mode': '',
+    #'style_nav_header_background': 'white',
+    # Toc options
+    "collapse_navigation": False,
+    #'sticky_navigation': True,
+    #'navigation_depth': 4,
+    #'includehidden': True,
+    #'titles_only': False
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

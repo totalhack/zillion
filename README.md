@@ -305,13 +305,17 @@ Campaign 2A        6      2       82
 """
 ```
 
-**Example:** Let's get a multi-level rollup by partner and campaign. You'll
-notice the rollup index placeholder in the output. This is a special character
-to mark DataFrame rows that represent rollups. The
+**Example:** The output below shows rollups at the campaign level within each
+partner, and also a totals rollup at the partner and campaign level.
+
+> Note: the output contains a special character to mark DataFrame rollup rows
+that were added to the result. The
 [ReportResult](https://zillion.readthedocs.io/en/latest/zillion.report.html#zillion.report.ReportResult)
 object contains some helper attributes to automatically access or filter
-rollups. The output below shows rollups at the campaign level within each
-partner, and also a totals rollup at the partner and campaign level.
+rollups, as well as a `df_display` attribute that returns the result with
+friendlier display values substituted for special characters. The
+under-the-hood special character is left here for illustration, but may not
+render the same in all scenarios.
 
 ```python
 from zillion.core import RollupTypes
@@ -354,9 +358,10 @@ result = wh.execute_id(spec_id)
 ```
 
 > Note: The ZILLION_CONFIG environment var can point to a yaml config file.
-The database used to store Zillion report specs can be configured by
-setting the ZILLION_DB_URL value in your Zillion config to a valid database
-connection string. By default a SQLite DB in /tmp is used.
+The database used to store Zillion report specs can be configured by setting
+the ZILLION_DB_URL value in your Zillion config to a valid database connection
+string. By default a SQLite DB in /tmp is used. See this [sample
+config](https://github.com/totalhack/zillion/blob/master/tests/sample_config.yaml).
 
 **Example:** Unsupported Grain
 

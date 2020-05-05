@@ -51,8 +51,7 @@ def load_zillion_config():
             ZILLION_DB_URL="sqlite:////tmp/zillion.db",
             ADHOC_DATASOURCE_DIRECTORY="/tmp",
             LOAD_TABLE_CHUNK_SIZE=5000,
-            IFNULL_PRETTY_VALUE="--",
-            DATASOURCE_QUERY_MODE="sequential",
+            DATASOURCE_QUERY_MODE="SEQUENTIAL",
             DATASOURCE_QUERY_TIMEOUT=None,
             DATASOURCE_CONTEXTS={},
         )

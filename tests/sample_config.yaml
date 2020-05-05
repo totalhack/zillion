@@ -1,14 +1,21 @@
+# Turn on debug logging
 DEBUG: false
+# Chunk size for loading datasource query results at the combined layer
 LOAD_TABLE_CHUNK_SIZE: 5000
-IFNULL_PRETTY_VALUE: --
-
+# Connection string for Zillion metadata DB
 ZILLION_DB_URL: sqlite:////tmp/zillion.db
+# Where to store adhoc SQLite databases
 ADHOC_DATASOURCE_DIRECTORY: /tmp
-DATASOURCE_QUERY_MODE: sequential
+# Either SEQUENTIAL or MULTITHREAD
+DATASOURCE_QUERY_MODE: SEQUENTIAL
+# Set a timeout in seconds for datasource layer queries
 DATASOURCE_QUERY_TIMEOUT: null
 
+# These vars can be used to substitute values in connection URLs by datasource.
 DATASOURCE_CONTEXTS:
-  testdb2:
+  test_datasource1:
     schema: testdb2
-  test_adhoc_db:
+    somevar: other_val
+  test_datasource2:
     user: totalhack
+    pass: foo
