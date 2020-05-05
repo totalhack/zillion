@@ -29,15 +29,17 @@ With `Zillion` you can:
 - Apply technical transformations on columns including rolling, cumulative,
   and rank statistics
 - Save and load report specifications
-- Optional automatic type conversions - i.e. get a "year" dimension for free
+- Optionally apply automatic type conversions - i.e. get a "year" dimension for free
   from a "date" column
 - Utilize "adhoc" datasources and fields to enrich specific report requests
 
-Why `Zillion`? There are many commercial solutions out there that
-provide data warehousing solutions. Many of them are cost-prohibitive, come with
-strings attached or vendor lock-in, and are overly heavyweight. `Zillion` aims
-to be a more democratic solution to data warehousing, and to provide powerful
-data analysis capabilities to all.
+Why `Zillion`?
+
+There are many commercial solutions out there that provide data warehousing
+capabilities. Many of them are cost-prohibitive, come with strings attached or
+vendor lock-in, and are overly heavyweight. `Zillion` aims to be a more
+democratic solution to data warehousing, and to provide simple, powerful data
+analysis capabilities to all.
 
 Table of Contents
 -----------------
@@ -54,13 +56,10 @@ Table of Contents
 * [Advanced Topics](#advanced-topics)
   * [FormulaMetrics](#formula-metrics)
   * [DataSource Formulas](#datasource-formulas)
-  * [AdHocMetrics](#adhoc-metrics)
-  * [AdHocDataSources](#adhoc-datasources)
   * [Type Conversions](#type-conversions)
-  * [Config Overrides](#config-overrides)
   * [Config Variables](#config-variables)
-  * [Remote Configs](#remote-configs)
   * [DataSource Priority](#datasource-priority)
+  * [AdHocMetrics](#adhoc-metrics)
 * [Supported DataSources](#supported-datasources)
 * [Docs](#documentation)
 * [How to Contribute](#how-to-contribute)
@@ -120,12 +119,12 @@ We'll get into this with examples later.
 In `Zillion` there are two main types of `Fields`:
 
 1. `Dimensions`: attributes of data used for labelling, grouping, and filtering
-2. `Metrics`: facts and measures that may be broken down along Dimensions
+2. `Metrics`: facts and measures that may be broken down along dimensions
 
-Note that a `Field` is not the same thing as a column. You can think of
-a column as an instance of a `Field` in a particular table, with all of the
-specifics of that table/datasource that come with it. A `Field` is more like
-a class of a column.
+Note that a `Field` is not the same thing as a "column". You can think of a
+column as an instance of a `Field` in a particular table, with all of the
+specifics of that table/datasource that come with it. A `Field` is more like a
+class of a column.
 
 For example, you may have a `Field` called "revenue". That `Field` may occur
 across several datasources, possibly in multiple tables within a single
@@ -136,9 +135,9 @@ it can try to use any of them to satisfy reports requesting "revenue".
 Likewise there are two main types of tables:
 
 1. Dimension Tables: reference/attribute tables containing only related
-dimensions.
+dimensions
 2. Metric Tables: fact tables that may contain metrics and some related
-dimensions/attributes.
+dimensions/attributes
 
 <a name="executing-reports"></a>
 ### Executing Reports
@@ -163,10 +162,13 @@ print(result.df) # Pandas DataFrame
 ```
 
 The `ReportResult` has a Pandas DataFrame with the dimensions as the index and
-the metrics as the columns. For a report like the one above it's possible two
-DataSource Layer queries were run (one for revenue and one for leads) if they
-happen to be in different metric tables. Your criteria are applied in the
-DataSource Layer queries.  All of the SQL is written for you.
+the metrics as the columns. Think of the dimensions as the target columns of a
+"group by" SQL statement. Think of the metrics as the columns you are
+aggregating. Think of the criteria as the "where" clause.
+
+For a report like the one above it's possible two DataSource Layer queries
+were run (one for revenue and one for leads) if they happen to be in different
+metric tables. Your criteria are applied in the DataSource Layer queries.
 
 A `Report` is said to have a `grain`, which defines the dimensions each metric
 must be able to join to in order to satisfy the `Report` requirements. The
@@ -223,9 +225,9 @@ A `Warehouse` config has the following main sections:
 
 A `DataSource` config has the following main sections:
 
-* url: connection string for a DataSource
-* metrics: optional list of metric configs specific to this DataSource
-* dimensions: optional list of dimension configs specific to this DataSource
+* url: connection string for a datasource
+* metrics: optional list of metric configs specific to this datasource
+* dimensions: optional list of dimension configs specific to this datasource
 * tables: mapping of table names to table configs
 
 In this example we will use a JSON config file. You can also set your
@@ -264,10 +266,10 @@ all of the metrics and dimensions at the `Warehouse` and `DataSource` levels.
 <a name="example-reports"></a>
 ### Reports
 
-**Note**: the test data in this sample database is not meant to mimic any
+> **Note**: the test data in this sample database is not meant to mimic any
 real world example. The numbers are just made up for testing.
 
-Get sales, leads, and revenue by partner:
+**Example:** Get sales, leads, and revenue by partner:
 
 ```python
 result = wh.execute(
@@ -285,7 +287,7 @@ Partner C         5      1    118.5
 """
 ```
 
-Let's limit to Partner A and break down by its campaigns:
+**Example:** Let's limit to Partner A and break down by its campaigns:
 
 ```python
 result = wh.execute(
@@ -303,11 +305,13 @@ Campaign 2A        6      2       82
 """
 ```
 
-Let's get a multi-level rollup by partner and campaign. You'll notice the
-rollup index placeholder in the output. This is a special character to mark
-DataFrame rows that represent rollups. The output below shows rollups at the
-campaign level within each partner, and also a totals rollup at the partner
-and campaign level.
+**Example:** Let's get a multi-level rollup by partner and campaign. You'll
+notice the rollup index placeholder in the output. This is a special character
+to mark DataFrame rows that represent rollups. The
+[ReportResult](https://zillion.readthedocs.io/en/latest/zillion.report.html#zillion.report.ReportResult)
+object contains some helper attributes to automatically access or filter
+rollups. The output below shows rollups at the campaign level within each
+partner, and also a totals rollup at the partner and campaign level.
 
 ```python
 from zillion.core import RollupTypes
@@ -334,7 +338,7 @@ Partner C    Campaign 1C      5.0    1.0    118.5
 """
 ```
 
-Save a report spec (not the data):
+**Example:** Save a report spec (just a spec, not the data):
 
 ```python
 spec_id = wh.save_report(
@@ -343,7 +347,7 @@ spec_id = wh.save_report(
 )
 ```
 
-Load and run a report from a spec ID:
+**Example:** Load and run a report from a spec ID:
 
 ```python
 result = wh.execute_id(spec_id)
@@ -354,13 +358,16 @@ The database used to store Zillion report specs can be configured by
 setting the ZILLION_DB_URL value in your Zillion config to a valid database
 connection string. By default a SQLite DB in /tmp is used.
 
+**Example:** Unsupported Grain
+
 If you attempt an impossible report, you will get an
 `UnsupportedGrainException`. The report below is impossible because it
-attempts to breakdown the leads metric by a dimension that only exists
+attempts to break down the leads metric by a dimension that only exists
 in a child table. Generally speaking, child tables can join back up to
 parents to find dimensions, but not the other way around.
 
 ```python
+# Fails with UnsupportedGrainException
 result = wh.execute(
     metrics=["leads"],
     dimensions=["sale_id"]
@@ -423,7 +430,7 @@ sale_hour, sale_day_name, sale_day_of_month, sale_month, sale_year, etc.
 
 If you'd like to avoid putting sensitive connection information directly in
 your `DataSource` configs you can leverage config variables. In your `Zillion`
-config you can specify a DATASOURCE_CONTEXTS section as follows:
+yaml config you can specify a `DATASOURCE_CONTEXTS` section as follows:
 
 ```
 DATASOURCE_CONTEXTS:
@@ -434,7 +441,7 @@ DATASOURCE_CONTEXTS:
     schema: reporting
 ```
 
-Then when your `DataSource` config for the `DataSource` named "my_ds_name" is
+Then when your `DataSource` config for the datasource named "my_ds_name" is
 read, it can use this context to populate variables in your connection url:
 
 ```
@@ -456,7 +463,7 @@ would be useful if you wanted to favor a set of faster, aggregate tables that
 are grouped in a `DataSource`.
 
 ```python
-wh = Warehouse(config=config, ds_priority=["ds1", "ds2", ...])
+wh = Warehouse(config=config, ds_priority=["aggr_ds", "raw_ds", ...])
 ```
 
 <a name="adhoc-metrics"></a>
@@ -464,13 +471,12 @@ wh = Warehouse(config=config, ds_priority=["ds1", "ds2", ...])
 
 You may also define metrics "adhoc" with each report request. Below is an
 example that creates a revenue-per-lead metric on the fly. These only exist
-within the scope of the report, and the name can not conflict with any existig
+within the scope of the report, and the name can not conflict with any existing
 fields:
 
 ```python
 result = wh.execute(
     metrics=[
-        "revenue",
         "leads",
         {"formula": "{revenue}/{leads}", "name": "my_rpl"}
     ],
@@ -489,8 +495,8 @@ reflection, and kill running queries all require some database specific code
 for support. The following list summarizes support:
 
 * SQLite: supported and tested
-* MySQL: supported and tested
-* PostgreSQL: supported and *very lightly* tested
+* MySQL: supported and *moderately* tested
+* PostgreSQL: supported and *lightly* tested
 * MSSQL: not tested
 * Oracle: not tested
 * BigQuery, Redshift, Snowflake, etc: not tested

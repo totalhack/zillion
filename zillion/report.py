@@ -1198,11 +1198,12 @@ class Report(ExecutionStateMixin):
             * **rollup="ALL"** - rolls up all dimension levels
             * **rollup=1** - rolls up the first dimension only
             * **rollup=2** - rolls up the first two dimensions
-            * **rollup=3** - rolls up all three dimensions. This is like
-                adding a totals row to the last case, as a totals row is a
-                rollup of all dimension levels. Setting rollup=len(dims)
-                is equivalent to rollup="all".
+            * **rollup=3** - rolls up all three dimensions.
             * Any other non-None value would raise an error
+
+         Note that the rollup=3 case is like adding a totals row to the "=2"
+         case, as a totals row is a rollup of all dimension levels. Setting
+         rollup=len(dims) is equivalent to rollup="ALL".
     pivot : list, optional
         A list of dimensions to pivot to columns
     adhoc_datasources : list, optional
