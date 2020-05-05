@@ -113,29 +113,6 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 html_theme = "sphinx_rtd_theme"
 
 # https://sphinx-rtd-theme.readthedocs.io/en/latest/configuring.html
-# html_theme_options = {
-# "github_user": "kmatarese",
-# "github_repo": "zillion",
-# "github_banner": True,
-# "github_type": "star",
-# "show_related": False,
-# "show_powered_by": False,
-# "show_relbars": True,
-# "note_bg": "#FFF59C",
-# "logo": "img/zillion_image.jpg",
-# "logo_name": False,
-# "page_width": "980px",
-# }
-
-# html_sidebars = {
-#     "**": [
-#         "about.html",
-#         "navigation.html",
-#         "relations.html",
-#         "searchbox.html",
-#         "donate.html",
-#     ]
-# }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

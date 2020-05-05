@@ -13,6 +13,8 @@ Submodules
 
    zillion.configs
    zillion.core
+   zillion.datasource
+   zillion.field
    zillion.report
    zillion.sql_utils
    zillion.version
