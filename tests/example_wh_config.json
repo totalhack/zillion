@@ -1,0 +1,130 @@
+{
+    "metrics": [
+        {
+            "name": "revenue",
+            "type": "Numeric(10,2)",
+            "aggregation": "SUM",
+            "rounding": 2
+        },
+        {
+            "name": "leads",
+            "type": "Integer",
+            "aggregation": "SUM"
+        },
+        {
+            "name": "sales",
+            "type": "Integer",
+            "aggregation": "SUM"
+        },
+        {
+            "name": "rpl",
+            "aggregation": "MEAN",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}"
+        }
+    ],
+
+    "dimensions": [
+        {
+            "name": "partner_id",
+            "type": "Integer"
+        },
+        {
+            "name": "partner_name",
+            "type": "String(32)"
+        },
+        {
+            "name": "campaign_id",
+            "type": "Integer"
+        },
+        {
+            "name": "campaign_name",
+            "type": "String(32)"
+        }
+    ],
+    
+    "datasources": {
+        "testdb1": {
+            "url": "sqlite:///testdb1",
+            "tables": {
+                "main.partners": {
+                    "type": "DIMENSION",
+                    "primary_key": ["partner_id"],
+                    "columns": {
+                        "id": {
+                            "fields": ["partner_id"]
+                        },
+                        "name": {
+                            "fields": ["partner_name"]
+                        }
+                    }
+                },
+                
+                "main.campaigns": {
+                    "type": "DIMENSION",
+                    "parent": "main.partners",
+                    "primary_key": ["campaign_id"],
+                    "columns": {
+                        "id": {
+                            "fields": ["campaign_id"]
+                        },
+                        "name": {
+                            "fields": ["campaign_name"]
+                        },
+                        "partner_id": {
+                            "fields": ["partner_id"]
+                        }
+                    }
+                },
+
+                "main.leads": {
+                    "type": "METRIC",
+                    "create_fields": true,
+                    "primary_key": ["lead_id"],
+                    "columns": {
+                        "id": {
+                            "fields": [
+                                "lead_id",
+                                {"name": "leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
+                            ]
+                        },
+                        "created_at": {
+                            "fields": ["lead_created_at"],
+                            "allow_type_conversions": true,
+                            "type_conversion_prefix": "lead_"
+                        },
+                        "campaign_id": {
+                            "fields": ["campaign_id"]
+                        }
+                    }
+                },
+                
+                "main.sales": {
+                    "type": "METRIC",
+                    "create_fields": true,
+                    "parent": "main.leads",
+                    "primary_key": ["sale_id"],
+                    "columns": {
+                        "id": {
+                            "fields": [
+                                "sale_id",
+                                {"name":"sales", "ds_formula": "COUNT(DISTINCT sales.id)"}
+                            ]
+                        },
+                        "created_at": {
+                            "fields": ["sale_created_at"],
+                            "allow_type_conversions": true,
+                            "type_conversion_prefix": "sale_"
+                        },
+                        "lead_id": {
+                            "fields": ["lead_id"]
+                        },
+                        "revenue": {
+                            "fields": ["revenue"]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -13,5 +13,6 @@ simplejson
 stopit
 sqlalchemy
 sqlparse
+tabulate
 tlbx>=0.1.13
 xlrd

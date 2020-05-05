@@ -130,7 +130,30 @@ class Field(PrintMixin):
 
 class Metric(Field):
     """Fields that represent values to be measured and possibly broken down
-    along Dimensions"""
+    along Dimensions
+
+    Parameters
+    ----------
+    name : str
+        The name of the field
+    type : str or SQLAlchemy type
+        The column type for the field
+    aggregation : str, optional
+        The AggregationType to apply to the metric
+    rounding : int, optional
+        If specified, the number of decimal places to round to
+    weighting_metric : str, optional
+        A reference to a metric to use for weighting when aggregating averages
+    technical : object, optional
+        A Technical object or definition used to defined a technical computation
+        to be applied to the metric
+    required_grain : list of str, optional
+        If specified, a list of dimensions that must be present in the
+        dimension grain of any report that aims to include this metric.
+    **kwargs
+        kwargs passed to super class
+
+    """
 
     field_type = FieldTypes.METRIC
 
@@ -145,30 +168,6 @@ class Metric(Field):
         required_grain=None,
         **kwargs
     ):
-        """Init a metric field
-
-        Parameters
-        ----------
-        name : str
-            The name of the field
-        type : str or SQLAlchemy type
-            The column type for the field
-        aggregation : str, optional
-            The AggregationType to apply to the metric
-        rounding : int, optional
-            If specified, the number of decimal places to round to
-        weighting_metric : str, optional
-            A reference to a metric to use for weighting when aggregating averages
-        technical : object, optional
-            A Technical object or definition used to defined a technical computation
-            to be applied to the metric
-        required_grain : list of str, optional
-            If specified, a list of dimensions that must be present in the
-            dimension grain of any report that aims to include this metric.
-        **kwargs
-            kwargs passed to super class
-
-        """
         if weighting_metric:
             raiseifnot(
                 aggregation == AggregationTypes.MEAN,

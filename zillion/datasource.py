@@ -243,7 +243,25 @@ class NeighborTable(PrintMixin):
 
 
 class DataSource(FieldManagerMixin, PrintMixin):
-    """A component of a warehouse that houses one or more related tables"""
+    """A component of a warehouse that houses one or more related tables
+
+    Parameters
+    ----------
+    name : str
+        The name of the datasource
+    metadata : SQLAlchemy metadata, optional
+        A SQLAlchemy metadata object that may have zillion configuration
+        information defined in the table and column `info.zillion`
+        attribute
+    config : dict, optional
+        A datasource config that will be applied to the metadata's zillion
+        info
+    reflect : bool, optional
+        If true, use SQLAlchemy to reflect the database
+    skip_conversion_fields : bool, optional
+        Don't add any conversion fields when applying a config
+
+    """
 
     repr_attrs = ["name"]
 
@@ -255,25 +273,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
         reflect=False,
         skip_conversion_fields=False,
     ):
-        """Initialize the datasource from the metadata and/or config
-
-        Parameters
-        ----------
-        name : str
-            The name of the datasource
-        metadata : SQLAlchemy metadata, optional
-            A SQLAlchemy metadata object that may have zillion configuration
-            information defined in the table and column `info.zillion`
-            attribute
-        config : dict, optional
-            A datasource config that will be applied to the metadata's zillion
-            info
-        reflect : bool, optional
-            If true, use SQLAlchemy to reflect the database
-        skip_conversion_fields : bool, optional
-            Don't add any conversion fields when applying a config
-
-        """
         self.name = DataSource._check_or_create_name(name)
         self._metrics = {}
         self._dimensions = {}
