@@ -78,8 +78,11 @@ $ pip install zillion
 Primer
 ------
 
-Please also see the [docs](https://zillion.readthedocs.io/en/latest/) for more
-details, or skip below for examples.
+The following is meant to give a very quick overview. Please also see the
+[docs](https://zillion.readthedocs.io/en/latest/) for more details, or skip
+below for some examples. If you have no idea what the primer is talking about,
+maybe look at the examples first and take away this main concept: `Zillion`
+writes SQL for you and makes your data accessible through a very simple API.
 
 <a name="theory"></a>
 ### Theory
@@ -185,12 +188,13 @@ Below we will walk through a simple example that demonstrates basic
 `DataSource` and `Warehouse` configuration and then shows some sample reports.
 The data is a SQLite database that is part of the `Zillion` unit test [code](https://github.com/totalhack/zillion/blob/master/tests/testdb1). The schema is as follows:
 
-```
+```sql
 CREATE TABLE partners (
   id INTEGER PRIMARY KEY,
   name VARCHAR NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 CREATE TABLE campaigns (
   id INTEGER PRIMARY KEY,
   name VARCHAR NOT NULL UNIQUE,
@@ -198,12 +202,14 @@ CREATE TABLE campaigns (
   partner_id INTEGER NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 CREATE TABLE leads (
   id INTEGER PRIMARY KEY,
   name VARCHAR NOT NULL,
   campaign_id INTEGER NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 CREATE TABLE sales (
   id INTEGER PRIMARY KEY,
   item VARCHAR NOT NULL,
@@ -216,6 +222,10 @@ CREATE TABLE sales (
 
 <a name="example-configuration"></a>
 ### Configuration
+
+In order to create a `Warehouse`, you need to provide metadata describing the
+metrics, dimensions, and tables. The basics of `Zillion` configuration are
+described below.
 
 A `Warehouse` config has the following main sections:
 
@@ -306,7 +316,7 @@ Campaign 2A        6      2       82
 ```
 
 **Example:** The output below shows rollups at the campaign level within each
-partner, and also a totals rollup at the partner and campaign level.
+partner, and also a rollup of totals at the partner and campaign level.
 
 > Note: the output contains a special character to mark DataFrame rollup rows
 that were added to the result. The
@@ -342,7 +352,7 @@ Partner C    Campaign 1C      5.0    1.0    118.5
 """
 ```
 
-**Example:** Save a report spec (just a spec, not the data):
+**Example:** Save a report spec (not the data):
 
 ```python
 spec_id = wh.save_report(
@@ -427,8 +437,9 @@ way.
 
 The output of `wh.print_info` will show the added dimensions, which are
 prefixed with "lead_" or "sale_" as specified by the optional
-`type_conversion_prefix` in the config for each table. Some examples include
-sale_hour, sale_day_name, sale_day_of_month, sale_month, sale_year, etc.
+`type_conversion_prefix` in the config for each table. Some examples of
+auto-generated dimensions include sale_hour, sale_day_name, sale_day_of_month,
+sale_month, sale_year, etc.
 
 <a name="config-variables"></a>
 ### Config Variables
@@ -497,10 +508,12 @@ Supported DataSources
 supports. That said the support and testing levels in `Zillion` vary at the
 moment. In particular, the ability to do type conversions, database
 reflection, and kill running queries all require some database specific code
-for support. The following list summarizes support:
+for support. The following list summarizes known support levels. Your mileage
+may vary with untested database technologies that SQLAlchemy supports (it
+might work just fine, just hasn't been tested yet).
 
 * SQLite: supported and tested
-* MySQL: supported and *moderately* tested
+* MySQL: supported and tested 
 * PostgreSQL: supported and *lightly* tested
 * MSSQL: not tested
 * Oracle: not tested
