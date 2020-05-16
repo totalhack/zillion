@@ -1,0 +1,3 @@
+# This is a hack to get lingquist to ignore the SQL dumps that are causing
+# this repo to not be viewed as a pythong project.
+tests/* linguist-documentation
