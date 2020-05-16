@@ -153,18 +153,44 @@ def type_string_to_sa_type(type_string):
         An init'd SQLAlchemy type object
 
     """
-    parts = type_string.split("(")
-    type_args = []
-    if len(parts) > 1:
-        raiseifnot(len(parts) == 2, "Unable to parse type string: %s" % type_string)
-        type_args = ast.literal_eval(parts[1].rstrip(")") + ",")
-    type_name = parts[0]
-    type_cls = getattr(sa.types, type_name, None)
-    if not type_cls:
-        raise InvalidSQLAlchemyTypeString(
-            "Could not find matching type for %s" % type_name
-        )
-    return type_cls(*type_args)
+    try:
+        tree = ast.parse(type_string)
+        ast_obj = tree.body[0].value
+        if isinstance(ast_obj, ast.Name):
+            type_name = ast_obj.id
+            type_args = []
+            type_kwargs = {}
+        else:
+            type_name = ast_obj.func.id
+            type_args = [arg.n for arg in ast_obj.args]
+            type_kwargs = {k.arg: k.value.n for k in ast_obj.keywords}
+
+        type_cls = getattr(sa.types, type_name, None)
+        if not type_cls:
+            raise InvalidSQLAlchemyTypeString(
+                "Could not find matching type for %s" % type_name
+            )
+        return type_cls(*type_args, **type_kwargs)
+    except Exception as e:
+        raise InvalidSQLAlchemyTypeString("Unable to parse %s" % type_string) from e
+
+
+def to_generic_sa_type(type):
+    """Return a generic SQLAlchemy type object from a type that may be
+    dialect-specific. This will attempt to preserver common type settings
+    such as specified field length, scale, and precision. On error it
+    will fall back to trying to init the generic type with no params.
+    """
+    params = {}
+    for param in ["length", "precision", "scale"]:
+        if hasattr(type, param):
+            params[param] = getattr(type, param)
+    try:
+        return type._type_affinity(**params)
+    except Exception as e:
+        if "unexpected keyword" not in str(e):
+            raise
+        return type._type_affinity()
 
 
 def infer_aggregation_and_rounding(column):
@@ -205,6 +231,7 @@ def aggregation_to_sqla_func(aggregation):
 
 def is_numeric_type(type):
     """Determine if this is a numeric SQLAlchemy type"""
+    raiseif(isinstance(type, str), "Expected a SQLAlchemy type, got string")
     if isinstance(type, tuple(NUMERIC_SA_TYPES)):
         return True
     return False

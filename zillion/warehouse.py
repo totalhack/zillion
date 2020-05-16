@@ -504,14 +504,14 @@ class Warehouse(FieldManagerMixin):
             for fm, field_def in instances.items():
                 if not field_type:
                     field_type = field_def.field_type
-                    field_is_numeric = is_numeric_type(field_def.type)
+                    field_is_numeric = is_numeric_type(field_def.sa_type)
                     field_aggr = getattr(field_def, "aggregation", None)
                     continue
 
                 if field_def.field_type != field_type:
                     field_type_mismatch = True
 
-                if is_numeric_type(field_def.type) != field_is_numeric:
+                if is_numeric_type(field_def.sa_type) != field_is_numeric:
                     data_type_mismatch = True
 
                 if field_def.field_type == FieldTypes.METRIC:

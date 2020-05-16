@@ -223,8 +223,8 @@ def is_valid_sqlalchemy_type(val):
     if val is not None:
         try:
             type_string_to_sa_type(val)
-        except InvalidSQLAlchemyTypeString:
-            raise ValidationError("Invalid table type: %s" % val)
+        except InvalidSQLAlchemyTypeString as e:
+            raise ValidationError("Invalid sqlalchemy type: %s" % val)
     return True
 
 
@@ -278,6 +278,28 @@ def is_valid_datasource_config(val):
     return True
 
 
+# Inspiration: https://gist.github.com/ramnes/89245fbd9f2dfff52a78
+class PolyNested(mfields.Nested):
+    """A polytype nested field that iterates through a list of possible types"""
+
+    def _deserialize(self, value, attr, data, partial=None, **kwargs):
+        raiseifnot(isinstance(self.nested, list), "Expected list of schemas")
+        errors = []
+        for schema in self.nested:
+            if isinstance(schema, type):
+                schema = schema()
+            try:
+                result = schema.load(value)
+            except ValidationError as e:
+                errors.append(e)
+                continue
+            return result
+        raise ValidationError(
+            "Could not deserialize value with PolyNested schemas. Data:%s\nSchemas:%s"
+            % (value, self.nested)
+        )
+
+
 class BaseSchema(Schema):
     """Base Schema with custom JSON module"""
 
@@ -301,45 +323,6 @@ class TechnicalField(mfields.Field):
     def _validate(self, value):
         is_valid_technical(value)
         super()._validate(value)
-
-
-class AdHocFieldSchema(BaseSchema):
-    """Base schema for an adhoc field
-
-    Attributes
-    ---------
-    name : str
-        The name of the field
-    formula : str
-        The formula used to compute the field value. This formula is applied
-        at the combined query layer, rather than in datasources queries, so the
-        syntax must match that of the combined query layer database.
-
-    """
-
-    name = mfields.String(required=True, validate=is_valid_field_name)
-    formula = mfields.String(required=True)
-
-
-class AdHocMetricSchema(AdHocFieldSchema):
-    """The schema of an adhoc metric
-
-    Attributes
-    ----------
-    technical : str or dict, optional
-        A string or dict that will be parsed as a TechnicalField to define a
-        technical computation to be applied to the metric.
-    rounding : int, optional
-        If specified, the number of decimal places to round to
-    required_grain : list of str, optional
-        If specified, a list of dimensions that must be present in the
-        dimension grain of any report that aims to include this metric.
-
-    """
-
-    technical = TechnicalField(default=None, missing=None)
-    rounding = mfields.Integer(default=None, missing=None)
-    required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
 
 class ColumnFieldConfigSchema(BaseSchema):
@@ -480,16 +463,44 @@ class TableConfigSchema(TableInfoSchema):
     adhoc_table_options = mfields.Dict(keys=mfields.Str())
 
 
-class MetricConfigSchema(BaseSchema):
-    """The schema of a metric configuration
+class FieldConfigSchema(BaseSchema):
+    """The based schema of a field configuration
 
     Attributes
     ----------
     name : str
-        The name of the metric
+        The name of the field
     type : str
         A string representing the data type of the field. This will be
         converted to a SQLAlchemy type via `ast.literal_eval`.
+    """
+
+    name = mfields.String(required=True, validate=is_valid_field_name)
+    type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
+
+
+class FormulaFieldConfigSchema(BaseSchema):
+    """The based schema of a formula field configuration
+
+    Attributes
+    ----------
+    name : str
+        The name of the field
+    formula : str, optional
+        A formula used to compute the field value. Formula fields are applied
+        at the combined query layer, rather than in datasources queries, so the
+        syntax must match that of the combined query layer database.
+    """
+
+    name = mfields.String(required=True, validate=is_valid_field_name)
+    formula = mfields.String(required=True)
+
+
+class MetricConfigSchemaMixin:
+    """Common attributes and logic for metric configs
+
+    Attributes
+    ----------
     aggregation : str, optional
         A string representing the aggregation type to apply to this
         metric. See `zillion.core.AggregationTypes`.
@@ -497,10 +508,6 @@ class MetricConfigSchema(BaseSchema):
         If specified, the number of decimal places to round to
     weighting_metric : str, optional
         A reference to a metric to use for weighting when aggregating averages
-    formula : str, optional
-        A formula used to compute the metric value. Formula metrics are applied
-        at the combined query layer, rather than in datasources queries, so the
-        syntax must match that of the combined query layer database.
     technical : str or dict, optional
         A string or dict that will be parsed as a TechnicalField to define a
         technical computation to be applied to the metric.
@@ -510,8 +517,6 @@ class MetricConfigSchema(BaseSchema):
 
     """
 
-    name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
     aggregation = mfields.String(
         default=AggregationTypes.SUM,
         missing=AggregationTypes.SUM,
@@ -519,17 +524,10 @@ class MetricConfigSchema(BaseSchema):
     )
     rounding = mfields.Integer(default=None, missing=None)
     weighting_metric = mfields.Str(default=None, missing=None)
-    formula = mfields.String(default=None, missing=None)
     technical = TechnicalField(default=None, missing=None)
     required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
-    @validates_schema(skip_on_field_errors=True)
-    def _validate_object(self, data, **kwargs):
-        if (not data.get("type", None)) and (not data.get("formula", None)):
-            raise ValidationError(
-                "Either type or formula must be specified for metric: %s" % data
-            )
-
+    def _validate_weighting_aggregation(self, data):
         if (
             data["weighting_metric"]
             and not data["aggregation"] == AggregationTypes.MEAN
@@ -540,23 +538,49 @@ class MetricConfigSchema(BaseSchema):
             )
 
 
-class DimensionConfigSchema(BaseSchema):
-    """The schema of a dimension configuration
+class MetricConfigSchema(FieldConfigSchema, MetricConfigSchemaMixin):
+    """The schema of a metric configuration"""
+
+    pass
+
+
+class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixin):
+    """The schema of a formula metric configuration"""
+
+    pass
+
+
+class DimensionConfigSchema(FieldConfigSchema):
+    """The schema of a dimension configuration"""
+
+    pass
+
+
+class AdHocFieldSchema(FormulaFieldConfigSchema):
+    """Base schema for an adhoc field"""
+
+    pass
+
+
+class AdHocMetricSchema(AdHocFieldSchema):
+    """The schema of an adhoc metric
 
     Attributes
     ----------
-    name : str
-        The name of the dimension
-    type : str
-        A string representing the data type of the field. This will be
-        converted to a SQLAlchemy type via `ast.literal_eval`.
+    technical : str or dict, optional
+        A string or dict that will be parsed as a TechnicalField to define a
+        technical computation to be applied to the metric.
+    rounding : int, optional
+        If specified, the number of decimal places to round to
+    required_grain : list of str, optional
+        If specified, a list of dimensions that must be present in the
+        dimension grain of any report that aims to include this metric.
 
     """
 
-    name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
-    # TODO: add support for FormulaDimensions
-    # formula = mfields.String(default=None, missing=None)
+    technical = TechnicalField(default=None, missing=None)
+    rounding = mfields.Integer(default=None, missing=None)
+    required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
 
 class TableNameField(mfields.Str):
@@ -585,7 +609,7 @@ class DataSourceConfigSchema(BaseSchema):
     """
 
     url = mfields.String()
-    metrics = mfields.List(mfields.Nested(MetricConfigSchema))
+    metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     tables = mfields.Dict(
         keys=TableNameField(), values=mfields.Nested(TableConfigSchema)
@@ -643,7 +667,7 @@ class WarehouseConfigSchema(BaseSchema):
 
     """
 
-    metrics = mfields.List(mfields.Nested(MetricConfigSchema))
+    metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     datasources = mfields.Dict(
         keys=mfields.Str(), values=DataSourceConfigField, required=True
@@ -677,6 +701,26 @@ class WarehouseConfigSchema(BaseSchema):
             data["datasources"][ds_name] = config
 
         return data
+
+
+class ConfigMixin:
+    """Mixin to allow validation against a marshmallow schema"""
+
+    schema = None
+
+    def __init__(self, *args, **kwargs):
+        """Validate the object against a marshmallow schema"""
+        raiseifnot(self.schema, "ConfigMixin requires a schema attribute")
+        self.schema().load(self.__dict__, unknown=EXCLUDE)
+
+    def to_config(self):
+        """Get the config for this object"""
+        return self.schema().load(self.__dict__, unknown=EXCLUDE)
+
+    @classmethod
+    def from_config(cls, config):
+        """Create a the object from a config"""
+        return cls(**config)
 
 
 class ZillionInfo(MappingMixin):

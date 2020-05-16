@@ -1,9 +1,12 @@
-import inspect
-
 import sqlalchemy as sa
 
 from zillion.configs import (
+    EXCLUDE,
+    ConfigMixin,
+    FieldConfigSchema,
+    FormulaFieldConfigSchema,
     MetricConfigSchema,
+    FormulaMetricConfigSchema,
     DimensionConfigSchema,
     AdHocMetricSchema,
     AdHocFieldSchema,
@@ -17,6 +20,7 @@ from zillion.sql_utils import (
     contains_aggregation,
     contains_sql_keywords,
     type_string_to_sa_type,
+    to_generic_sa_type,
     sqla_compile,
     column_fullname,
 )
@@ -25,7 +29,7 @@ from zillion.sql_utils import (
 MAX_FORMULA_DEPTH = 3
 
 
-class Field(PrintMixin):
+class Field(ConfigMixin, PrintMixin):
     """Represents the concept a column is capturing, which may be shared
     by columns in other tables or datasources. For example, you may have a
     several columns in your databases/tables that represent the concept of
@@ -36,27 +40,40 @@ class Field(PrintMixin):
     name : str
         The name of the field
     type : str or SQLAlchemy type
-        The column type for the field
+        The column type for the field.
     **kwargs
         Additional attributes stored on the field object
 
+    Attributes
+    ----------
+    name : str
+        The name of the field
+    type : str
+        A string representing the generic SQLAlchemy type
+    sa_type: SQLAlchemy type
+        A generic SQLAlchemy type. If a dialect-specific type object is passed in
+        on init it will be coerced to a generic type.
+
     """
 
-    repr_attrs = ["name"]
+    repr_attrs = ["name", "type"]
     field_type = None
+    schema = FieldConfigSchema
 
     @initializer
     def __init__(self, name, type, **kwargs):
-        is_valid_field_name(name)
+        self.sa_type = None
         if isinstance(type, str):
-            self.type = type_string_to_sa_type(type)
-        if inspect.isclass(type):
-            # Assume its a SQLAlchemy class
-            self.type = type()
+            self.sa_type = type_string_to_sa_type(type)
+        elif type:
+            self.sa_type = to_generic_sa_type(type)
+            self.type = repr(self.sa_type)
+        # This will do schema validation
+        super().__init__()
 
     def copy(self):
         """Copy this field"""
-        raise NotImplementedError
+        return self.__class__.from_config(self.to_config())
 
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         """Get the fields that are part of this field's formula
@@ -118,6 +135,7 @@ class Field(PrintMixin):
         return self.name
 
     # https://stackoverflow.com/questions/2909106/whats-a-correct-and-good-way-to-implement-hash
+
     def __key(self):
         return self.name
 
@@ -156,6 +174,7 @@ class Metric(Field):
     """
 
     field_type = FieldTypes.METRIC
+    schema = MetricConfigSchema
 
     def __init__(
         self,
@@ -187,18 +206,6 @@ class Metric(Field):
             technical=technical,
             required_grain=required_grain,
             **kwargs
-        )
-
-    def copy(self):
-        """Create a copy of this metric"""
-        return Metric(
-            self.name,
-            self.type,
-            aggregation=self.aggregation,
-            rounding=self.rounding,
-            weighting_metric=self.weighting_metric,
-            technical=self.technical,
-            required_grain=self.required_grain,
         )
 
     def get_ds_expression(self, column, label=True):
@@ -268,9 +275,7 @@ class Dimension(Field):
     grouping or filtering"""
 
     field_type = FieldTypes.DIMENSION
-
-    def copy(self):
-        return Dimension(self.name, self.type)
+    schema = DimensionConfigSchema
 
 
 class FormulaField(Field):
@@ -286,6 +291,9 @@ class FormulaField(Field):
         kwargs passed to the super class
 
     """
+
+    repr_attrs = ["name", "formula"]
+    schema = FormulaFieldConfigSchema
 
     def __init__(self, name, formula, **kwargs):
         super(FormulaField, self).__init__(name, None, formula=formula, **kwargs)
@@ -401,7 +409,6 @@ class FormulaDimension(FormulaField):
 
     """
 
-    repr_atts = ["name", "formula"]
     field_type = FieldTypes.DIMENSION
 
     def __init__(self, name, formula, **kwargs):
@@ -439,8 +446,9 @@ class FormulaMetric(FormulaField):
 
     """
 
-    repr_atts = ["name", "formula", "technical"]
+    repr_attrs = ["name", "formula", "aggregation", "technical"]
     field_type = FieldTypes.METRIC
+    schema = FormulaMetricConfigSchema
 
     def __init__(
         self,
@@ -481,6 +489,8 @@ class AdHocField(FormulaField):
 
 class AdHocMetric(FormulaMetric):
     """An AdHoc representation of a Metric"""
+
+    schema = AdHocMetricSchema
 
     def __init__(
         self, name, formula, technical=None, rounding=None, required_grain=None
@@ -551,34 +561,18 @@ def create_metric(metric_def):
     Parameters
     ----------
     metric_def : dict
-        A dict of params to init a Metric. If a formula param is present
+        A dict of params to init a metric. If a formula param is present
         a FormulaMetric will be created.
 
     Returns
     -------
-    Metric
-    """
+    Metric or FormulaMetric
 
-    if metric_def["formula"]:
-        metric = FormulaMetric(
-            metric_def["name"],
-            metric_def["formula"],
-            aggregation=metric_def["aggregation"],
-            rounding=metric_def["rounding"],
-            weighting_metric=metric_def["weighting_metric"],
-            technical=metric_def["technical"],
-            required_grain=metric_def["required_grain"],
-        )
+    """
+    if "formula" in metric_def:
+        metric = FormulaMetric.from_config(metric_def)
     else:
-        metric = Metric(
-            metric_def["name"],
-            metric_def["type"],
-            aggregation=metric_def["aggregation"],
-            rounding=metric_def["rounding"],
-            weighting_metric=metric_def["weighting_metric"],
-            technical=metric_def["technical"],
-            required_grain=metric_def["required_grain"],
-        )
+        metric = Metric.from_config(metric_def)
     return metric
 
 
@@ -595,10 +589,9 @@ def create_dimension(dim_def):
     Dimension
 
     """
-    if dim_def.get("formula", None):
-        # dim = FormulaDimension(dim_def["name"], dim_def["formula"])
+    if "formula" in dim_def:
         raise InvalidFieldException("FormulaDimensions are not currently supported")
-    return Dimension(dim_def["name"], dim_def["type"])
+    return Dimension.from_config(dim_def)
 
 
 class FieldManagerMixin:
@@ -624,6 +617,14 @@ class FieldManagerMixin:
     def get_field_managers(self, adhoc_fms=None):
         """Get a list of all child FieldManagers including adhoc"""
         return self.get_child_field_managers() + (adhoc_fms or [])
+
+    def get_direct_metrics(self):
+        """Get metrics directly stored on this FieldManager"""
+        return getattr(self, self.metrics_attr)
+
+    def get_direct_dimensions(self):
+        """Get dimensions directly stored on this FieldManager"""
+        return getattr(self, self.dimensions_attr)
 
     def directly_has_metric(self, name):
         """Check if this FieldManager directly stores this metric"""
@@ -758,30 +759,56 @@ class FieldManagerMixin:
     def get_metrics(self, adhoc_fms=None):
         """Get a dict of all metrics supported by this FieldManager"""
         metrics = {}
-        metrics.update(getattr(self, self.metrics_attr))
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             fm_metrics = fm.get_metrics()
             metrics.update(fm_metrics)
+        metrics.update(getattr(self, self.metrics_attr))
         return metrics
 
     def get_dimensions(self, adhoc_fms=None):
         """Get a dict of all dimensions supported by this FieldManager"""
         dimensions = {}
-        dimensions.update(getattr(self, self.dimensions_attr))
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             fm_dimensions = fm.get_dimensions()
             dimensions.update(fm_dimensions)
+        dimensions.update(getattr(self, self.dimensions_attr))
         return dimensions
 
     def get_fields(self, adhoc_fms=None):
         """Get a dict of all fields supported by this FieldManager"""
         fields = {}
-        fields.update(getattr(self, self.metrics_attr))
-        fields.update(getattr(self, self.dimensions_attr))
         for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
             fm_fields = fm.get_fields()
             fields.update(fm_fields)
+        fields.update(getattr(self, self.metrics_attr))
+        fields.update(getattr(self, self.dimensions_attr))
         return fields
+
+    def get_direct_metric_configs(self):
+        """Get a dict of metric configs directly supported by this FieldManager"""
+        return {f.name: f.to_config() for f in self.get_direct_metrics().values()}
+
+    def get_direct_dimension_configs(self):
+        """Get a dict of dimension configs directly supported by this FieldManager"""
+        return {f.name: f.to_config() for f in self.get_direct_dimensions().values()}
+
+    def get_metric_configs(self, adhoc_fms=None):
+        """Get a dict of all metric configs supported by this FieldManager"""
+        configs = {}
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
+            fm_configs = fm.get_metric_configs()
+            configs.update(fm_configs)
+        configs.update(self.get_direct_metric_configs())
+        return configs
+
+    def get_dimension_configs(self, adhoc_fms=None):
+        """Get a dict of all dimension configs supported by this FieldManager"""
+        configs = {}
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
+            fm_configs = fm.get_dimension_configs()
+            configs.update(fm_configs)
+        configs.update(self.get_direct_dimension_configs())
+        return configs
 
     def get_metric_names(self, adhoc_fms=None):
         """Get a set of metric names supported by this FieldManager"""
@@ -835,12 +862,10 @@ class FieldManagerMixin:
 
         for metric_def in config.get("metrics", []):
             if isinstance(metric_def, dict):
-                schema = MetricConfigSchema()
-                metric_def = schema.load(metric_def)
                 metric = create_metric(metric_def)
             else:
                 raiseifnot(
-                    isinstance(metric_def, Metric),
+                    isinstance(metric_def, (Metric, FormulaMetric)),
                     "Metric definition must be a dict-like object or a Metric object",
                 )
                 metric = metric_def
@@ -852,8 +877,6 @@ class FieldManagerMixin:
 
         for dim_def in config.get("dimensions", []):
             if isinstance(dim_def, dict):
-                schema = DimensionConfigSchema()
-                dim_def = schema.load(dim_def)
                 dim = create_dimension(dim_def)
             else:
                 raiseifnot(
@@ -1055,7 +1078,7 @@ def get_conversions_for_type(coltype):
 
 
 def get_dialect_type_conversions(dialect, column):
-    """Get all conversions ssupported by this column type for this dialect
+    """Get all conversions supported by this column type for this dialect
 
     Parameters
     ----------
@@ -1097,23 +1120,23 @@ def get_dialect_type_conversions(dialect, column):
 
 
 DATETIME_CONVERSION_FIELDS = [
-    Dimension("year", sa.Integer),
-    Dimension("quarter", sa.String(8)),
-    Dimension("quarter_of_year", sa.SmallInteger),
-    Dimension("month", sa.String(8)),
-    Dimension("month_name", sa.String(8)),
-    Dimension("month_of_year", sa.SmallInteger),
-    Dimension("date", sa.String(10)),
-    Dimension("day_name", sa.String(10)),
-    Dimension("day_of_week", sa.SmallInteger),
-    Dimension("day_of_month", sa.SmallInteger),
-    Dimension("day_of_year", sa.SmallInteger),
-    Dimension("hour", sa.String(20)),
-    Dimension("hour_of_day", sa.SmallInteger),
-    Dimension("minute", sa.String(20)),
-    Dimension("minute_of_hour", sa.SmallInteger),
-    Dimension("datetime", sa.String(20)),
-    Dimension("unixtime", sa.BigInteger),
+    Dimension("year", "Integer"),
+    Dimension("quarter", "String(8)"),
+    Dimension("quarter_of_year", "SmallInteger"),
+    Dimension("month", "String(8)"),
+    Dimension("month_name", "String(8)"),
+    Dimension("month_of_year", "SmallInteger"),
+    Dimension("date", "String(10)"),
+    Dimension("day_name", "String(10)"),
+    Dimension("day_of_week", "SmallInteger"),
+    Dimension("day_of_month", "SmallInteger"),
+    Dimension("day_of_year", "SmallInteger"),
+    Dimension("hour", "String(20)"),
+    Dimension("hour_of_day", "SmallInteger"),
+    Dimension("minute", "String(20)"),
+    Dimension("minute_of_hour", "SmallInteger"),
+    Dimension("datetime", "String(20)"),
+    Dimension("unixtime", "BigInteger"),
 ]
 
 DATE_CONVERSION_FIELDS = []

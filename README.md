@@ -13,7 +13,7 @@ Introduction
 `Zillion` is a free, open data warehousing and dimensional modeling tool that
 allows combining and analyzing data from multiple datasources through a simple
 API. It writes SQL so you don't have to, and it easily bolts onto existing
-database infrastructure that can be understood by SQLALchemy.
+database infrastructure that can be understood by SQLAlchemy.
 
 With `Zillion` you can:
 
@@ -36,10 +36,12 @@ With `Zillion` you can:
 Why `Zillion`?
 
 There are many commercial solutions out there that provide data warehousing
-capabilities. Many of them are cost-prohibitive, come with strings attached or
-vendor lock-in, and are overly heavyweight. `Zillion` aims to be a more
-democratic solution to data warehousing, and to provide simple, powerful data
-analysis capabilities to all.
+capabilities. Many of them are cost-prohibitive for start-ups, come with
+strings attached or vendor lock-in, and are overly heavyweight. Many also lack
+flexibility in terms of report design, and are more geared towards building
+stable dashboards. `Zillion` aims to be a more democratic solution to data
+warehousing, and to provide simple, powerful data analysis capabilities to
+all. It encourages adhoc data exploration.
 
 Table of Contents
 -----------------
@@ -78,11 +80,12 @@ $ pip install zillion
 Primer
 ------
 
-The following is meant to give a very quick overview. Please also see the
+The following is meant to give a quick overview. Please also see the
 [docs](https://zillion.readthedocs.io/en/latest/) for more details, or skip
 below for some examples. If you have no idea what the primer is talking about,
-maybe look at the examples first and take away this main concept: `Zillion`
-writes SQL for you and makes your data accessible through a very simple API.
+or just don't care that much about the theory behind it, maybe look at the
+examples first and take away this main concept: `Zillion` writes SQL for you
+and makes your data accessible through a very simple API.
 
 <a name="theory"></a>
 ### Theory
@@ -137,9 +140,9 @@ it can try to use any of them to satisfy reports requesting "revenue".
 
 Likewise there are two main types of tables:
 
-1. Dimension Tables: reference/attribute tables containing only related
+1. `Dimension Tables`: reference/attribute tables containing only related
 dimensions
-2. Metric Tables: fact tables that may contain metrics and some related
+2. `Metric Tables`: fact tables that may contain metrics and some related
 dimensions/attributes
 
 <a name="executing-reports"></a>
@@ -177,16 +180,24 @@ A `Report` is said to have a `grain`, which defines the dimensions each metric
 must be able to join to in order to satisfy the `Report` requirements. The
 `grain` is a combination of **all** dimensions, including those referenced in
 criteria or in metric formulas. In the example above, the `grain` would be
-`{date, partner}`.  Both "revenue" and "leads" must be able to join to those
+`{date, partner}`. Both "revenue" and "leads" must be able to join to those
 dimensions for this report to be possible.
+
+These concepts can take time to sink in and obviously vary with the specifics
+of your data model, but you will become more familiar with them as you start
+putting together reports against your data warehouses.
+
+Now on to some examples...
 
 <a name="simple-example"></a>
 Simple Example
 --------------
 
-Below we will walk through a simple example that demonstrates basic
-`DataSource` and `Warehouse` configuration and then shows some sample reports.
-The data is a SQLite database that is part of the `Zillion` unit test [code](https://github.com/totalhack/zillion/blob/master/tests/testdb1). The schema is as follows:
+Below we will walk through a simple hypothetical sales campaign data model
+that demonstrates basic `DataSource` and `Warehouse` configuration and then
+shows some sample reports. The data is a SQLite
+[database](https://github.com/totalhack/zillion/blob/master/tests/testdb1)
+that is part of the `Zillion` unit test code. The schema is as follows:
 
 ```sql
 CREATE TABLE partners (
@@ -275,9 +286,6 @@ all of the metrics and dimensions at the `Warehouse` and `DataSource` levels.
 
 <a name="example-reports"></a>
 ### Reports
-
-> **Note**: the test data in this sample database is not meant to mimic any
-real world example. The numbers are just made up for testing.
 
 **Example:** Get sales, leads, and revenue by partner:
 
@@ -397,7 +405,7 @@ Advanced Topics
 ### FormulaMetrics
 
 In our example above our config included a formula-based metric called "rpl",
-which is simply revenue / leads. FormulaMetrics combine other metrics and/or
+which is simply `revenue / leads`. `FormulaMetrics` combine other metrics and/or
 dimensions to calculate a new metric at the Combined Layer of querying. The
 syntax must match your Combined Layer database, which is SQLite in our example.
 
@@ -431,7 +439,7 @@ happens to be SQLite in our example.
 
 Our example also automatically created a handful of dimensions from the
 "created_at" columns of the leads and sales tables. Support for type
-conversions is limited, but for date/datetime type columns in supported
+conversions is limited, but for date/datetime columns in supported
 `DataSource` technologies you can get a variety of dimensions for free this
 way.
 
@@ -507,10 +515,11 @@ Supported DataSources
 `Zillion's` goal is to support any database technology that SQLAlchemy
 supports. That said the support and testing levels in `Zillion` vary at the
 moment. In particular, the ability to do type conversions, database
-reflection, and kill running queries all require some database specific code
+reflection, and kill running queries all require some database-specific code
 for support. The following list summarizes known support levels. Your mileage
 may vary with untested database technologies that SQLAlchemy supports (it
-might work just fine, just hasn't been tested yet).
+might work just fine, just hasn't been tested yet). Please report bugs and
+help add more support!
 
 * SQLite: supported and tested
 * MySQL: supported and tested 
@@ -536,4 +545,7 @@ or the [module reference](https://zillion.readthedocs.io/en/latest/zillion.html)
 How to Contribute
 -----------------
 
-See the [CONTRIBUTING](https://github.com/totalhack/zillion/blob/master/CONTRIBUTING.md) guide.
+Adding support and tests for additional database technologies would be a great
+help. See the
+[CONTRIBUTING](https://github.com/totalhack/zillion/blob/master/CONTRIBUTING.md)
+guide.

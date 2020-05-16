@@ -104,14 +104,12 @@
         },
         {
             "name": "revenue_per_lead_required_grain",
-            "type": "Numeric(10,2)",
             "aggregation": "MEAN",
             "formula": "1.0*{revenue}/{leads}",
             "required_grain": ["campaign_name"]
         },
         {
             "name": "revenue_formula_required_grain",
-            "type": "Numeric(10,2)",
             "aggregation": "MEAN",
             "formula": "1.0*{revenue_required_grain}"
         }

@@ -110,11 +110,62 @@ def test_reserved_field_name(config):
         wh = Warehouse(config=config, datasources=[ds])
 
 
+def test_dimension_to_config(config):
+    wh = Warehouse(config=config)
+    field = wh.get_dimension("partner_name")
+    info(field.to_config())
+
+
+def test_metric_to_config(config):
+    wh = Warehouse(config=config)
+    field = wh.get_metric("revenue")
+    cfg = field.to_config()
+    assert "formula" not in cfg
+    info(cfg)
+
+
+def test_formula_metric_to_config(config):
+    wh = Warehouse(config=config)
+    field = wh.get_metric("rpl")
+    cfg = field.to_config()
+    assert "type" not in cfg
+    info(cfg)
+
+
+def test_get_metric_configs(config):
+    wh = Warehouse(config=config)
+    metrics = wh.get_metric_configs()
+    assert "revenue" in metrics
+
+
+def test_get_dimension_configs(config):
+    wh = Warehouse(config=config)
+    dims = wh.get_dimension_configs()
+    assert "partner_name" in dims
+
+
+def test_dimension_copy(config):
+    wh = Warehouse(config=config)
+    field = wh.get_dimension("partner_name")
+    info(field.copy())
+
+
+def test_metric_copy(config):
+    wh = Warehouse(config=config)
+    field = wh.get_metric("revenue")
+    info(field.copy())
+
+
+def test_formula_metric_copy(config):
+    wh = Warehouse(config=config)
+    field = wh.get_metric("rpl")
+    info(field.copy())
+
+
 def test_warehouse_technical_within_formula(config):
     config["metrics"].append(
         {
             "name": "revenue_ma_5_sum_5",
-            "type": "Numeric(10,2)",
             "aggregation": AggregationTypes.SUM,
             "rounding": 2,
             "formula": "{revenue_ma_5}/{revenue_sum_5}",
@@ -255,7 +306,7 @@ def test_no_create_fields_field_exists_has_columns(config):
     wh = Warehouse(config=config)
     # ds_partner_name was already defined, make sure it doesnt get overwritten
     dim = wh.get_dimension("ds_partner_name")
-    assert dim.type.length == 50
+    assert dim.sa_type.length == 50
 
 
 def test_create_fields_no_columns(config):
