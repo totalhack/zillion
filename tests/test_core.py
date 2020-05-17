@@ -5,7 +5,12 @@ import time
 import sqlalchemy as sa
 
 from .test_utils import *
-from zillion.configs import TableInfo, ColumnInfo
+from zillion.configs import (
+    TableInfo,
+    ColumnInfo,
+    load_warehouse_config,
+    load_warehouse_config_from_env,
+)
 from zillion.core import *
 from zillion.datasource import *
 from zillion.sql_utils import contains_aggregation, contains_sql_keywords
@@ -23,6 +28,18 @@ def test_datasource_config_init(config):
     print()  # Format test output
     ds.print_info()
     assert ds
+
+
+def test_load_remote_wh_config():
+    f = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/example_wh_config.json"
+    cfg = load_warehouse_config(f)
+
+
+def test_load_wh_config_from_env():
+    var = "ZILLION_TEST_WH_CONFIG"
+    val = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/example_wh_config.json"
+    os.environ[var] = val
+    cfg = load_warehouse_config_from_env(var)
 
 
 def test_datasource_metadata_init(config):

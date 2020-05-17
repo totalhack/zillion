@@ -218,3 +218,19 @@ def raiseifnot(cond, msg="", exc=ZillionException):
     """Convenience assert-like utility"""
     if not cond:
         raise exc(msg)
+
+
+def read_filepath_or_buffer(f, open_flags="r", compression=None):
+    """Open and read files or buffers, local or remote"""
+    f, handles, close = open_filepath_or_buffer(
+        f, open_flags=open_flags, compression=compression
+    )
+    try:
+        data = f.read()
+    finally:
+        if close:
+            try:
+                f.close()
+            except ValueError:
+                pass
+    return data

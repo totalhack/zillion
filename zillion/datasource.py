@@ -44,6 +44,10 @@ from zillion.sql_utils import (
 )
 
 
+def get_ds_config_context(name):
+    return zillion_config.get("DATASOURCE_CONTEXTS", {}).get(name, {})
+
+
 class TableSet(PrintMixin):
     """A set of tables in a datasource that can meet a grain and provide
     target fields.
@@ -284,9 +288,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         url = config.get("url", None)
 
-        ds_config_context = zillion_config.get("DATASOURCE_CONTEXTS", {}).get(
-            self.name, {}
-        )
+        ds_config_context = get_ds_config_context(self.name)
         if url and get_string_format_args(url):
             url = url.format(**ds_config_context)
 
@@ -1370,7 +1372,7 @@ class AdHocDataSource(DataSource):
                 "All tables in an adhoc datasource config must have a url",
             )
 
-        ds_config_context = zillion_config.get("DATASOURCE_CONTEXTS", {}).get(name, {})
+        ds_config_context = get_ds_config_context(name)
 
         datatables = []
         for table_name, table_config in config["tables"].items():

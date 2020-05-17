@@ -12,7 +12,6 @@ from marshmallow import (
     INCLUDE,
     RAISE,
 )
-from pandas.io.common import get_filepath_or_buffer
 import yaml
 
 from zillion.core import *
@@ -61,13 +60,13 @@ def load_zillion_config():
 zillion_config = load_zillion_config()
 
 
-def parse_schema_file(filename, schema, object_pairs_hook=None):
+def parse_schema_file(f, schema, object_pairs_hook=None):
     """Parse a marshmallow schmea file
 
     Parameters
     ----------
-    filename : str
-        Name of a file to read for raw data
+    f : str or buffer
+        A file path or buffer to read the raw schema contents from
     schema : marshmallow schema
         The marshmallow schema to use to parse the data
     object_pairs_hook : optional
@@ -80,9 +79,7 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
         A JSON structure loaded from the schema file
 
     """
-    f = open(filename)
-    raw = f.read()
-    f.close()
+    raw = read_filepath_or_buffer(f)
     try:
         # This does the schema check, but has a bug in object_pairs_hook so order is not preserved
         if object_pairs_hook:
@@ -99,13 +96,13 @@ def parse_schema_file(filename, schema, object_pairs_hook=None):
     return result
 
 
-def load_warehouse_config(filename, preserve_order=False):
+def load_warehouse_config(f, preserve_order=False):
     """Parse a warehouse JSON config
 
     Parameters
     ----------
-    filename : str
-        The filename of the config file
+    f : str or buffer
+        A file path or buffer to read the config contents from
     preserve_order : book, optional
         If true, use OrderedDict as the object_pairs_hook to preserve order
 
@@ -115,20 +112,27 @@ def load_warehouse_config(filename, preserve_order=False):
         The parsed warehouse config
 
     """
-    file_schema = WarehouseConfigSchema()
-    config = parse_schema_file(
-        filename, file_schema, object_pairs_hook=OrderedDict if preserve_order else None
+    return parse_schema_file(
+        f,
+        WarehouseConfigSchema(),
+        object_pairs_hook=OrderedDict if preserve_order else None,
     )
-    return config
 
 
-def load_datasource_config(filename, preserve_order=False):
+def load_warehouse_config_from_env(var, preserve_order=False):
+    """Parse a warehouse JSON config from a location stored in
+    an environment variable"""
+    f = os.environ.get(var)
+    return load_warehouse_config(f, preserve_order=preserve_order)
+
+
+def load_datasource_config(f, preserve_order=False):
     """Parse a datasource JSON config
 
     Parameters
     ----------
-    filename : str
-        The filename of the config file
+    f : str or buffer
+        A file path or buffer to read the config contents from
     preserve_order : book, optional
         If true, use OrderedDict as the object_pairs_hook to preserve order
 
@@ -138,11 +142,18 @@ def load_datasource_config(filename, preserve_order=False):
         The parsed datasource config
 
     """
-    file_schema = DataSourceConfigSchema()
-    config = parse_schema_file(
-        filename, file_schema, object_pairs_hook=OrderedDict if preserve_order else None
+    return parse_schema_file(
+        f,
+        DataSourceConfigSchema(),
+        object_pairs_hook=OrderedDict if preserve_order else None,
     )
-    return config
+
+
+def load_datasource_config_from_env(var, preserve_order=False):
+    """Parse a datasource JSON config from a location stored in
+    an environment variable"""
+    f = os.environ.get(var)
+    return load_datasource_config(f, preserve_order=preserve_order)
 
 
 def field_safe_name(name):
@@ -622,21 +633,7 @@ class DataSourceConfigSchema(BaseSchema):
             if not isinstance(table_config, str):
                 continue
 
-            f, _, _, should_close = get_filepath_or_buffer(table_config)
-            close = False or should_close
-            if isinstance(f, str):
-                f = open(f, "r")
-                close = True
-
-            try:
-                raw = f.read()
-            finally:
-                if close:
-                    try:
-                        f.close()
-                    except ValueError:
-                        pass
-
+            raw = read_filepath_or_buffer(table_config)
             json_config = json.loads(raw)
             schema = TableConfigSchema()
             config = schema.load(json_config)
@@ -680,21 +677,7 @@ class WarehouseConfigSchema(BaseSchema):
             if not isinstance(ds_config, str):
                 continue
 
-            f, _, _, should_close = get_filepath_or_buffer(ds_config)
-            close = False or should_close
-            if isinstance(f, str):
-                f = open(f, "r")
-                close = True
-
-            try:
-                raw = f.read()
-            finally:
-                if close:
-                    try:
-                        f.close()
-                    except ValueError:
-                        pass
-
+            raw = read_filepath_or_buffer(ds_config)
             json_config = json.loads(raw)
             schema = DataSourceConfigSchema()
             config = schema.load(json_config)
