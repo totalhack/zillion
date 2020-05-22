@@ -166,7 +166,7 @@ def test_warehouse_has_zillion_info_no_config(ds_config):
 
 def test_reserved_field_name(config):
     config["datasources"]["testdb1"]["metrics"].append(
-        {"name": "row_hash", "type": "Integer", "aggregation": AggregationTypes.SUM}
+        {"name": "row_hash", "type": "integer", "aggregation": AggregationTypes.SUM}
     )
     ds = DataSource("testdb1", config=config["datasources"]["testdb1"])
     with pytest.raises(WarehouseException):
@@ -252,10 +252,7 @@ def test_warehouse_remote_csv_table(adhoc_config):
     ]
     table_config["adhoc_table_options"] = {"nrows": 30}
     wh = Warehouse(config=adhoc_config)
-    try:
-        assert wh.has_dimension("Zip_Code")
-    finally:
-        wh.clean_up()
+    assert wh.has_dimension("Zip_Code")
 
 
 def test_warehouse_remote_google_sheet(adhoc_config):
@@ -264,10 +261,7 @@ def test_warehouse_remote_google_sheet(adhoc_config):
         "data_url"
     ] = url
     wh = Warehouse(config=adhoc_config)
-    try:
-        assert wh.has_dimension("Zip_Code")
-    finally:
-        wh.clean_up()
+    assert wh.has_dimension("Zip_Code")
 
 
 def test_warehouse_remote_xlsx_table(adhoc_config):
@@ -278,10 +272,7 @@ def test_warehouse_remote_xlsx_table(adhoc_config):
         "data_url"
     ] = url
     wh = Warehouse(config=adhoc_config)
-    try:
-        assert wh.has_dimension("Zip_Code")
-    finally:
-        wh.clean_up()
+    assert wh.has_dimension("Zip_Code")
 
 
 def test_warehouse_remote_json_table(adhoc_config):
@@ -292,10 +283,7 @@ def test_warehouse_remote_json_table(adhoc_config):
         "data_url"
     ] = url
     wh = Warehouse(config=adhoc_config)
-    try:
-        assert wh.has_dimension("Zip_Code")
-    finally:
-        wh.clean_up()
+    assert wh.has_dimension("Zip_Code")
 
 
 def test_warehouse_remote_html_table(adhoc_config):
@@ -306,11 +294,8 @@ def test_warehouse_remote_html_table(adhoc_config):
         "data_url"
     ] = url
     wh = Warehouse(config=adhoc_config)
-    try:
-        wh.print_info()
-        assert wh.has_dimension("Zip_Code")
-    finally:
-        wh.clean_up()
+    wh.print_info()
+    assert wh.has_dimension("Zip_Code")
 
 
 def test_reuse_existing_remote_table(adhoc_config):
@@ -318,19 +303,16 @@ def test_reuse_existing_remote_table(adhoc_config):
     ds_configs = adhoc_config["datasources"]
 
     for ds_name, ds_config in ds_configs.items():
-        for table in ds_config.tables.items():
+        for table in ds_config["tables"].values():
             table["if_exists"] = IfExistsModes.IGNORE
 
-    try:
-        ds = DataSource(ds_name, config=ds_configs[ds_name])
-        ds = DataSource(ds_name, config=ds_configs[ds_name])
-        for ds_name, ds_config in ds_configs.items():
-            for table in ds_config.tables.items():
-                table["if_exists"] = IfExistsModes.FAIL
-        with pytest.raises(ValueError):
-            dsf = DataSource(ds_name, config=ds_configs[ds_name])
-    finally:
-        ds.clean_up()
+    ds = DataSource(ds_name, config=ds_configs[ds_name])
+    ds = DataSource(ds_name, config=ds_configs[ds_name])
+    for ds_name, ds_config in ds_configs.items():
+        for table in ds_config["tables"].values():
+            table["if_exists"] = IfExistsModes.FAIL
+    with pytest.raises(ValueError):
+        dsf = DataSource(ds_name, config=ds_configs[ds_name])
 
 
 def test_bad_table_data_url(ds_config):

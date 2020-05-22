@@ -218,21 +218,21 @@ def test_report_adhoc_technicals(wh):
     rollup = RollupTypes.TOTALS
 
     technical_strings = [
-        "MEAN(5, 1)",
-        "SUM(2)",
-        "MEDIAN(3)",
-        "STD(2)",
-        "VAR(2)",
-        "MIN(2)",
-        "MAX(2)",
-        "BOLL(2)",
-        "DIFF(1)",
-        "PCT_CHANGE",
-        "CUMSUM",
-        "CUMMIN",
-        "CUMMAX",
-        "RANK",
-        "PCT_RANK",
+        "mean(5, 1)",
+        "sum(2)",
+        "median(3)",
+        "std(2)",
+        "var(2)",
+        "min(2)",
+        "max(2)",
+        "boll(2)",
+        "diff(1)",
+        "pct_change",
+        "cumsum",
+        "cummin",
+        "cummax",
+        "rank",
+        "pct_rank",
     ]
 
     for tech in technical_strings:
@@ -258,13 +258,13 @@ def test_report_no_dimension_technical(wh):
     criteria = [("campaign_name", "!=", "Campaign 2B")]
 
     technical_strings = [
-        "MEAN(5, 1)",
-        "DIFF(1)",
-        "PCT_CHANGE",
-        "BOLL(2)",
-        "CUMSUM",
-        "RANK",
-        "PCT_RANK",
+        "mean(5, 1)",
+        "diff(1)",
+        "pct_change",
+        "boll(2)",
+        "cumsum",
+        "rank",
+        "pct_rank",
     ]
 
     for tech in technical_strings:

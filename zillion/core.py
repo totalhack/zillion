@@ -127,47 +127,47 @@ class MaxFormulaDepthException(ZillionException):
 class FieldTypes(metaclass=ClassValueContainsMeta):
     """Allowed field types"""
 
-    DIMENSION = "DIMENSION"
-    METRIC = "METRIC"
+    DIMENSION = "dimension"
+    METRIC = "metric"
 
 
 class TableTypes(metaclass=ClassValueContainsMeta):
     """Allowed table types"""
 
-    DIMENSION = "DIMENSION"
-    METRIC = "METRIC"
+    DIMENSION = "dimension"
+    METRIC = "metric"
 
 
 class AggregationTypes(metaclass=ClassValueContainsMeta):
     """Allowed aggregation types. These aggregations are limited
     by what can be done in most SQL databases"""
 
-    MEAN = "MEAN"
-    SUM = "SUM"
-    MIN = "MIN"
-    MAX = "MAX"
-    COUNT = "COUNT"
-    COUNT_DISTINCT = "COUNT_DISTINCT"
+    MEAN = "mean"
+    SUM = "sum"
+    MIN = "min"
+    MAX = "max"
+    COUNT = "count"
+    COUNT_DISTINCT = "count_distinct"
 
 
 class TechnicalTypes(metaclass=ClassValueContainsMeta):
     """Allowed technical types"""
 
-    MEAN = "MEAN"
-    SUM = "SUM"
-    MEDIAN = "MEDIAN"
-    STD = "STD"
-    VAR = "VAR"
-    MIN = "MIN"
-    MAX = "MAX"
-    BOLL = "BOLL"
-    DIFF = "DIFF"
-    PCT_CHANGE = "PCT_CHANGE"
-    CUMSUM = "CUMSUM"
-    CUMMIN = "CUMMIN"
-    CUMMAX = "CUMMAX"
-    RANK = "RANK"
-    PCT_RANK = "PCT_RANK"
+    MEAN = "mean"
+    SUM = "sum"
+    MEDIAN = "median"
+    STD = "std"
+    VAR = "var"
+    MIN = "min"
+    MAX = "max"
+    BOLL = "boll"
+    DIFF = "diff"
+    PCT_CHANGE = "pct_change"
+    CUMSUM = "cumsum"
+    CUMMIN = "cummin"
+    CUMMAX = "cummax"
+    RANK = "rank"
+    PCT_RANK = "pct_rank"
 
 
 class TechnicalModes(metaclass=ClassValueContainsMeta):
@@ -183,30 +183,30 @@ class TechnicalModes(metaclass=ClassValueContainsMeta):
 
     """
 
-    GROUP = "GROUP"
-    ALL = "ALL"
+    GROUP = "group"
+    ALL = "all"
 
 
 class RollupTypes(metaclass=ClassValueContainsMeta):
     """Allowed Rollup Types """
 
-    TOTALS = "TOTALS"
-    ALL = "ALL"
+    TOTALS = "totals"
+    ALL = "all"
 
 
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     """Allowed datasource query modes"""
 
-    SEQUENTIAL = "SEQUENTIAL"
-    MULTITHREAD = "MULTITHREAD"
+    SEQUENTIAL = "sequential"
+    MULTITHREAD = "multithread"
 
 
 class ExecutionState:
     """Allowed report/query execution states"""
 
-    READY = "READY"
-    QUERYING = "QUERYING"
-    KILLED = "KILLED"
+    READY = "ready"
+    QUERYING = "querying"
+    KILLED = "killed"
 
 
 class IfExistsModes(metaclass=ClassValueContainsMeta):

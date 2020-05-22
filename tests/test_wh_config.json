@@ -2,115 +2,115 @@
     "metrics": [
         {
             "name": "rpl",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}"
         },
         {
             "name": "rpl_weighted",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
             "weighting_metric": "main_sales_quantity"
         },
         {
             "name": "rpl_squared",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{rpl}*{rpl}"
         },
         {
             "name": "rpl_unsquared",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{rpl_squared}/{rpl}"
         },
         {
             "name": "rpl_ma_5",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "technical": "MEAN(5)"
+            "technical": "mean(5)"
         },
         {
             "name": "revenue",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2
         },
         {
             "name": "revenue_ma_5",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2,
-            "technical": "MEAN(5)"
+            "technical": "mean(5)"
         },
         {
             "name": "revenue_sum_5",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2,
-            "technical": "SUM(5)"
+            "technical": "sum(5)"
         },
         {
             "name": "revenue_cumsum",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2,
-            "technical": "CUMSUM"
+            "technical": "cumsum"
         },
         {
             "name": "revenue_boll_5",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2,
-            "technical": "BOLL(5)"
+            "technical": "boll(5)"
         },
         {
             "name": "revenue_diff",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2,
-            "technical": "DIFF"
+            "technical": "diff"
         },
         {
             "name": "revenue_pct_diff",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2,
-            "technical": "PCT_CHANGE"
+            "technical": "pct_change"
         },
         {
             "name": "revenue_ds",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2
         },
         {
             "name": "leads",
-            "type": "Integer",
-            "aggregation": "SUM"
+            "type": "integer",
+            "aggregation": "sum"
         },
         {
             "name": "sales",
-            "type": "Integer",
-            "aggregation": "SUM"
+            "type": "integer",
+            "aggregation": "sum"
         },
         {
             "name": "revenue_required_grain",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "required_grain": ["campaign_name"]
         },
         {
             "name": "revenue_per_lead_required_grain",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "formula": "1.0*{revenue}/{leads}",
             "required_grain": ["campaign_name"]
         },
         {
             "name": "revenue_formula_required_grain",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "formula": "1.0*{revenue_required_grain}"
         }
     ],
@@ -118,7 +118,7 @@
     "dimensions": [
         {
             "name": "partner_name",
-            "type": "String(32)"
+            "type": "string(32)"
         }
     ],
     
@@ -128,30 +128,30 @@
             "metrics": [
                 {
                     "name": "lead_count",
-                    "type": "Integer",
-                    "aggregation": "COUNT"
+                    "type": "integer",
+                    "aggregation": "count"
                 },
                 {
                     "name": "lead_count_distinct",
-                    "type": "Integer",
-                    "aggregation": "COUNT_DISTINCT"
+                    "type": "integer",
+                    "aggregation": "count_distinct"
                 },
                 {
                     "name": "ds_sales",
-                    "type": "Integer",
-                    "aggregation": "SUM"
+                    "type": "integer",
+                    "aggregation": "sum"
                 },
                 {
                     "name": "revenue_mean",
-                    "type": "Numeric(10,2)",
-                    "aggregation": "MEAN",
+                    "type": "numeric(10,2)",
+                    "aggregation": "mean",
                     "rounding": 2,
                     "weighting_metric": "main_sales_quantity"
                 },
                 {
                     "name": "revenue_mean_ds_weighted",
-                    "type": "Numeric(10,2)",
-                    "aggregation": "MEAN",
+                    "type": "numeric(10,2)",
+                    "aggregation": "mean",
                     "rounding": 2,
                     "weighting_metric": "main_sales_quantity"
                 }
@@ -159,20 +159,20 @@
             "dimensions": [
                 {
                     "name": "ds_partner_name",
-                    "type": "String(50)"
+                    "type": "string(50)"
                 },
                 {
                     "name": "campaign_name_length",
-                    "type": "Integer"
+                    "type": "integer"
                 },
                 {
                     "name": "revenue_decile",
-                    "type": "Integer"
+                    "type": "integer"
                 }
             ],
             "tables": {
                 "main.partners": {
-                    "type": "DIMENSION",
+                    "type": "dimension",
                     "create_fields": true,
                     "primary_key": ["partner_id"],
                     "columns": {
@@ -186,7 +186,7 @@
                 },
                 
                 "main.campaigns": {
-                    "type": "DIMENSION",
+                    "type": "dimension",
                     "create_fields": true,
                     "parent": "main.partners",
                     "primary_key": ["campaign_id"],
@@ -214,7 +214,7 @@
                 "main.leads": "test_table_config.json",
                 
                 "main.sales": {
-                    "type": "METRIC",
+                    "type": "metric",
                     "create_fields": true,
                     "parent": "main.leads",
                     "primary_key": ["sale_id"],

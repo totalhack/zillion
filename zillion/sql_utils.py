@@ -137,6 +137,16 @@ def contains_aggregation(sql):
     return False
 
 
+# TODO: find a better home
+def igetattr(obj, attr, *args):
+    for a in dir(obj):
+        if a.lower() == attr.lower():
+            return getattr(obj, a)
+    if args:
+        return args[0]
+    raise AttributeError("type object '%s' has no attribute '%s'" % (type(obj), attr))
+
+
 def type_string_to_sa_type(type_string):
     """Convert a field type string to a SQLAlchemy type. The type string will
     be evaluated as a python statement or class name to init from the
@@ -146,7 +156,9 @@ def type_string_to_sa_type(type_string):
     Parameters
     ----------
     type_string : str
-        A string representing a SQLAlchemy type, such as "Integer", or "String(32)".
+        A string representing a SQLAlchemy type, such as "Integer", or
+        "String(32)". This does a case-insensitive search and will return the
+        first matching SQLAlchemy type.
 
     Returns
     -------
@@ -166,7 +178,7 @@ def type_string_to_sa_type(type_string):
             type_args = [arg.n for arg in ast_obj.args]
             type_kwargs = {k.arg: k.value.n for k in ast_obj.keywords}
 
-        type_cls = getattr(sa.types, type_name, None)
+        type_cls = igetattr(sa.types, type_name, None)
         if not type_cls:
             raise InvalidSQLAlchemyTypeString(
                 "Could not find matching type for %s" % type_name

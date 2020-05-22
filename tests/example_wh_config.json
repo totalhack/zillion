@@ -2,23 +2,23 @@
     "metrics": [
         {
             "name": "revenue",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2
         },
         {
             "name": "leads",
-            "type": "Integer",
-            "aggregation": "SUM"
+            "type": "integer",
+            "aggregation": "sum"
         },
         {
             "name": "sales",
-            "type": "Integer",
-            "aggregation": "SUM"
+            "type": "integer",
+            "aggregation": "sum"
         },
         {
             "name": "rpl",
-            "aggregation": "MEAN",
+            "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}"
         }
@@ -27,19 +27,19 @@
     "dimensions": [
         {
             "name": "partner_id",
-            "type": "Integer"
+            "type": "integer"
         },
         {
             "name": "partner_name",
-            "type": "String(32)"
+            "type": "string(32)"
         },
         {
             "name": "campaign_id",
-            "type": "Integer"
+            "type": "integer"
         },
         {
             "name": "campaign_name",
-            "type": "String(32)"
+            "type": "string(32)"
         }
     ],
     
@@ -48,7 +48,7 @@
             "connect": "sqlite:///testdb1",
             "tables": {
                 "main.partners": {
-                    "type": "DIMENSION",
+                    "type": "dimension",
                     "primary_key": ["partner_id"],
                     "columns": {
                         "id": {
@@ -61,7 +61,7 @@
                 },
                 
                 "main.campaigns": {
-                    "type": "DIMENSION",
+                    "type": "dimension",
                     "parent": "main.partners",
                     "primary_key": ["campaign_id"],
                     "columns": {
@@ -78,7 +78,7 @@
                 },
 
                 "main.leads": {
-                    "type": "METRIC",
+                    "type": "metric",
                     "create_fields": true,
                     "primary_key": ["lead_id"],
                     "columns": {
@@ -100,7 +100,7 @@
                 },
                 
                 "main.sales": {
-                    "type": "METRIC",
+                    "type": "metric",
                     "create_fields": true,
                     "parent": "main.leads",
                     "primary_key": ["sale_id"],

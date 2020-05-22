@@ -4,9 +4,9 @@
             "connect": "sqlite:////tmp/test_adhoc_db",
             "tables": {
                 "main.dma_zip": {
+                    "type": "dimension",
                     "data_url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
                     "if_exists": "replace",
-                    "type": "DIMENSION",
                     "create_fields": true,
                     "primary_key": ["Zip_Code"],
                     "columns": {

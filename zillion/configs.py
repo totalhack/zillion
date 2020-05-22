@@ -51,7 +51,7 @@ def load_zillion_config():
             ZILLION_DB_URL="sqlite:////tmp/zillion.db",
             ADHOC_DATASOURCE_DIRECTORY="/tmp",
             LOAD_TABLE_CHUNK_SIZE=5000,
-            DATASOURCE_QUERY_MODE="SEQUENTIAL",
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
             DATASOURCE_QUERY_TIMEOUT=None,
             DATASOURCE_CONTEXTS={},
         )
@@ -482,10 +482,6 @@ class TableInfoSchema(BaseSchema):
     use_full_column_names = mfields.Boolean(default=True, missing=True)
     primary_key = mfields.List(mfields.Str, required=True)
     incomplete_dimensions = mfields.List(mfields.Str, default=None, missing=None)
-
-
-# These params are only used for adhoc tables
-ADHOC_TABLE_CONFIG_PARAMS = ["url", "adhoc_table_options"]
 
 
 class TableConfigSchema(TableInfoSchema):

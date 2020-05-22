@@ -8,13 +8,13 @@
     "metrics": [
         {
             "name": "aggr_sales",
-            "type": "Integer",
-            "aggregation": "SUM"
+            "type": "integer",
+            "aggregation": "sum"
         }
     ],
     "tables": {
         "main.partners": {
-            "type": "DIMENSION",
+            "type": "dimension",
             "create_fields": true,
             "primary_key": ["partner_id"],
             "columns": {
@@ -28,7 +28,7 @@
         },
         
         "main.campaigns": {
-            "type": "DIMENSION",
+            "type": "dimension",
             "create_fields": true,
             "parent": "main.partners",
             "primary_key": ["campaign_id"],
@@ -46,7 +46,7 @@
         },
 
         "main.aggregated_stats": {
-            "type": "METRIC",
+            "type": "metric",
             "create_fields": true,
             "use_full_column_names": false,
             "primary_key": ["partner_id", "campaign_id"],

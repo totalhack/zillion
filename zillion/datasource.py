@@ -23,7 +23,6 @@ from zillion.configs import (
     is_valid_field_name,
     is_active,
     zillion_config,
-    ADHOC_TABLE_CONFIG_PARAMS,
     EXCLUDE,
 )
 from zillion.core import *
@@ -808,15 +807,6 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 continue
 
             table_config = table_configs[table.fullname]
-            for param in ADHOC_TABLE_CONFIG_PARAMS:
-                raiseif(
-                    table_config.get(param, None),
-                    (
-                        "AdHoc table config param '%s' passed to non-adhoc datasource"
-                        % param
-                    ),
-                )
-
             table_info = TableInfo.schema_load(table_config, unknown=EXCLUDE)
 
             zillion_info = table.info.get("zillion", {})

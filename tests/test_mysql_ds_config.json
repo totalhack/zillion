@@ -3,19 +3,19 @@
     "metrics": [
         {
             "name": "clicks",
-            "type": "Integer",
-            "aggregation": "SUM"
+            "type": "integer",
+            "aggregation": "sum"
         },
         {
             "name": "cost",
-            "type": "Numeric(10,2)",
-            "aggregation": "SUM",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
             "rounding": 2
         }
     ],
     "tables": {
         "zillion_test.partners": {
-            "type": "DIMENSION",
+            "type": "dimension",
             "create_fields": true,
             "primary_key": ["partner_id"],
             "columns": {
@@ -29,7 +29,7 @@
         },
         
         "zillion_test.campaigns": {
-            "type": "DIMENSION",
+            "type": "dimension",
             "create_fields": true,
             "parent": "zillion_test.partners",
             "primary_key": ["campaign_id"],
@@ -52,7 +52,7 @@
         },
 
         "zillion_test.campaign_cost": {
-            "type": "METRIC",
+            "type": "metric",
             "create_fields": true,
             "primary_key": ["campaign_id"],
             "columns": {
@@ -72,7 +72,7 @@
         },
 
         "zillion_test2.campaign_transactions": {
-            "type": "METRIC",
+            "type": "metric",
             "create_fields": true,
             "primary_key": ["transaction_id"],
             "columns": {
