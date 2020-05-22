@@ -124,7 +124,7 @@
     
     "datasources": {
         "testdb1": {
-            "url": "sqlite:///testdb1",
+            "connect": "sqlite:///testdb1",
             "metrics": [
                 {
                     "name": "lead_count",

@@ -2,20 +2,22 @@ from collections import defaultdict
 import datetime
 import os
 import random
+import requests
 from urllib.parse import urlparse, urlunparse, parse_qs
 
 import pandas as pd
 import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
-from sqlalchemy.engine.url import make_url
 
 from zillion.configs import (
+    load_datasource_config,
     DATASOURCE_ALLOWABLE_CHARS,
     DATASOURCE_ALLOWABLE_CHARS_STR,
     TableInfo,
     ColumnInfo,
     DataSourceConfigSchema,
+    DataSourceConnectSchema,
     TableConfigSchema,
     default_field_name,
     is_valid_field_name,
@@ -39,13 +41,158 @@ from zillion.sql_utils import (
     column_fullname,
     infer_aggregation_and_rounding,
     is_probably_metric,
+    get_schema_and_table_name,
     get_schemas,
     filter_dialect_schemas,
+    check_metadata_url,
 )
 
 
 def get_ds_config_context(name):
+    """Helper to get datasource context from the zillion config"""
     return zillion_config.get("DATASOURCE_CONTEXTS", {}).get(name, {})
+
+
+def url_to_metadata(url, ds_name=None):
+    """Create a bound SQLAlchemy MetaData object from a database URL. The
+    ds_name param is used to determine datasource config context for variable
+    substitution."""
+    if ds_name:
+        ds_config_context = get_ds_config_context(ds_name)
+        if get_string_format_args(url):
+            url = url.format(**ds_config_context)
+    check_metadata_url(url)
+    metadata = sa.MetaData()
+    metadata.bind = sa.create_engine(url)
+    return metadata
+
+
+def metadata_from_connect(connect, ds_name):
+    """Create a bound SQLAlchemy MetaData object from a "connect" param. The
+    connect value may be a connection string or a DataSourceConnectSchema
+    dict. See the DataSourceConnectSchema docs for more details on that
+    format. """
+    if isinstance(connect, str):
+        return url_to_metadata(connect, ds_name=ds_name)
+
+    schema = DataSourceConnectSchema()
+    connect = schema.load(connect)
+    func = import_object(connect["func"])
+    params = connect.get("params", {})
+    result = func(ds_name, **params)
+    raiseifnot(
+        isinstance(result, sa.MetaData),
+        "Connect function did not return a MetaData object: %s" % result,
+    )
+    raiseifnot(
+        result.is_bound(),
+        "Connect function did not return a bound MetaData object: %s" % result,
+    )
+    return result
+
+
+def reflect_metadata(metadata, reflect_only=None):
+    """Reflect the metadata object from the connection. If reflect_only is
+    passed, reflect only the tables specified in that list"""
+
+    raiseifnot(metadata.is_bound(), "MetaData must be bound to an engine")
+    only_schema_tables = defaultdict(list)
+    only_tables = []
+
+    if reflect_only:
+        for table_name in reflect_only:
+            schema, table_name = get_schema_and_table_name(table_name)
+            if schema:
+                only_schema_tables[schema].append(table_name)
+            else:
+                only_tables.append(table_name)
+
+    dialect = metadata.bind.dialect.name
+    schemas = get_schemas(metadata.bind)
+    schemas = filter_dialect_schemas(schemas, dialect)
+
+    for schema in schemas:
+        only = only_schema_tables.get(schema, []) or []
+        if only_tables:
+            only.extend(only_tables)
+        metadata.reflect(schema=schema, views=True, only=only or None)
+
+
+# TODO: find a better home
+def download_file(url, outfile=None):
+    """Utility to download a datafile"""
+    if not outfile:
+        outfile = url.split("/")[-1]
+    info("Downloading %s to %s" % (url, outfile))
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(outfile, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return outfile
+
+
+def get_adhoc_datasource_filename(ds_name):
+    """Get the filename where the adhoc datasource will be located"""
+    dir_name = zillion_config["ADHOC_DATASOURCE_DIRECTORY"]
+    return "%s/%s.db" % (dir_name, ds_name)
+
+
+def get_adhoc_datasource_url(ds_name):
+    """Get a connection URL for the datasource"""
+    return "sqlite:///%s" % get_adhoc_datasource_filename(ds_name)
+
+
+def url_connect(ds_name, connect_url=None, data_url=None, if_exists=IfExistsModes.FAIL):
+    """A URL-based datasource connector. This is meant to be used as the
+    "func" value of a DataSourceConnectSchema. Only one of connect_url or
+    data_url may be specified.
+
+    Parameters
+    ----------
+    ds_name : str
+        The name of the datasource to get a connection for
+    connect_url : str, optional
+        If a connect_url is passed, it will create a bound MetaData object
+        from that connection string.
+    data_url : str, optional
+        If a data_url is passed, it will first download that data (or make
+        sure it is already downloaded) and then create a connection to that
+        data file, which is assumed to be a SQLite database. The name of the
+        database file will be based on the name of the datasource passed in.
+    if_exists : str, optional
+        If a data_url is in use, this will control handling of existing data
+        under the same filename. If "fail", an exception will be raised if the
+        file already exists. If "ignore", it will skip downloading the file if
+        it exists. If "replace", it will create or replace the file.
+
+    """
+    raiseif(connect_url and data_url, "Only one of connect_url or data_url may be set")
+    raiseifnot(connect_url or data_url, "One of connect_url or data_url must be set")
+    if if_exists and data_url:
+        raiseifnot(
+            if_exists in IfExistsModes, "Invalid if_exists value: %s" % if_exists
+        )
+
+    if data_url:
+        dbfile = get_adhoc_datasource_filename(ds_name)
+
+        skip = False
+        if os.path.isfile(dbfile):
+            raiseif(if_exists == IfExistsModes.FAIL, "File %s already exists" % dbfile)
+            if if_exists == IfExistsModes.IGNORE:
+                skip = True
+
+        if not skip:
+            f = download_file(data_url, outfile=dbfile)
+
+        connect_url = get_adhoc_datasource_url(ds_name)
+        engine = sa.create_engine(connect_url, echo=False)
+        metadata = sa.MetaData()
+        metadata.bind = engine
+        return metadata
+
+    return url_to_metadata(connect_url, ds_name=ds_name)
 
 
 class TableSet(PrintMixin):
@@ -72,9 +219,7 @@ class TableSet(PrintMixin):
 
     @initializer
     def __init__(self, datasource, ds_table, join, grain, target_fields):
-        self._adhoc_datasources = []
-        if isinstance(self.datasource, AdHocDataSource):
-            self._adhoc_datasources = [self.datasource]
+        pass
 
     def get_covered_metrics(self, wh):
         """Get a list of metrics covered by this table set
@@ -90,9 +235,10 @@ class TableSet(PrintMixin):
             A list of metric names covered in this TableSet
 
         """
-        covered_metrics = get_table_metrics(
-            wh, self.ds_table, adhoc_fms=self._adhoc_datasources
-        )
+        adhoc_dses = []
+        if self.datasource.name not in wh.datasource_names:
+            adhoc_dses = [self.datasource]
+        covered_metrics = get_table_metrics(wh, self.ds_table, adhoc_fms=adhoc_dses)
         return covered_metrics
 
     def get_covered_fields(self):
@@ -257,51 +403,37 @@ class DataSource(FieldManagerMixin, PrintMixin):
         A SQLAlchemy metadata object that may have zillion configuration
         information defined in the table and column `info.zillion`
         attribute
-    config : dict, optional
-        A datasource config that will be applied to the metadata's zillion
-        info
-    reflect : bool, optional
-        If true, use SQLAlchemy to reflect the database
-    skip_conversion_fields : bool, optional
-        Don't add any conversion fields when applying a config
+    config : dict, str, or buffer, optional
+        A dict adhering to the DataSourceConfigSchema or a file location to load
+        the config from
 
     """
 
     repr_attrs = ["name"]
 
-    def __init__(
-        self,
-        name,
-        metadata=None,
-        config=None,
-        reflect=False,
-        skip_conversion_fields=False,
-    ):
-        self.name = DataSource._check_or_create_name(name)
+    def __init__(self, name, metadata=None, config=None):
+        self.name = self._check_or_create_name(name)
         self._metrics = {}
         self._dimensions = {}
         self._graph = None
+        reflect = False
 
-        config = config or {}
         if config:
-            config = DataSourceConfigSchema().load(config)
+            config = load_datasource_config(config)
+        else:
+            config = {}
 
-        url = config.get("url", None)
+        connect = config.get("connect", None)
 
-        ds_config_context = get_ds_config_context(self.name)
-        if url and get_string_format_args(url):
-            url = url.format(**ds_config_context)
-
-        raiseif(url == ADHOC_DS_URL, "Unsupported datasource URL: '%s'" % url)
-        raiseifnot(metadata or url, "You must pass metadata or config->url")
+        raiseifnot(metadata or connect, "You must pass metadata or config->connect")
         raiseif(
-            url and metadata, "Only one of metadata or config->url may be specified"
+            connect and metadata,
+            "Only one of metadata or config->connect may be specified",
         )
 
-        if url:
-            self._check_url(url)
-            self.metadata = sa.MetaData()
-            self.metadata.bind = sa.create_engine(url)
+        if connect:
+            self.metadata = metadata_from_connect(connect, self.name)
+            reflect = True
         else:
             raiseifnot(
                 isinstance(metadata, sa.MetaData),
@@ -313,11 +445,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 "MetaData object must have a bind (engine) attribute specified",
             )
 
-        self._reflect = reflect
-        if reflect:
-            self._reflect_metadata()
-
-        self.apply_config(config, skip_conversion_fields=skip_conversion_fields)
+        self.apply_config(config, reflect=reflect)
 
     @property
     def metric_tables(self):
@@ -424,7 +552,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     columns.append(col)
         return columns
 
-    def apply_config(self, config, skip_conversion_fields=False):
+    def apply_config(self, config, reflect=False):
         """Apply a datasource config to this datasource's metadata.
         This will also ensure zillion info is present on the metadata,
         populate global fields, and rebuild the datasource graph.
@@ -433,16 +561,29 @@ class DataSource(FieldManagerMixin, PrintMixin):
         ----------
         config : dict
             The datasource config to apply
-        skip_conversion_fields : bool, optional
-            Don't add any conversion fields when applying the config
+        reflect : bool, optional
+            If true, use SQLAlchemy to reflect the database. Table-level
+            reflection will also occur if any tables are created from data
+            URLs.
 
         """
+        raiseifnot(self.metadata, "apply_config called with no datasource metadata")
+
+        reflect_only = None
+        adhoc_tables = self._load_adhoc_tables(config)
+        if adhoc_tables and not reflect:
+            reflect = True
+            reflect_only = adhoc_tables
+
+        if reflect:
+            reflect_metadata(self.metadata, reflect_only=reflect_only)
+
         if config.get("tables", None):
             self._apply_table_configs(config["tables"])
 
         self._ensure_metadata_info()
 
-        if not skip_conversion_fields:
+        if not config.get("skip_conversion_fields", False):
             self._add_conversion_fields()
 
         self._populate_fields(config)
@@ -603,9 +744,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         """
         # TODO: does this need to store entire config?
         # TODO: is the metadata URL exposing sensitive info?
-        return dict(
-            name=self.name, url=str(self.metadata.bind.url), reflect=self._reflect
-        )
+        return dict(name=self.name, connect=str(self.metadata.bind.url))
 
     def print_info(self):
         """Print the structure of the datasource"""
@@ -634,22 +773,32 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 print(format_msg(column.info["zillion"], label=None, indent=4))
 
-    def _check_url(self, url):
-        """Check validity of the metadata URL"""
-        url = make_url(url)
-        if url.get_dialect().name == "sqlite":
-            raiseifnot(
-                os.path.isfile(url.database),
-                "SQLite DB does not exist: %s" % url.database,
-            )
+    def _load_adhoc_tables(self, config):
+        """Extract and init the adhoc tables in the DS config. This will
+        return a list of processed adhoc tables by name"""
+        ds_config_context = get_ds_config_context(self.name)
+        adhoc_tables = []
 
-    def _reflect_metadata(self):
-        """Reflect the metadata object from the connection"""
-        dialect = self.get_dialect_name()
-        schemas = get_schemas(self.metadata.bind)
-        schemas = filter_dialect_schemas(schemas, dialect)
-        for schema in schemas:
-            self.metadata.reflect(schema=schema, views=True)
+        for table_name, table_config in config.get("tables", {}).items():
+            cfg = table_config.copy()
+            data_url = cfg.get("data_url", None)
+            if not data_url:
+                continue
+
+            adhoc_tables.append(table_name)
+            if get_string_format_args(cfg["data_url"]):
+                cfg["data_url"] = cfg["data_url"].format(**ds_config_context)
+
+            schema, table_name = get_schema_and_table_name(table_name)
+            dt = datatable_from_config(table_name, cfg, schema=schema)
+
+            params = {}
+            if_exists = cfg.get("if_exists", None)
+            if if_exists:
+                params["if_exists"] = if_exists
+            dt.to_sql(self.metadata.bind, **params)
+
+        return adhoc_tables
 
     def _apply_table_configs(self, table_configs):
         """Take configs and apply them to the table/column metadata"""
@@ -1096,9 +1245,76 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return joins
 
     @classmethod
-    def from_config(cls, name, config):
-        """Create a DataSource from a datasource config"""
-        return cls(name, reflect=True, config=config)
+    def from_data_url(cls, name, data_url, config=None, if_exists=IfExistsModes.FAIL):
+        """Create a DataSource from a data url
+
+        Parameters
+        ----------
+        name : str
+            The name to give the datasource
+        data_url : str
+            A url pointing to a SQLite database to download
+        config : dict, optional
+            A DataSourceConfigSchema dict config. Note that the connect param of this
+            config will be overwritten if present.
+        if_exists : str, optional
+            Control behavior when the database already exists
+
+        Returns
+        -------
+        DataSource
+            A DataSource created from the data_url and config
+
+        """
+        config = (config or {}).copy()
+        connect = config.get("connect", {})
+        if connect:
+            connect = {}
+            warn("Overwriting datasource connect settings for from_data_url()")
+        connect["func"] = "zillion.datasource.url_connect"
+        connect["params"] = dict(data_url=data_url, if_exists=if_exists)
+        config["connect"] = connect
+        return cls(name, config=config)
+
+    @classmethod
+    def from_datatables(cls, name, datatables, config=None):
+        """Create a DataSource from a list of datatables
+
+        Parameters
+        ----------
+        name : str
+            The name to give the datasource
+        datatables : list of AdHocDataTables
+            A list of AdHocDataTables to use to create the DataSource
+        config : dict, optional
+            A DataSourceConfigSchema dict config
+
+        Returns
+        -------
+        DataSource
+            A DataSource created from the datatables and config
+
+        """
+        config = config or dict(tables={})
+        ds_name = cls._check_or_create_name(name)
+
+        if config.get("connect", None):
+            metadata = metadata_from_connect(config["connect"], name)
+            engine = metadata.bind
+            del config["connect"]  # will pass metadata directly
+        else:
+            # No connection URL specified, let's create an adhoc SQLite DB
+            conn_url = get_adhoc_datasource_url(ds_name)
+            engine = sa.create_engine(conn_url, echo=False)
+            metadata = sa.MetaData()
+            metadata.bind = engine
+
+        for dt in datatables:
+            dt.to_sql(engine, if_exists=dt.table_config["if_exists"])
+            config.setdefault("tables", {})[dt.fullname] = dt.table_config
+
+        reflect_metadata(metadata)
+        return cls(ds_name, metadata=metadata, config=config)
 
     @classmethod
     def _check_or_create_name(cls, name):
@@ -1132,12 +1348,13 @@ class AdHocDataTable(PrintMixin):
         columns=None,
         primary_key=None,
         parent=None,
+        if_exists=IfExistsModes.FAIL,
         schema=None,
         **kwargs
     ):
         """Initializes the datatable by parsing its config, but does not
-        actually add it to a particular sqlite DB yet. It is assumed the
-        AdHocDataSource will do that later.
+        actually add it to a particular DB yet. It is assumed the DataSource
+        will do that later.
 
         Parameters
         ----------
@@ -1153,6 +1370,8 @@ class AdHocDataTable(PrintMixin):
             A list of fields that make up the primary key of the table
         parent : str, optional
             A reference to a parent table in the same datasource
+        if_exists : str, optional
+            Control behavior when datatables already exist in the database
         schema : str, optional
             The schema in which the table resides
         **kwargs
@@ -1167,6 +1386,7 @@ class AdHocDataTable(PrintMixin):
                 columns=self.columns,
                 create_fields=True,
                 parent=parent,
+                if_exists=if_exists,
                 primary_key=primary_key,
             )
         )
@@ -1189,17 +1409,12 @@ class AdHocDataTable(PrintMixin):
         return pd.DataFrame.from_records(self.data, self.primary_key, **kwargs)
 
     def table_exists(self, engine):
-        """Determine if this table exists in the given sqlite connection"""
-        qr = engine.execute(
-            "SELECT name FROM sqlite_master " "WHERE type='table' AND name=?",
-            (self.name),
-        )
-        result = qr.fetchone()
-        if result:
-            return True
-        return False
+        """Determine if this table exists"""
+        return engine.has_table(self.name)
 
-    def to_sql(self, engine, if_exists="fail", method="multi", chunksize=int(1e3)):
+    def to_sql(
+        self, engine, if_exists=IfExistsModes.FAIL, method="multi", chunksize=int(1e3)
+    ):
         """Use pandas.DataFrame.to_sql to push the adhoc table data to a SQL database.
 
         Parameters
@@ -1209,19 +1424,22 @@ class AdHocDataTable(PrintMixin):
         if_exists : str, optional
             Passed through to to_sql. An additional option of "ignore" is
             supported which first checks if the table exists and if so takes
-            no action.
+            no action. The "append" option is not currently supported.
         method : str, optional
             Passed through to to_sql
         chunksize : type, optional
             Passed through to to_sql
 
         """
-        if if_exists == "ignore":
+        raiseifnot(
+            if_exists in IfExistsModes, "Invalid if_exists value: %s" % if_exists
+        )
+        if if_exists == IfExistsModes.IGNORE:
             if self.table_exists(engine):
                 return
             # Pandas doesn't actually have an "ignore" option, but switching
             # to fail will work because the table *should* not exist.
-            if_exists = "fail"
+            if_exists = IfExistsModes.FAIL
 
         df = self.get_dataframe()
 
@@ -1237,7 +1455,13 @@ class AdHocDataTable(PrintMixin):
 
 
 class SQLiteDataTable(AdHocDataTable):
-    """AdHocDataTable from an existing sqlite database"""
+    """AdHocDataTable from an existing sqlite database on the local
+    filesystem
+
+    Note: the "data" param to AdHocDataTable is ignored. This is simply a
+    workaround to get an AdHocDataTable reference for an existing SQLite DB
+    without having to recreate anything from data.
+    """
 
     def get_dataframe(self):
         raise NotImplementedError
@@ -1323,118 +1547,6 @@ class GoogleSheetsDataTable(AdHocDataTable):
         )
 
 
-class AdHocDataSource(DataSource):
-    """Create an adhoc (temporary) datasource from a set of adhoc data
-    tables. The main use case for this is when temporarily augmenting a
-    report or set of reports with some temporary data that is not meant to
-    be permanently added to the warehouse.
-
-    Parameters
-    ----------
-    datatables : list of AdHocDataTables
-        The AdHocDataTables that make up the datasource
-    name : str, optional
-        A name for the datasources. If missing a unique name will be provided.
-    config : dict, optional
-        A datasource config that describes this datasources.
-    if_exists : str, optional
-        Passed through to the AdHocDataTable's to_sql method
-
-    """
-
-    def __init__(self, datatables, name=None, config=None, if_exists="fail"):
-        config = config or dict(tables={})
-        ds_name = self._check_or_create_name(name)
-
-        conn_url = self.get_datasource_url(ds_name)
-        engine = sa.create_engine(conn_url, echo=False)
-
-        for dt in datatables:
-            dt.to_sql(engine, if_exists=if_exists)
-            config.setdefault("tables", {})[dt.fullname] = dt.table_config
-
-        metadata = sa.MetaData()
-        metadata.bind = engine
-
-        super(AdHocDataSource, self).__init__(
-            ds_name, metadata=metadata, config=config, reflect=True
-        )
-
-    @classmethod
-    def from_config(cls, name, config, if_exists="fail"):
-        """Create an AdHocDataSource from a datasource config. All tables
-        in the config must have a URL pointing to a data resource.
-
-        """
-        for table_name, table_config in config["tables"].items():
-            raiseifnot(
-                table_config.get("url", None),
-                "All tables in an adhoc datasource config must have a url",
-            )
-
-        ds_config_context = get_ds_config_context(name)
-
-        datatables = []
-        for table_name, table_config in config["tables"].items():
-            cfg = table_config.copy()
-            schema = None
-
-            if get_string_format_args(cfg["url"]):
-                cfg["url"] = cfg["url"].format(**ds_config_context)
-
-            if "." in table_name:
-                parts = table_name.split(".")
-                # This is also checked in config, should never happen
-                raiseifnot(len(parts) == 2, "Invalid table name: %s" % table_name)
-                schema, table_name = parts
-
-            dt = datatable_from_config(table_name, cfg, schema=schema)
-            datatables.append(dt)
-
-        return cls(datatables, name=name, if_exists=if_exists)
-
-    @classmethod
-    def get_datasource_filename(cls, ds_name):
-        """Get the filename where the adhoc datasource will be located"""
-        dir_name = zillion_config["ADHOC_DATASOURCE_DIRECTORY"]
-        return "%s/%s.db" % (dir_name, ds_name)
-
-    @classmethod
-    def get_datasource_url(cls, ds_name):
-        """Get a connection URL for the datasource"""
-        return "sqlite:///%s" % cls.get_datasource_filename(ds_name)
-
-    def clean_up(self):
-        """Clean up by removing created resources"""
-        filename = self.get_datasource_filename(self.name)
-        dbg("Removing %s" % filename)
-        rmfile(filename)
-
-
-def datasource_from_config(name, config, if_exists="fail"):
-    """Factory to create a datasource from a config.
-
-    Parameters
-    ----------
-    name : str
-        The name of the datasource
-    config : dict
-        The datasource config
-    if_exists : str, optional
-        If an adhoc datasource is being created pass this value
-        through. Otherwise it is ignored.
-
-    Returns
-    -------
-    DataSource
-        The datasource created from the config
-
-    """
-    if config.get("url", None) == ADHOC_DS_URL:
-        return AdHocDataSource.from_config(name, config, if_exists=if_exists)
-    return DataSource.from_config(name, config)
-
-
 def datatable_from_config(name, config, schema=None, **kwargs):
     """Factory to create an AdHocDataTable from a given config. The type of
     the AdHocDataTable created will be inferred from the config["url"] param.
@@ -1456,12 +1568,7 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         Return the created AdHocDataTable (subclass)
 
     """
-    raiseifnot(
-        config.get("create_fields", True),
-        "AdHocDataTables must have create_fields=True",
-    )
-
-    url = config["url"]
+    url = config["data_url"]
     if url.endswith("csv"):
         cls = CSVDataTable
     elif url.endswith("xlsx") or url.endswith("xls"):
@@ -1472,6 +1579,8 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         cls = HTMLDataTable
     elif "docs.google.com" in url:
         cls = GoogleSheetsDataTable
+    else:
+        raise AssertionError("Unrecognized data url extension: %s" % url)
 
     kwargs.update(config.get("adhoc_table_options", {}))
 
@@ -1482,6 +1591,7 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         config.get("columns", None),
         primary_key=config.get("primary_key", None),
         parent=config.get("parent", None),
+        if_exists=config.get("if_exists", IfExistsModes.FAIL),
         schema=schema,
         **kwargs
     )

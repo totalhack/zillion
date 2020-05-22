@@ -13,13 +13,15 @@ from zillion.configs import (
     load_warehouse_config,
     load_datasource_config,
     zillion_config,
+    TableInfo,
 )
 from zillion.core import *
 from zillion.datasource import (
     DataSource,
-    AdHocDataSource,
     AdHocDataTable,
     SQLiteDataTable,
+    get_adhoc_datasource_filename,
+    get_adhoc_datasource_url,
 )
 from zillion.field import DATETIME_CONVERSION_FIELDS
 from zillion.report import Report
@@ -28,7 +30,7 @@ from zillion.warehouse import Warehouse
 
 DEFAULT_TEST_DB = "testdb1"
 TEST_WH_CONFIG = load_warehouse_config("test_wh_config.json")
-TEST_ADHOC_CONFIG = load_warehouse_config("adhoc_ds_config.json")
+TEST_ADHOC_CONFIG = load_warehouse_config("test_adhoc_ds_config.json")
 test_config = zillion_config["TEST"]
 
 logging.getLogger().setLevel(logging.INFO)
@@ -94,6 +96,32 @@ def get_sql(sql):
         conn.close()
 
 
+def create_test_metadata(ds_config):
+    metadata = sa.MetaData()
+    metadata.bind = sa.create_engine(ds_config["connect"])
+    metadata.reflect(schema="main")
+
+    # Create zillion info directly on metadata
+    partners_info = TableInfo.create(
+        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["partner_id"])
+    )
+    campaigns_info = TableInfo.create(
+        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["campaign_id"])
+    )
+
+    metadata.tables["main.partners"].info["zillion"] = partners_info
+    metadata.tables["main.campaigns"].info["zillion"] = campaigns_info
+    return metadata
+
+
+def drop_metadata_table_if_exists(metadata, table_name):
+    if table_name not in metadata.tables:
+        return
+    table = metadata.tables[table_name]
+    table.drop()
+    metadata.remove(table)
+
+
 def create_adhoc_data(column_types, size):
     data = []
 
@@ -129,6 +157,7 @@ def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
         table_config["type"],
         primary_key=primary_key,
         columns=table_config.get("columns", None),
+        if_exists=table_config.get("if_exists", IfExistsModes.FAIL),
         schema="main",
     )
     return dt
@@ -137,6 +166,7 @@ def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
 def get_adhoc_table_config():
     table_config = {
         "type": TableTypes.METRIC,
+        "if_exists": IfExistsModes.REPLACE,
         "create_fields": False,
         "columns": OrderedDict(
             partner_name={"fields": ["partner_name"]},
@@ -175,21 +205,21 @@ def get_adhoc_datasource(size=10, name="adhoc_table1", reuse=False):
     }
 
     if reuse:
-        fname = AdHocDataSource.get_datasource_filename(name)
+        fname = get_adhoc_datasource_filename(name)
         if os.path.exists(fname):
             info("Reusing datasource file %s" % fname)
             dt = SQLiteDataTable(
                 name,
-                AdHocDataSource.get_datasource_url(name),
+                None,
                 table_config["type"],
                 primary_key=primary_key,
                 columns=table_config.get("columns", None),
                 schema="main",
             )
-            return AdHocDataSource([dt], name=name, config=config)
+            return DataSource.from_datatables(name, [dt], config=config)
 
     dt = create_adhoc_datatable(name, table_config, primary_key, column_types, size)
-    return AdHocDataSource([dt], name=name, config=config)
+    return DataSource.from_datatables(name, [dt], config=config)
 
 
 def get_testdb_url(dbname=DEFAULT_TEST_DB):

@@ -827,8 +827,8 @@ def test_report_invalid_adhoc_datasource(wh, adhoc_ds):
 
 
 def test_regular_datasource_adhoc(config):
-    ds1 = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
-    ds2 = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
+    ds1 = DataSource("testdb1", config=config["datasources"]["testdb1"])
+    ds2 = DataSource("testdb2", config=config["datasources"]["testdb2"])
     wh = Warehouse(datasources=[ds1])
     metrics = ["leads", "sales", "aggr_sales"]
     dimensions = ["partner_name", "campaign_name"]
@@ -847,7 +847,7 @@ def test_only_adhoc_datasource(adhoc_ds):
 
 
 def test_no_use_full_column_names(config):
-    ds = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
+    ds = DataSource("testdb2", config=config["datasources"]["testdb2"])
     wh = Warehouse(datasources=[ds])
     metrics = ["leads", "sales", "aggr_sales"]
     dimensions = ["partner_name", "campaign_name"]
@@ -857,7 +857,7 @@ def test_no_use_full_column_names(config):
 
 
 def test_report_column_required_grain(config):
-    ds = DataSource.from_config("testdb2", config["datasources"]["testdb2"])
+    ds = DataSource("testdb2", config=config["datasources"]["testdb2"])
     wh = Warehouse(datasources=[ds])
     metrics = ["revenue", "sales"]
     dimensions = ["campaign_name"]

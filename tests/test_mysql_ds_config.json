@@ -1,5 +1,5 @@
 {
-    "url": "mysql+pymysql://{user}@{host}/{schema}",
+    "connect": "mysql+pymysql://{user}@{host}/{schema}",
     "metrics": [
         {
             "name": "clicks",

@@ -1,5 +1,10 @@
 {
-    "url": "sqlite:///{schema}",
+    "connect": {
+        "func": "zillion.datasource.url_connect",
+        "params": {
+            "connect_url": "sqlite:///{schema}"
+        }
+    },
     "metrics": [
         {
             "name": "aggr_sales",

@@ -15,6 +15,25 @@ def test_mysql_datasource(mysql_wh):
     info(result.df)
 
 
+def test_mysql_table_data_url(mysql_ds_config, adhoc_config):
+    adhoc_table_config = adhoc_config["datasources"]["test_adhoc_db"]["tables"][
+        "main.dma_zip"
+    ]
+    mysql_ds_config["tables"]["zillion_test.dma_zip"] = adhoc_table_config
+    ds = DataSource("mysql", config=mysql_ds_config)
+    assert ds.has_table("zillion_test.dma_zip")
+
+
+def test_mysql_ignore_table_data_url(mysql_ds_config, adhoc_config):
+    adhoc_table_config = adhoc_config["datasources"]["test_adhoc_db"]["tables"][
+        "main.dma_zip"
+    ]
+    adhoc_table_config["if_exists"] = IfExistsModes.IGNORE
+    mysql_ds_config["tables"]["zillion_test.dma_zip"] = adhoc_table_config
+    ds = DataSource("mysql", config=mysql_ds_config)
+    assert ds.has_table("zillion_test.dma_zip")
+
+
 def test_mysql_sequential_timeout(mysql_wh):
     with update_zillion_config(
         dict(

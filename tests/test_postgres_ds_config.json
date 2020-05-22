@@ -1,5 +1,5 @@
 {
-    "url": "postgresql+psycopg2://{user}@{host}/{schema}",
+    "connect": "postgresql+psycopg2://{user}@{host}/{schema}",
     "metrics": [
         {
             "name": "clicks",

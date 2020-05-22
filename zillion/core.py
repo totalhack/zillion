@@ -27,6 +27,7 @@ from tlbx import (
     ClassValueContainsMeta,
     get_class_var_values,
     get_class_vars,
+    import_object,
 )
 
 ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
@@ -206,6 +207,19 @@ class ExecutionState:
     READY = "READY"
     QUERYING = "QUERYING"
     KILLED = "KILLED"
+
+
+class IfExistsModes(metaclass=ClassValueContainsMeta):
+    """Allowed modes when creating tables from data. This is based off of
+    pandas `if_exists` param in the `DataFrame.to_sql` method, with the
+    addition of an "ignore" option. The "append" option is also removed for
+    now since there isn't a safe/generic way to guarantee a proper primary key
+    has been set on the table."""
+
+    FAIL = "fail"
+    REPLACE = "replace"
+    # APPEND = "append"
+    IGNORE = "ignore"
 
 
 def raiseif(cond, msg="", exc=ZillionException):

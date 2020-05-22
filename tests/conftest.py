@@ -24,6 +24,12 @@ def config():
 
 
 @pytest.fixture(scope="function")
+def ds_config():
+    config = copy.deepcopy(TEST_WH_CONFIG)
+    return config["datasources"]["testdb1"]
+
+
+@pytest.fixture(scope="function")
 def adhoc_config():
     return copy.deepcopy(TEST_ADHOC_CONFIG)
 
@@ -35,9 +41,7 @@ def wh(config):
 
 @pytest.fixture(scope="function")
 def adhoc_ds(config):
-    ds = get_adhoc_datasource()
-    yield ds
-    ds.clean_up()
+    return get_adhoc_datasource()
 
 
 @pytest.fixture(scope="function")
@@ -47,7 +51,7 @@ def mysql_ds_config():
 
 @pytest.fixture(scope="function")
 def mysql_ds(mysql_ds_config):
-    return DataSource.from_config("mysql", mysql_ds_config)
+    return DataSource("mysql", config=mysql_ds_config)
 
 
 @pytest.fixture(scope="function")
@@ -62,7 +66,7 @@ def postgres_ds_config():
 
 @pytest.fixture(scope="function")
 def postgres_ds(postgres_ds_config):
-    return DataSource.from_config("postgres", postgres_ds_config)
+    return DataSource("postgres", config=postgres_ds_config)
 
 
 @pytest.fixture(scope="function")

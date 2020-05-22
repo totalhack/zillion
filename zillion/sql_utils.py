@@ -6,6 +6,7 @@ from sqlalchemy.dialects.mysql import dialect as mysql_dialect
 from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 from sqlalchemy.engine import reflection
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import expression as exp
 import sqlparse as sp
@@ -313,6 +314,18 @@ def column_fullname(column, prefix=None):
     return name
 
 
+def get_schema_and_table_name(table):
+    """Extract the schema and table name from a full table name. If the table
+    name is not schema-qualified, return None for the schema name"""
+    schema = None
+    table_name = table
+    if "." in table:
+        parts = table.split(".")
+        raiseifnot(len(parts) == 2, "Invalid table name: %s" % table)
+        schema, table_name = parts
+    return schema, table_name
+
+
 def get_sqla_criterion_expr(column, criterion, negate=False):
     """Create a SQLAlchemy criterion expression
 
@@ -410,6 +423,11 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
         clause = sa.not_(clause)
 
     return clause
+
+
+def check_metadata_url(url):
+    """Check validity of the metadata URL"""
+    url = make_url(url)
 
 
 def comment(self, c):

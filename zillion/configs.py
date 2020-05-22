@@ -31,6 +31,7 @@ DATASOURCE_ALLOWABLE_CHARS_STR = (
     string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
 )
 DATASOURCE_ALLOWABLE_CHARS = set(DATASOURCE_ALLOWABLE_CHARS_STR)
+DATASOURCE_CONNECT_FUNC_DEFAULT = "zillion.datasource.url_connect"
 
 
 def load_zillion_config():
@@ -81,7 +82,8 @@ def parse_schema_file(f, schema, object_pairs_hook=None):
     """
     raw = read_filepath_or_buffer(f)
     try:
-        # This does the schema check, but has a bug in object_pairs_hook so order is not preserved
+        # This does the schema check, but has a bug in object_pairs_hook so
+        # order is not preserved
         if object_pairs_hook:
             raise AssertionError(
                 "Needs to support marshmallow pre_load behavior somehow"
@@ -96,15 +98,17 @@ def parse_schema_file(f, schema, object_pairs_hook=None):
     return result
 
 
-def load_warehouse_config(f, preserve_order=False):
+def load_warehouse_config(cfg, preserve_order=False):
     """Parse a warehouse JSON config
 
     Parameters
     ----------
-    f : str or buffer
-        A file path or buffer to read the config contents from
-    preserve_order : book, optional
-        If true, use OrderedDict as the object_pairs_hook to preserve order
+    cfg : dict, str, or buffer
+        A warehouse config dict or a file path/buffer to read the config
+        contents from.
+    preserve_order : bool, optional
+        If true and a str or buffer is passed for the cfg arg, use OrderedDict
+        as the object_pairs_hook to preserve order.
 
     Returns
     -------
@@ -112,8 +116,11 @@ def load_warehouse_config(f, preserve_order=False):
         The parsed warehouse config
 
     """
+    if isinstance(cfg, dict):
+        return WarehouseConfigSchema().load(cfg)
+
     return parse_schema_file(
-        f,
+        cfg,
         WarehouseConfigSchema(),
         object_pairs_hook=OrderedDict if preserve_order else None,
     )
@@ -126,15 +133,17 @@ def load_warehouse_config_from_env(var, preserve_order=False):
     return load_warehouse_config(f, preserve_order=preserve_order)
 
 
-def load_datasource_config(f, preserve_order=False):
+def load_datasource_config(cfg, preserve_order=False):
     """Parse a datasource JSON config
 
     Parameters
     ----------
-    f : str or buffer
-        A file path or buffer to read the config contents from
-    preserve_order : book, optional
-        If true, use OrderedDict as the object_pairs_hook to preserve order
+    cfg : dict, str, or buffer
+        A datasource config dict or a file path/buffer to read the config
+        contents from.
+    preserve_order : bool, optional
+        If true and a str or buffer is passed for the cfg arg, use OrderedDict
+        as the object_pairs_hook to preserve order.
 
     Returns
     -------
@@ -142,8 +151,11 @@ def load_datasource_config(f, preserve_order=False):
         The parsed datasource config
 
     """
+    if isinstance(cfg, dict):
+        return DataSourceConfigSchema().load(cfg)
+
     return parse_schema_file(
-        f,
+        cfg,
         DataSourceConfigSchema(),
         object_pairs_hook=OrderedDict if preserve_order else None,
     )
@@ -217,6 +229,13 @@ def is_valid_table_name(val):
     return True
 
 
+def is_valid_if_exists(val):
+    """Validate if_exists param"""
+    if val in IfExistsModes:
+        return True
+    raise ValidationError("Invalid if_exists value: %s" % val)
+
+
 def is_valid_field_name(val):
     """Validate field name"""
     if val is None:
@@ -278,6 +297,28 @@ def is_valid_technical(val):
     except InvalidTechnicalException as e:
         raise ValidationError("Invalid technical: %s" % val) from e
     return True
+
+
+def is_valid_connect_type(val):
+    """Validate technical type"""
+    if isinstance(val, str):
+        try:
+            import_object(val)
+        except Exception as e:
+            raise ValidationError("Could not import connect type: %s" % val) from e
+        return True
+    raise ValidationError("Invalid connect type: %s" % val)
+
+
+def is_valid_datasource_connect(val):
+    """Validate datasource connect value"""
+    if isinstance(val, str):
+        return True
+    if isinstance(val, dict):
+        schema = DataSourceConnectSchema()
+        schema.load(val)
+        return True
+    raise ValidationError("Invalid datasource connect config: %s" % val)
 
 
 def is_valid_datasource_config(val):
@@ -454,8 +495,11 @@ class TableConfigSchema(TableInfoSchema):
     ----------
     columns : dict, optional
         A dict mapping of column name to ColumnConfigSchema
-    url : str, optional
+    data_url : str, optional
         A url used to download table data if this is an adhoc table
+    if_exists : str, optional
+        Control whether to replace, fail, or ignore when the table data
+        already exists.
     primary_key : list of str, optional
         A list of fields representing the primary key of the table
     adhoc_table_options : dict, optional
@@ -469,7 +513,8 @@ class TableConfigSchema(TableInfoSchema):
         missing=None,
         required=False,
     )
-    url = mfields.String()
+    data_url = mfields.String()
+    if_exists = mfields.String(validate=is_valid_if_exists)
     primary_key = mfields.List(mfields.String())
     adhoc_table_options = mfields.Dict(keys=mfields.Str())
 
@@ -602,14 +647,37 @@ class TableNameField(mfields.Str):
         super()._validate(value)
 
 
+class DataSourceConnectSchema(BaseSchema):
+    """The schema of a technical configuration"""
+
+    func = mfields.String(
+        validate=is_valid_connect_type,
+        default=DATASOURCE_CONNECT_FUNC_DEFAULT,
+        missing=DATASOURCE_CONNECT_FUNC_DEFAULT,
+    )
+    params = mfields.Dict(keys=mfields.Str(), default=None, missing=None)
+
+
+class DataSourceConnectField(mfields.Field):
+    """The schema of a datasource connect field"""
+
+    def _validate(self, value):
+        is_valid_datasource_connect(value)
+        super()._validate(value)
+
+
 class DataSourceConfigSchema(BaseSchema):
     """The schema of a datasource configuration
 
     Attributes
     ----------
-    url : str
-        A connection string for the datasource. This may have placeholders
-        that get filled in from the DATASOURCE_CONTEXTS of the zillion config.
+    connect : str or dict
+        A connection string or dict for establishing the datasource
+        connection. This may have placeholders that get filled in from the
+        DATASOURCE_CONTEXTS of the zillion config. See DataSourceConnectField
+        for more details on passing a dict.
+    skip_conversion_fields : bool, optional
+        Don't add any conversion fields when applying a config
     metrics : marshmallow field, optional
         A list of MetricConfigSchema
     dimensions : marshmallow field, optional
@@ -619,7 +687,8 @@ class DataSourceConfigSchema(BaseSchema):
 
     """
 
-    url = mfields.String()
+    connect = DataSourceConnectField(default=None, missing=None)
+    skip_conversion_fields = mfields.Boolean(default=False, missing=False)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     tables = mfields.Dict(

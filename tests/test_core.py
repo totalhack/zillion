@@ -21,10 +21,8 @@ def test_wh_config_init(config):
     pass
 
 
-def test_datasource_config_init(config):
-    """This inits a DataSource from a connection URL, reflects the metadata,
-    and applies a table config"""
-    ds = DataSource("testdb1", config=config["datasources"]["testdb1"], reflect=True)
+def test_datasource_config_init(ds_config):
+    ds = DataSource("testdb1", config=ds_config)
     print()  # Format test output
     ds.print_info()
     assert ds
@@ -35,6 +33,11 @@ def test_load_remote_wh_config():
     cfg = load_warehouse_config(f)
 
 
+def test_wh_from_url_wh_config():
+    f = "example_wh_config.json"
+    wh = Warehouse(config=f)
+
+
 def test_load_wh_config_from_env():
     var = "ZILLION_TEST_WH_CONFIG"
     val = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/example_wh_config.json"
@@ -42,47 +45,17 @@ def test_load_wh_config_from_env():
     cfg = load_warehouse_config_from_env(var)
 
 
-def test_datasource_metadata_init(config):
-    ds_config = config["datasources"]["testdb1"]
-    metadata = sa.MetaData()
-    metadata.bind = sa.create_engine(ds_config["url"])
-    metadata.reflect(schema="main")
-
-    # Create zillion info directly on metadata
-    partners_info = TableInfo.create(
-        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["partner_id"])
-    )
-    campaigns_info = TableInfo.create(
-        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["campaign_id"])
-    )
-
-    metadata.tables["main.partners"].info["zillion"] = partners_info
-    metadata.tables["main.campaigns"].info["zillion"] = campaigns_info
-
+def test_datasource_metadata_init(ds_config):
+    metadata = create_test_metadata(ds_config)
     ds = DataSource("testdb1", metadata=metadata)
     print()  # Format test output
     ds.print_info()
     assert ds
 
 
-def test_datasource_metadata_and_config_init(config):
-    ds_config = config["datasources"]["testdb1"]
-    metadata = sa.MetaData()
-    metadata.bind = sa.create_engine(ds_config["url"])
-    metadata.reflect(schema="main")
-
-    # Create zillion info directly on metadata
-    partners_info = TableInfo.create(
-        dict(type=TableTypes.DIMENSION, create_fields=True, primary_key=["partner_id"])
-    )
-    campaigns_info = TableInfo.create(
-        dict(type=TableTypes.DIMENSION, primary_key=["campaign_id"])
-    )
-    metadata.tables["main.partners"].info["zillion"] = partners_info
-    metadata.tables["main.campaigns"].info["zillion"] = campaigns_info
-
-    del ds_config["url"]
-
+def test_datasource_metadata_and_config_init(ds_config):
+    metadata = create_test_metadata(ds_config)
+    del ds_config["connect"]
     # Pass metadata with existing zillion info as well as table config
     ds = DataSource("testdb1", metadata=metadata, config=ds_config)
     print()  # Format test output
@@ -90,28 +63,101 @@ def test_datasource_metadata_and_config_init(config):
     assert ds
 
 
-def test_datasource_from_config(config):
-    ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+def test_datasource_from_config(ds_config):
+    ds = DataSource("testdb1", config=ds_config)
     print()  # Format test output
     ds.print_info()
     assert ds
 
 
+def test_datasource_skip_conversion_fields(ds_config):
+    ds_config["skip_conversion_fields"] = True
+    ds = DataSource("testdb1", config=ds_config)
+    assert not ds.has_dimension("sale_hour")
+
+
+def test_datasource_config_data_url(ds_config):
+    ds_config["connect"] = {
+        "params": {
+            "data_url": "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true",
+            "if_exists": "replace",
+        }
+    }
+    ds = DataSource("testdb1", config=ds_config)
+    print()  # Format test output
+    ds.print_info()
+    assert ds
+
+
+def test_datasource_from_data_url(ds_config):
+    data_url = "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true"
+    ds = DataSource.from_data_url("testdb1", data_url, ds_config, if_exists="replace")
+    print()  # Format test output
+    ds.print_info()
+    assert ds
+
+
+def test_datasource_config_table_data_url(adhoc_config):
+    ds_config = adhoc_config["datasources"]["test_adhoc_db"]
+    ds = DataSource("test_adhoc_db", config=ds_config)
+    print()  # Format test output
+    ds.print_info()
+    assert ds
+
+
+def test_datasource_metadata_and_table_data_url(ds_config, adhoc_config):
+    metadata = create_test_metadata(ds_config)
+    del ds_config["connect"]
+
+    drop_metadata_table_if_exists(metadata, "main.dma_zip")
+    # Borrow the adhoc table config that has a data_url setup
+    adhoc_table_config = adhoc_config["datasources"]["test_adhoc_db"]["tables"][
+        "main.dma_zip"
+    ]
+    ds_config["tables"]["main.dma_zip"] = adhoc_table_config
+
+    try:
+        ds = DataSource("testdb1", metadata=metadata, config=ds_config)
+        assert "main.dma_zip" in metadata.tables
+    finally:
+        drop_metadata_table_if_exists(metadata, "main.dma_zip")
+
+
+def test_datasource_apply_config_table_data_url(ds_config, adhoc_config):
+    metadata = create_test_metadata(ds_config)
+    del ds_config["connect"]
+
+    drop_metadata_table_if_exists(metadata, "main.dma_zip")
+
+    try:
+        ds = DataSource("testdb1", metadata=metadata, config=ds_config)
+        # Borrow the adhoc table config that has a data_url setup
+        adhoc_table_config = adhoc_config["datasources"]["test_adhoc_db"]["tables"][
+            "main.dma_zip"
+        ]
+        ds_config["tables"]["main.dma_zip"] = adhoc_table_config
+        ds.apply_config(ds_config)
+
+        assert "main.dma_zip" in metadata.tables
+    finally:
+        drop_metadata_table_if_exists(metadata, "main.dma_zip")
+
+
 def test_warehouse_init(config):
-    ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+    ds = DataSource("testdb1", config=config["datasources"]["testdb1"])
     wh = Warehouse(config=config, datasources=[ds])
     assert len(wh.datasources) == 2
 
 
-def test_warehouse_no_config(config):
-    ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+def test_warehouse_no_config(ds_config):
+    ds = DataSource("testdb1", config=ds_config)
     wh = Warehouse(datasources=[ds])
     assert wh.get_dimension_names()
     assert len(wh.datasource_names) == 1
 
 
-def test_warehouse_has_zillion_info_no_config(config):
-    ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+def test_warehouse_has_zillion_info_no_config(ds_config):
+    ds = DataSource("testdb1", config=ds_config)
     for table in ds.metadata.tables.values():
         table.info["zillion"].type = TableTypes.METRIC
     wh = Warehouse(datasources=[ds])
@@ -122,7 +168,7 @@ def test_reserved_field_name(config):
     config["datasources"]["testdb1"]["metrics"].append(
         {"name": "row_hash", "type": "Integer", "aggregation": AggregationTypes.SUM}
     )
-    ds = DataSource.from_config("testdb1", config["datasources"]["testdb1"])
+    ds = DataSource("testdb1", config=config["datasources"]["testdb1"])
     with pytest.raises(WarehouseException):
         wh = Warehouse(config=config, datasources=[ds])
 
@@ -214,8 +260,10 @@ def test_warehouse_remote_csv_table(adhoc_config):
 
 def test_warehouse_remote_google_sheet(adhoc_config):
     url = "https://docs.google.com/spreadsheets/d/1iCzY4av_tinUpG2Q0mQhbxd77XOREwfbPAVZPObzFeE/edit?usp=sharing"
-    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"]["url"] = url
-    wh = Warehouse(config=adhoc_config, if_exists="ignore")
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"][
+        "data_url"
+    ] = url
+    wh = Warehouse(config=adhoc_config)
     try:
         assert wh.has_dimension("Zip_Code")
     finally:
@@ -226,7 +274,9 @@ def test_warehouse_remote_xlsx_table(adhoc_config):
     url = (
         "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.xlsx"
     )
-    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"]["url"] = url
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"][
+        "data_url"
+    ] = url
     wh = Warehouse(config=adhoc_config)
     try:
         assert wh.has_dimension("Zip_Code")
@@ -238,7 +288,9 @@ def test_warehouse_remote_json_table(adhoc_config):
     url = (
         "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.json"
     )
-    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"]["url"] = url
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"][
+        "data_url"
+    ] = url
     wh = Warehouse(config=adhoc_config)
     try:
         assert wh.has_dimension("Zip_Code")
@@ -250,7 +302,9 @@ def test_warehouse_remote_html_table(adhoc_config):
     url = (
         "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.html"
     )
-    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"]["url"] = url
+    adhoc_config["datasources"]["test_adhoc_db"]["tables"]["main.dma_zip"][
+        "data_url"
+    ] = url
     wh = Warehouse(config=adhoc_config)
     try:
         wh.print_info()
@@ -262,26 +316,27 @@ def test_warehouse_remote_html_table(adhoc_config):
 def test_reuse_existing_remote_table(adhoc_config):
     ds_name = "test_adhoc_db"
     ds_configs = adhoc_config["datasources"]
+
+    for ds_name, ds_config in ds_configs.items():
+        for table in ds_config.tables.items():
+            table["if_exists"] = IfExistsModes.IGNORE
+
     try:
-        ds = datasource_from_config(ds_name, ds_configs[ds_name], if_exists="ignore")
-        ds = datasource_from_config(ds_name, ds_configs[ds_name], if_exists="ignore")
+        ds = DataSource(ds_name, config=ds_configs[ds_name])
+        ds = DataSource(ds_name, config=ds_configs[ds_name])
+        for ds_name, ds_config in ds_configs.items():
+            for table in ds_config.tables.items():
+                table["if_exists"] = IfExistsModes.FAIL
         with pytest.raises(ValueError):
-            dsf = datasource_from_config(ds_name, ds_configs[ds_name], if_exists="fail")
+            dsf = DataSource(ds_name, config=ds_configs[ds_name])
     finally:
         ds.clean_up()
 
 
-def test_adhoc_config_to_ds_init(adhoc_config):
-    ds_config = adhoc_config["datasources"]["test_adhoc_db"]
-    with pytest.raises(ZillionException):
+def test_bad_table_data_url(ds_config):
+    ds_config["tables"]["main.sales"]["data_url"] = "test"
+    with pytest.raises(AssertionError):
         ds = DataSource("test", config=ds_config)
-
-
-def test_adhoc_table_url_to_ds_init(config):
-    ds_config = config["datasources"]["testdb1"]
-    ds_config["tables"]["main.sales"]["url"] = "test"
-    with pytest.raises(ZillionException):
-        ds = DataSource("test", config=ds_config, reflect=True)
 
 
 def test_column_config_override(config):
@@ -457,14 +512,12 @@ def test_adhoc_datatable_no_columns():
         primary_key=primary_key,
         # With this setup it creates fields for all columns in the table
         columns=None,
+        if_exists=IfExistsModes.REPLACE,
         schema="main",
     )
-
-    ds = AdHocDataSource([dt], name="adhoc_ds", if_exists="replace")
-    try:
-        assert ds.has_dimension("main_adhoc_table1_partner_name")
-    finally:
-        ds.clean_up()
+    ds = DataSource.from_datatables("adhoc_ds", [dt])
+    assert ds.has_dimension("main_adhoc_table1_partner_name")
+    ds.print_info()
 
 
 def test_adhoc_datatable_has_columns():
@@ -484,15 +537,12 @@ def test_adhoc_datatable_has_columns():
         primary_key=primary_key,
         # With this setup it will only create fields for columns specified
         columns=columns,
+        if_exists=IfExistsModes.REPLACE,
         schema="main",
     )
-
-    ds = AdHocDataSource([dt], name="adhoc_ds", if_exists="replace")
-    try:
-        assert ds.has_dimension("partner_name")
-        assert not ds.has_metric("adhoc_metric")
-    finally:
-        ds.clean_up()
+    ds = DataSource.from_datatables("adhoc_ds", [dt])
+    assert ds.has_dimension("partner_name")
+    assert not ds.has_metric("adhoc_metric")
 
 
 def test_csv_datatable():
@@ -510,16 +560,12 @@ def test_csv_datatable():
         TableTypes.DIMENSION,
         primary_key=primary_key,
         columns=columns,
+        if_exists=IfExistsModes.REPLACE,
         schema="main",
     )
-    ds = AdHocDataSource([dt], "adhoc_ds", if_exists="replace")
-
+    ds = DataSource.from_datatables("adhoc_ds", [dt])
     ds.print_info()
-
-    try:
-        assert "Zip_Code" in ds.get_dimensions()
-    finally:
-        ds.clean_up()
+    assert "Zip_Code" in ds.get_dimensions()
 
 
 def test_excel_datatable():
@@ -537,16 +583,13 @@ def test_excel_datatable():
         TableTypes.DIMENSION,
         primary_key=primary_key,
         columns=columns,
+        if_exists=IfExistsModes.REPLACE,
         schema="main",
     )
-    ds = AdHocDataSource([dt], "adhoc_ds", if_exists="replace")
-
-    try:
-        dims = ds.get_dimensions()
-        assert "Zip_Code" in dims
-        assert "DMA_Description" not in dims
-    finally:
-        ds.clean_up()
+    ds = DataSource.from_datatables("adhoc_ds", [dt])
+    dims = ds.get_dimensions()
+    assert "Zip_Code" in dims
+    assert "DMA_Description" not in dims
 
 
 def test_json_datatable():
@@ -555,14 +598,15 @@ def test_json_datatable():
     primary_key = ["Zip_Code"]
 
     dt = JSONDataTable(
-        name, file_name, TableTypes.DIMENSION, primary_key=primary_key, schema="main"
+        name,
+        file_name,
+        TableTypes.DIMENSION,
+        primary_key=primary_key,
+        if_exists=IfExistsModes.REPLACE,
+        schema="main",
     )
-    ds = AdHocDataSource([dt], "adhoc_ds", if_exists="replace")
-
-    try:
-        assert "main_dma_zip_Zip_Code" in ds.get_dimensions()
-    finally:
-        ds.clean_up()
+    ds = DataSource.from_datatables("adhoc_ds", [dt])
+    assert "main_dma_zip_Zip_Code" in ds.get_dimensions()
 
 
 def test_html_datatable():
@@ -571,11 +615,12 @@ def test_html_datatable():
     primary_key = ["Zip_Code"]
 
     dt = HTMLDataTable(
-        name, file_name, TableTypes.DIMENSION, primary_key=primary_key, schema="main"
+        name,
+        file_name,
+        TableTypes.DIMENSION,
+        primary_key=primary_key,
+        if_exists=IfExistsModes.REPLACE,
+        schema="main",
     )
-    ds = AdHocDataSource([dt], "adhoc_ds", if_exists="replace")
-
-    try:
-        assert "main_dma_zip_Zip_Code" in ds.get_dimensions()
-    finally:
-        ds.clean_up()
+    ds = DataSource.from_datatables("adhoc_ds", [dt])
+    assert "main_dma_zip_Zip_Code" in ds.get_dimensions()

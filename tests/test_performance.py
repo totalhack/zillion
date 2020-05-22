@@ -43,6 +43,7 @@ def get_adhoc_ds(size):
 
     table_config = {
         "type": TableTypes.METRIC,
+        "if_exists": IfExistsModes.REPLACE,
         "create_fields": True,
         "columns": OrderedDict(
             partner_name={"fields": ["partner_name"]},
@@ -59,8 +60,8 @@ def get_adhoc_ds(size):
     dt = create_adhoc_datatable(
         "adhoc_table1", table_config, primary_key, column_types, size
     )
-    adhoc_ds = AdHocDataSource([dt])
-    dbg("Created AdHocDataSource in %.3fs" % (time.time() - start))
+    adhoc_ds = DataSource.from_datatables("adhoc_large_db", [dt])
+    dbg("Created DataSource in %.3fs" % (time.time() - start))
     return metrics, dimensions, adhoc_ds
 
 
@@ -68,29 +69,20 @@ def get_adhoc_ds(size):
 def test_performance_adhoc_ds(wh):
     size = 1e5
     metrics, dimensions, adhoc_ds = get_adhoc_ds(size)
-    try:
-        with profiled("zillion"):
-            result = wh.execute(
-                metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
-            )
-        assert result
-    finally:
-        adhoc_ds.clean_up()
+    with profiled("zillion"):
+        result = wh.execute(
+            metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
+        )
+    assert result
 
 
 @pytest.mark.longrun
 def test_performance_multi_rollup(wh):
     size = 1e5
     metrics, dimensions, adhoc_ds = get_adhoc_ds(size)
-    try:
-        rollup = 2
-        with profiled("zillion"):
-            result = wh.execute(
-                metrics,
-                dimensions=dimensions,
-                rollup=rollup,
-                adhoc_datasources=[adhoc_ds],
-            )
-        assert result
-    finally:
-        adhoc_ds.clean_up()
+    rollup = 2
+    with profiled("zillion"):
+        result = wh.execute(
+            metrics, dimensions=dimensions, rollup=rollup, adhoc_datasources=[adhoc_ds]
+        )
+    assert result

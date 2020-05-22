@@ -2,9 +2,14 @@ from collections import defaultdict, OrderedDict
 import logging
 import time
 
-from zillion.configs import WarehouseConfigSchema, is_active, zillion_config
+from zillion.configs import (
+    WarehouseConfigSchema,
+    load_warehouse_config,
+    is_active,
+    zillion_config,
+)
 from zillion.core import *
-from zillion.datasource import AdHocDataSource, datasource_from_config
+from zillion.datasource import DataSource
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
@@ -21,8 +26,9 @@ class Warehouse(FieldManagerMixin):
 
     Parameters
     ----------
-    config : dict, optional
-        A dict adhering to the WarehouseConfigSchema
+    config : dict, str, or buffer, optional
+        A dict adhering to the WarehouseConfigSchema or a file location to
+        load the config from
     datasources : list, optional
         A list of DataSources that will make up the warehouse
     ds_priority : list, optional
@@ -30,27 +36,21 @@ class Warehouse(FieldManagerMixin):
         priority. This comes into play when part of a report may be
         satisfied by multiple datasources. Datasources earlier in this
         list will be higher priority.
-    if_exists : str, optional
-        When creating datasources from configs, pass this through to control
-        adhoc datasource creation behavior if necessary
 
     """
 
-    def __init__(
-        self, config=None, datasources=None, ds_priority=None, if_exists="fail"
-    ):
+    def __init__(self, config=None, datasources=None, ds_priority=None):
         self._datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
         self._supported_dimension_cache = {}
-        self._created_adhoc_datasources = set()
 
         for ds in datasources or []:
             self.add_datasource(ds, skip_integrity_checks=True)
 
         if config:
-            config = WarehouseConfigSchema().load(config)
-            self.apply_config(config, skip_integrity_checks=True, if_exists=if_exists)
+            config = load_warehouse_config(config)
+            self.apply_config(config, skip_integrity_checks=True)
 
         raiseifnot(self._datasources, "No datasources provided or found in config")
         self.run_integrity_checks()
@@ -86,13 +86,6 @@ class Warehouse(FieldManagerMixin):
     def datasource_names(self):
         """The names of datasources in this warehouse"""
         return self._datasources.keys()
-
-    def clean_up(self):
-        """Clean up created adhoc datasources if necessary"""
-        for ds_name, ds in self._datasources.items():
-            if ds_name in self._created_adhoc_datasources:
-                info("Cleaning up warehouse adhoc ds %s" % ds)
-                ds.clean_up()
 
     def print_info(self):
         """Print the warehouse structure"""
@@ -169,7 +162,7 @@ class Warehouse(FieldManagerMixin):
         if not skip_integrity_checks:
             self.run_integrity_checks()
 
-    def apply_config(self, config, skip_integrity_checks=False, if_exists="fail"):
+    def apply_config(self, config, skip_integrity_checks=False):
         """Apply a warehouse config
 
         Parameters
@@ -178,15 +171,10 @@ class Warehouse(FieldManagerMixin):
             A dict adhering to the WarehouseConfigSchema
         skip_integrity_checks : bool, optional
             If True, skip warehouse integrity checks
-        if_exists : str, optional
-            When creating datasources from configs, pass this through to control
-            adhoc datasource creation behavior if necessary
 
         """
         self._create_or_update_datasources(
-            config.get("datasources", {}),
-            skip_integrity_checks=skip_integrity_checks,
-            if_exists=if_exists,
+            config.get("datasources", {}), skip_integrity_checks=skip_integrity_checks
         )
         # TODO: this goes second in case any formula fields reference fields
         # defined or created in the datasources. It may make more sense to
@@ -438,9 +426,7 @@ class Warehouse(FieldManagerMixin):
             )
         return table_set
 
-    def _create_or_update_datasources(
-        self, ds_configs, skip_integrity_checks=False, if_exists="fail"
-    ):
+    def _create_or_update_datasources(self, ds_configs, skip_integrity_checks=False):
         """Given a set of datasource configs, create or update the datasources
         on this warehouse. If a datasource exists already it will be updated by
         applying the datasource config. Otherwise this attempts to create a
@@ -452,9 +438,6 @@ class Warehouse(FieldManagerMixin):
             A dict mapping datasource names to datasource configs
         skip_integrity_checks : bool, optional
             If True, skip warehouse integrity checks
-        if_exists : str, optional
-            When creating datasources from configs, pass this through to control
-            adhoc datasource creation behavior if necessary
 
         """
         for ds_name in ds_configs:
@@ -462,12 +445,7 @@ class Warehouse(FieldManagerMixin):
                 self.get_datasource(ds_name).apply_config(ds_configs[ds_name])
                 continue
 
-            ds = datasource_from_config(
-                ds_name, ds_configs[ds_name], if_exists=if_exists
-            )
-            if isinstance(ds, AdHocDataSource):
-                # We track this so we can clean up later
-                self._created_adhoc_datasources.add(ds.name)
+            ds = DataSource(ds_name, config=ds_configs[ds_name])
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
     def _clear_supported_dimension_cache(self):
