@@ -1190,14 +1190,14 @@ class Report(ExecutionStateMixin):
     rollup : str or int, optional
         Controls how metrics are rolled up / aggregated by dimension
         depth. If not passed no rollup will be computed. If the special
-        value "TOTALS" is passed, only a final tally rollup row will be
+        value "totals" is passed, only a final tally rollup row will be
         added. If an int, then it controls the maximum depth to roll up
         the data, starting from the most granular (last) dimension of
         the report. For example, if you ran a report with dimensions
         ["a", "b", "c"]:
 
-            * **rollup="TOTALS"** - adds a single, final rollup row
-            * **rollup="ALL"** - rolls up all dimension levels
+            * **rollup="totals"** - adds a single, final rollup row
+            * **rollup="all"** - rolls up all dimension levels
             * **rollup=1** - rolls up the first dimension only
             * **rollup=2** - rolls up the first two dimensions
             * **rollup=3** - rolls up all three dimensions.
@@ -1205,7 +1205,7 @@ class Report(ExecutionStateMixin):
 
          Note that the rollup=3 case is like adding a totals row to the "=2"
          case, as a totals row is a rollup of all dimension levels. Setting
-         rollup=len(dims) is equivalent to rollup="ALL".
+         rollup=len(dims) is equivalent to rollup="all".
     pivot : list, optional
         A list of dimensions to pivot to columns
     adhoc_datasources : list, optional

@@ -106,6 +106,8 @@ def test_datasource_config_table_data_url(adhoc_config):
 
 
 def test_datasource_metadata_and_table_data_url(ds_config, adhoc_config):
+    copyfile("testdb1", "/tmp/testdb1")
+    ds_config["connect"] = "sqlite:////tmp/testdb1"
     metadata = create_test_metadata(ds_config)
     del ds_config["connect"]
 
@@ -124,6 +126,8 @@ def test_datasource_metadata_and_table_data_url(ds_config, adhoc_config):
 
 
 def test_datasource_apply_config_table_data_url(ds_config, adhoc_config):
+    copyfile("testdb1", "/tmp/testdb1")
+    ds_config["connect"] = "sqlite:////tmp/testdb1"
     metadata = create_test_metadata(ds_config)
     del ds_config["connect"]
 

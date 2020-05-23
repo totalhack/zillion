@@ -1176,14 +1176,19 @@ def parse_technical_string(val):
     Parameters
     ----------
     val : str
-        The string to parse. The general format is: type-arg1-arg2.
-        The type must be a valid value in TechnicalTypes. The arg1
-        and arg2 requirements vary by type, and are optional in some
-        cases. Examples:
+        The technical string to parse. The general format is:
+        type(*args):mode. The type must be a valid value in
+        TechnicalTypes. The argument requirements vary by type, and are
+        optional in some cases. The mode controls whether the computation is
+        done across the last group or the full data. The mode is optional, and
+        will default to a value specific to that technical type (usually
+        "group" mode). Examples:
 
-            * "MA-5" for moving average, window=5
-            * "MA-5-2" for moving average, window=5, min_period=2
-            * "CUMSUM" for cumulative sum (no args)
+            * "mean(5)" for moving average, window=5
+            * "mean(5,2)" for moving average, window=5, min_period=2
+            * "cumsum" for cumulative sum (no args)
+            * "cumsum:all" for cumulative sum across all data, regardless of
+              dimension
 
     Returns
     -------

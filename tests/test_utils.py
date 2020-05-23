@@ -4,6 +4,7 @@ import copy
 import logging
 import os
 import random
+from shutil import copyfile
 
 import pymysql
 from tlbx import random_string

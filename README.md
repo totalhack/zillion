@@ -49,6 +49,8 @@ Table of Contents
   * [Config Variables](#config-variables)
   * [DataSource Priority](#datasource-priority)
   * [AdHocMetrics](#adhoc-metrics)
+  * [AdHocDataTables](#adhoc-data-tables)
+  * [Technicals](#technicals)
 * [Supported DataSources](#supported-datasources)
 * [Docs](#documentation)
 * [How to Contribute](#how-to-contribute)
@@ -154,7 +156,7 @@ features such as rollups, row filters, pivots, and technical computations.
 ### Executing Reports
 
 The main purpose of `Zillion` is to execute reports against a `Warehouse`.
-We'll show you how to initialize a `Warehouse` in a bit, but at a high level
+You'll see how to initialize a `Warehouse` in a bit, but at a high level
 you will be crafting reports as follows:
 
 ```python
@@ -238,7 +240,7 @@ purely from a JSON configuration, or a combination of the two. The code below
 shows how it can be done in as little as one line of code if you have a pointer
 to a JSON `Warehouse` config.
 
-> Note: Defining your config in JSON is recommended, so we'll save an example
+> Note: Defining your config in JSON is recommended, so let's save an example
 of defining `Zillion` metadata directly on your SQLAlchemy objects for another
 time.
 
@@ -255,20 +257,20 @@ scenarios you would put a connection string to an existing database like you
 see
 [here](https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_mysql_ds_config.json)
 
-The basics of `Zillion` configuration structure are as follows:
+The basics of `Zillion's` configuration structure are as follows:
 
 A `Warehouse` config has the following main sections:
 
 * `metrics`: optional list of metric configs for global metrics
 * `dimensions`: optional list of dimension configs for global dimensions
-* `datasources`: mapping of datasource names to datasource configs
+* `datasources`: mapping of datasource names to datasource configs or config URLs
 
 A `DataSource` config has the following main sections:
 
-* `connect`: database connection url or dict of params for more advanced cases
+* `connect`: database connection url or dict of connect params
 * `metrics`: optional list of metric configs specific to this datasource
 * `dimensions`: optional list of dimension configs specific to this datasource
-* `tables`: mapping of table names to table configs
+* `tables`: mapping of table names to table configs or config URLs
 
 > Tip: datasource and table configs may also be replaced with a URL that points
 to a local or remote config file.
@@ -367,6 +369,10 @@ Partner C    Campaign 1C      5.0    1.0    118.5
 """
 ```
 
+See the `Report`
+[docs](https://zillion.readthedocs.io/en/latest/zillion.report.html#zillion.report.Report)
+for more information on supported rollup behavior.
+
 **Example:** Save a report spec (not the data):
 
 ```python
@@ -458,6 +464,9 @@ auto-generated dimensions include sale_hour, sale_day_name, sale_day_of_month,
 sale_month, sale_year, etc. To prevent type conversions, set
 `skip_conversion_fields` to `false` on your `DataSource` config.
 
+See `zillion.field.TYPE_ALLOWED_CONVERSIONS` for more details on currently
+supported conversions.
+
 <a name="config-variables"></a>
 ### Config Variables
 
@@ -535,6 +544,43 @@ time so you have complete schema control, but this method can be very useful
 in certain scenarios.
 
 > Note: be careful not to unintentionally overwrite existing tables in your database!
+
+<a name="technicals"></a>
+### Technicals
+
+There are a variety of technical computations that can be applied to metrics to
+compute rolling, cumulative, or rank statistics. For example, to compute a 5-point
+moving average on revenue one might define a new metric as follows:
+
+```
+        {
+            "name": "revenue_ma_5",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
+            "rounding": 2,
+            "technical": "mean(5)"
+        }
+```
+
+Technical computations are computed at the Combined Layer, whereas the "aggregation"
+is done at the DataSource Layer (hence needing to define both above). 
+
+For more info on how shorthand technical strings are parsed, see the
+[parse_technical_string](https://zillion.readthedocs.io/en/latest/zillion.configs.html#zillion.configs.parse_technical_string)
+code. For a full list of supported technical types see
+`zillion.core.TechnicalTypes`.
+
+Technicals also support two modes: "group" and "all". The mode controls how to
+apply the technical computation across the data's dimensions. In "group" mode,
+it computes the technical across the last dimension, whereas in "all" mode in
+computes the technical across all data without any regard for dimensions.
+
+The point of this becomes more clear if you try to do a "cumsum" technical
+across data broken down by something like ["partner_name", "date"]. If "group"
+mode is used (the default in most cases) it will do cumulative sums *within*
+each partner over the date ranges. If "all" mode is used, it will do a
+cumulative sum across every data row. You can be explicit about the mode by
+appending it to the technical string: i.e. "cumsum:all" or "mean(5):group"
 
 <a name="supported-datasources"></a>
 Supported DataSources

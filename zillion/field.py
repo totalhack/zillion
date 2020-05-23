@@ -523,21 +523,7 @@ class AdHocMetric(FormulaMetric):
 
     @classmethod
     def create(cls, obj):
-        """
-
-        Parameters
-        ----------
-        cls : type
-        xxx
-        obj : type
-        xxx
-
-        Returns
-        -------
-        xxx : type
-        xxx
-        """
-
+        """Create an AdHocMetric from an AdHocMetricSchema dict"""
         schema = AdHocMetricSchema()
         field_def = schema.load(obj)
         return cls(
