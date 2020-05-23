@@ -45,7 +45,12 @@
     
     "datasources": {
         "testdb1": {
-            "connect": "sqlite:///testdb1",
+            "connect": {
+                "params": {
+                    "data_url": "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true",
+                    "if_exists": "replace"
+                }
+            },
             "tables": {
                 "main.partners": {
                     "type": "dimension",

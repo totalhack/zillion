@@ -1,5 +1,6 @@
 # pylint: disable=unused-import,missing-class-docstring
 import logging
+import requests
 
 from tlbx import (
     st,
@@ -234,6 +235,16 @@ def raiseifnot(cond, msg="", exc=ZillionException):
         raise exc(msg)
 
 
+def igetattr(obj, attr, *args):
+    """Case-insensitive getattr"""
+    for a in dir(obj):
+        if a.lower() == attr.lower():
+            return getattr(obj, a)
+    if args:
+        return args[0]
+    raise AttributeError("type object '%s' has no attribute '%s'" % (type(obj), attr))
+
+
 def read_filepath_or_buffer(f, open_flags="r", compression=None):
     """Open and read files or buffers, local or remote"""
     f, handles, close = open_filepath_or_buffer(
@@ -248,3 +259,16 @@ def read_filepath_or_buffer(f, open_flags="r", compression=None):
             except ValueError:
                 pass
     return data
+
+
+def download_file(url, outfile=None):
+    """Utility to download a datafile"""
+    if not outfile:
+        outfile = url.split("/")[-1]
+    info("Downloading %s to %s" % (url, outfile))
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(outfile, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return outfile

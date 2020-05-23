@@ -1,4 +1,5 @@
 import ast
+import os
 import re
 
 import sqlalchemy as sa
@@ -135,16 +136,6 @@ def contains_aggregation(sql):
             if token_result:
                 return True
     return False
-
-
-# TODO: find a better home
-def igetattr(obj, attr, *args):
-    for a in dir(obj):
-        if a.lower() == attr.lower():
-            return getattr(obj, a)
-    if args:
-        return args[0]
-    raise AttributeError("type object '%s' has no attribute '%s'" % (type(obj), attr))
 
 
 def type_string_to_sa_type(type_string):
@@ -437,9 +428,20 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
     return clause
 
 
-def check_metadata_url(url):
+def check_metadata_url(url, confirm_exists=False):
     """Check validity of the metadata URL"""
     url = make_url(url)
+    dialect = url.get_dialect().name
+    if confirm_exists:
+        if dialect == "sqlite":
+            raiseifnot(
+                os.path.isfile(url.database),
+                "SQLite DB does not exist: %s" % url.database,
+            )
+        else:
+            raise AssertionError(
+                "confirm_exists not supported for dialect: %s" % dialect
+            )
 
 
 def comment(self, c):

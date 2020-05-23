@@ -3,7 +3,7 @@ from zillion.core import RollupTypes, info
 from zillion.warehouse import Warehouse
 
 
-config = load_warehouse_config("example_wh_config.json")
+config = load_warehouse_config("../examples/example_wh_config.json")
 
 
 def test_example_wh_init():

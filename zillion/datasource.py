@@ -2,7 +2,6 @@ from collections import defaultdict
 import datetime
 import os
 import random
-import requests
 from urllib.parse import urlparse, urlunparse, parse_qs
 
 import pandas as pd
@@ -52,17 +51,46 @@ def get_ds_config_context(name):
     return zillion_config.get("DATASOURCE_CONTEXTS", {}).get(name, {})
 
 
-def url_to_metadata(url, ds_name=None):
+def populate_url_context(url, ds_name):
+    """Helper to do variable replacement in URLs"""
+    ds_config_context = get_ds_config_context(ds_name)
+    if get_string_format_args(url):
+        url = url.format(**ds_config_context)
+    return url
+
+
+def connect_url_to_metadata(url, ds_name=None):
     """Create a bound SQLAlchemy MetaData object from a database URL. The
     ds_name param is used to determine datasource config context for variable
     substitution."""
     if ds_name:
-        ds_config_context = get_ds_config_context(ds_name)
-        if get_string_format_args(url):
-            url = url.format(**ds_config_context)
+        url = populate_url_context(url, ds_name)
     check_metadata_url(url)
     metadata = sa.MetaData()
     metadata.bind = sa.create_engine(url)
+    return metadata
+
+
+def data_url_to_metadata(data_url, ds_name, if_exists=IfExistsModes.FAIL):
+    """Create a bound SQLAlchemy MetaData object from a data URL. The
+    ds_name param is used to determine datasource config context for variable
+    substitution."""
+    dbfile = get_adhoc_datasource_filename(ds_name)
+
+    skip = False
+    if os.path.isfile(dbfile):
+        raiseif(if_exists == IfExistsModes.FAIL, "File %s already exists" % dbfile)
+        if if_exists == IfExistsModes.IGNORE:
+            skip = True
+
+    if not skip:
+        data_url = populate_url_context(data_url, ds_name)
+        f = download_file(data_url, outfile=dbfile)
+
+    connect_url = get_adhoc_datasource_url(ds_name)
+    engine = sa.create_engine(connect_url, echo=False)
+    metadata = sa.MetaData()
+    metadata.bind = engine
     return metadata
 
 
@@ -72,7 +100,7 @@ def metadata_from_connect(connect, ds_name):
     dict. See the DataSourceConnectSchema docs for more details on that
     format. """
     if isinstance(connect, str):
-        return url_to_metadata(connect, ds_name=ds_name)
+        return connect_url_to_metadata(connect, ds_name=ds_name)
 
     schema = DataSourceConnectSchema()
     connect = schema.load(connect)
@@ -115,20 +143,6 @@ def reflect_metadata(metadata, reflect_only=None):
         if only_tables:
             only.extend(only_tables)
         metadata.reflect(schema=schema, views=True, only=only or None)
-
-
-# TODO: find a better home
-def download_file(url, outfile=None):
-    """Utility to download a datafile"""
-    if not outfile:
-        outfile = url.split("/")[-1]
-    info("Downloading %s to %s" % (url, outfile))
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()
-        with open(outfile, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    return outfile
 
 
 def get_adhoc_datasource_filename(ds_name):
@@ -174,24 +188,9 @@ def url_connect(ds_name, connect_url=None, data_url=None, if_exists=IfExistsMode
         )
 
     if data_url:
-        dbfile = get_adhoc_datasource_filename(ds_name)
+        return data_url_to_metadata(data_url, ds_name, if_exists=if_exists)
 
-        skip = False
-        if os.path.isfile(dbfile):
-            raiseif(if_exists == IfExistsModes.FAIL, "File %s already exists" % dbfile)
-            if if_exists == IfExistsModes.IGNORE:
-                skip = True
-
-        if not skip:
-            f = download_file(data_url, outfile=dbfile)
-
-        connect_url = get_adhoc_datasource_url(ds_name)
-        engine = sa.create_engine(connect_url, echo=False)
-        metadata = sa.MetaData()
-        metadata.bind = engine
-        return metadata
-
-    return url_to_metadata(connect_url, ds_name=ds_name)
+    return connect_url_to_metadata(connect_url, ds_name=ds_name)
 
 
 class TableSet(PrintMixin):

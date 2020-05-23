@@ -883,6 +883,7 @@ class Warehouse(FieldManagerMixin):
             A message explaining the unsupported grain issue
 
         """
+        grain = grain or set()
         supported = self._get_supported_dimensions_for_metric(
             metric, adhoc_datasources=adhoc_datasources
         )

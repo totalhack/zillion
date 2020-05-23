@@ -29,18 +29,18 @@ def test_datasource_config_init(ds_config):
 
 
 def test_load_remote_wh_config():
-    f = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/example_wh_config.json"
+    f = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_wh_config.json"
     cfg = load_warehouse_config(f)
 
 
 def test_wh_from_url_wh_config():
-    f = "example_wh_config.json"
+    f = "test_wh_config.json"
     wh = Warehouse(config=f)
 
 
 def test_load_wh_config_from_env():
     var = "ZILLION_TEST_WH_CONFIG"
-    val = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/example_wh_config.json"
+    val = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_wh_config.json"
     os.environ[var] = val
     cfg = load_warehouse_config_from_env(var)
 
