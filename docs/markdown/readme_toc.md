@@ -1,5 +1,5 @@
-Table of Contents
------------------
+**Table of Contents**
+---------------------
 
 * [Installation](#installation)
 * [Primer](#primer)

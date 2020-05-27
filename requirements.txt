@@ -1,9 +1,7 @@
 climax
 lxml
-m2r
 marshmallow
 networkx
-numpydoc
 orderedset>=2.0.3
 pandas
 pylint

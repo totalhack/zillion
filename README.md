@@ -30,8 +30,8 @@ With `Zillion` you can:
 * Save and share report specifications
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
 
-Table of Contents
------------------
+**Table of Contents**
+---------------------
 
 * [Installation](#installation)
 * [Primer](#primer)

@@ -50,8 +50,6 @@ extras_require = {
         "pytest",
         "twine",
         "wheel",
-        "sphinx",
-        "sphinx-rtd-theme",
         "mkdocs==1.1.2",
         "mkdocs-material==5.2.1",
         "mkdocs-material-extensions==1.0",
