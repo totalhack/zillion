@@ -1,12 +1,3 @@
-Zillion: Make sense of it all
-=============================
-
-[![Generic badge](https://img.shields.io/badge/Status-Alpha-yellow.svg)](https://shields.io/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Documentation Status](https://readthedocs.org/projects/zillion/badge/?version=latest)](https://zillion.readthedocs.io/en/latest/?badge=latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-![Python 3](https://img.shields.io/badge/python-3-blue.svg)
-
 **Introduction**
 ----------------
 
@@ -30,30 +21,7 @@ With `Zillion` you can:
 * Save and share report specifications
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
 
-Table of Contents
------------------
-
-* [Installation](#installation)
-* [Primer](#primer)
-    * [Metrics and Dimensions](#metrics-and-dimensions)
-    * [Warehouse Theory](#warehouse-theory)
-    * [Query Layers](#query-layers)
-    * [Executing Reports](#executing-reports)
-* [Example - Sales Analytics](#example-sales-analytics)
-    * [Warehouse Creation](#example-warehouse-creation)
-    * [Reports](#example-reports)
-* [Advanced Topics](#advanced-topics)
-    * [FormulaMetrics](#formula-metrics)
-    * [DataSource Formulas](#datasource-formulas)
-    * [Type Conversions](#type-conversions)
-    * [Config Variables](#config-variables)
-    * [DataSource Priority](#datasource-priority)
-    * [AdHocMetrics](#adhoc-metrics)
-    * [AdHocDataTables](#adhoc-data-tables)
-    * [Technicals](#technicals)
-* [Supported DataSources](#supported-datasources)
-* [Docs](#documentation)
-* [How to Contribute](#how-to-contribute)
+---
 
 <a name="installation"></a>
 
@@ -635,29 +603,5 @@ Note that this is different than the database support for the Combined Layer
 database. Currently only SQLite is supported there, though it is planned to
 make this more generic such that any SQLAlchemy supported database could be
 used.
-
----
-
-<a name="documentation"></a>
-
-**Documentation**
------------------
-
-More thorough documentation can be found [here](https://zillion.readthedocs.io/en/latest/).
-You can supplement your knowledge by perusing the [tests](https://github.com/totalhack/zillion/tree/master/tests) directory
-or the [module reference](https://zillion.readthedocs.io/en/latest/zillion.html).
-
----
-
-<a name="how-to-contribute"></a>
-
-**How to Contribute**
----------------------
-
-Adding support and tests for additional database technologies would be a great
-help. Please See the
-[contributing](https://github.com/totalhack/zillion/blob/master/CONTRIBUTING.md)
-guide for more information.
-
 
 

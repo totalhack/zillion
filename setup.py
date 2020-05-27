@@ -52,6 +52,11 @@ extras_require = {
         "wheel",
         "sphinx",
         "sphinx-rtd-theme",
+        "mkdocs==1.1.2",
+        "mkdocs-material==5.2.1",
+        "mkdocs-material-extensions==1.0",
+        "mkdocs-minify-plugin==0.3.0",
+        "mkautodoc==0.1.0",
     ],
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))

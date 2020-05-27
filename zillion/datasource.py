@@ -72,8 +72,8 @@ def connect_url_to_metadata(url, ds_name=None):
 
 
 def data_url_to_metadata(data_url, ds_name, if_exists=IfExistsModes.FAIL):
-    """Create a bound SQLAlchemy MetaData object from a data URL. The
-    ds_name param is used to determine datasource config context for variable
+    """Create a bound SQLAlchemy MetaData object from a data URL. The ds_name
+    param is used to determine datasource config context for variable
     substitution."""
     dbfile = get_adhoc_datasource_filename(ds_name)
 
@@ -96,9 +96,8 @@ def data_url_to_metadata(data_url, ds_name, if_exists=IfExistsModes.FAIL):
 
 def metadata_from_connect(connect, ds_name):
     """Create a bound SQLAlchemy MetaData object from a "connect" param. The
-    connect value may be a connection string or a DataSourceConnectSchema
-    dict. See the DataSourceConnectSchema docs for more details on that
-    format. """
+    connect value may be a connection string or a DataSourceConnectSchema dict.
+    See the DataSourceConnectSchema docs for more details on that format."""
     if isinstance(connect, str):
         return connect_url_to_metadata(connect, ds_name=ds_name)
 
@@ -157,28 +156,26 @@ def get_adhoc_datasource_url(ds_name):
 
 
 def url_connect(ds_name, connect_url=None, data_url=None, if_exists=IfExistsModes.FAIL):
-    """A URL-based datasource connector. This is meant to be used as the
-    "func" value of a DataSourceConnectSchema. Only one of connect_url or
-    data_url may be specified.
-
-    Parameters
-    ----------
-    ds_name : str
-        The name of the datasource to get a connection for
-    connect_url : str, optional
-        If a connect_url is passed, it will create a bound MetaData object
-        from that connection string.
-    data_url : str, optional
-        If a data_url is passed, it will first download that data (or make
-        sure it is already downloaded) and then create a connection to that
-        data file, which is assumed to be a SQLite database. The name of the
-        database file will be based on the name of the datasource passed in.
-    if_exists : str, optional
-        If a data_url is in use, this will control handling of existing data
-        under the same filename. If "fail", an exception will be raised if the
-        file already exists. If "ignore", it will skip downloading the file if
-        it exists. If "replace", it will create or replace the file.
-
+    """A URL-based datasource connector. This is meant to be used as the "func"
+    value of a DataSourceConnectSchema. Only one of connect_url or data_url may
+    be specified.
+    
+    **Parameters:**
+    
+    * **ds_name** - (*str*) The name of the datasource to get a connection for
+    * **connect_url** - (*str, optional*) If a connect_url is passed, it will
+    create a bound MetaData object from that connection string.
+    * **data_url** - (*str, optional*) If a data_url is passed, it will first
+    download that data (or make sure it is already downloaded) and then create a
+    connection to that data file, which is assumed to be a SQLite database. The
+    name of the database file will be based on the name of the datasource passed
+    in.
+    * **if_exists** - (*str, optional*) If a data_url is in use, this will
+    control handling of existing data under the same filename. If "fail", an
+    exception will be raised if the file already exists. If "ignore", it will
+    skip downloading the file if it exists. If "replace", it will create or
+    replace the file.
+    
     """
     raiseif(connect_url and data_url, "Only one of connect_url or data_url may be set")
     raiseifnot(connect_url or data_url, "One of connect_url or data_url must be set")
@@ -194,23 +191,19 @@ def url_connect(ds_name, connect_url=None, data_url=None, if_exists=IfExistsMode
 
 
 class TableSet(PrintMixin):
-    """A set of tables in a datasource that can meet a grain and provide
-    target fields.
-
-    Parameters
-    ----------
-    datasource : DataSource
-        The DataSource containing all tables
-    ds_table : Table
-        A table containing a desired metric or dimension
-    join : Join
-        A join to related tables that satisfies the grain and provides
-        the target fields
-    grain : list of str
-        A list of dimensions that must be supported by the join
-    target_fields : list of str
-        A list of fields being targeted
-
+    """A set of tables in a datasource that can meet a grain and provide target
+    fields.
+    
+    **Parameters:**
+    
+    * **datasource** - (*DataSource*) The DataSource containing all tables
+    * **ds_table** - (*Table*) A table containing a desired metric or dimension
+    * **join** - (*Join*) A join to related tables that satisfies the grain and
+    provides the target fields
+    * **grain** - (*list of str*) A list of dimensions that must be supported by
+    the join
+    * **target_fields** - (*list of str*) A list of fields being targeted
+    
     """
 
     repr_attrs = ["datasource", "join", "grain", "target_fields"]
@@ -221,17 +214,16 @@ class TableSet(PrintMixin):
 
     def get_covered_metrics(self, wh):
         """Get a list of metrics covered by this table set
-
-        Parameters
-        ----------
-        wh : Warehouse
-           The warehouse to use as a reference for metric fields
-
-        Returns
-        -------
-        list of str
-            A list of metric names covered in this TableSet
-
+        
+        **Parameters:**
+        
+        * **wh** - (*Warehouse*) The warehouse to use as a reference for metric
+        fields
+        
+        **Returns:**
+        
+        (*list of str*) - A list of metric names covered in this TableSet
+        
         """
         adhoc_dses = []
         if self.datasource.name not in wh.datasource_names:
@@ -260,22 +252,23 @@ class JoinPart(PrintMixin):
 
 
 class Join(PrintMixin):
-    """Represents a join (potentially multi-part) that will be part of a query"""
+    """Represents a join (potentially multi-part) that will be part of a
+    query
+
+    **Parameters:**
+
+    * **join_parts** - (*list of JoinParts*) A list of JoinParts that will
+    make up a single Join
+    * **field_map** - (*dict*) The requested fields this join is meant to
+    satisfy
+
+    """
 
     repr_attrs = ["datasource", "table_names", "field_map"]
 
     @initializer
     def __init__(self, join_parts, field_map):
-        """Initialize the Join from the given join parts
-
-        Parameters
-        ----------
-        join_parts : list of JoinParts
-            A list of JoinParts that will make up a single Join
-        field_map : dict
-            The requested fields this join is meant to satisfy
-
-        """
+        """Initialize the Join from the given join parts"""
         self.datasource = None
         self.table_names = OrderedSet()
         for join_part in self.join_parts:
@@ -348,21 +341,17 @@ class Join(PrintMixin):
 
 def join_from_path(ds, path, field_map=None):
     """Given a path in the datasource graph, get the corresponding Join
-
-    Parameters
-    ----------
-    ds : DataSource
-        The datasource for the join
-    path : list of str
-        A list of tables that form a join path
-    field_map : dict, optional
-        Passed through to Join init
-
-    Returns
-    -------
-    Join
-        A Join between all tables in the path
-
+    
+    **Parameters:**
+    
+    * **ds** - (*DataSource*) The datasource for the join
+    * **path** - (*list of str*) A list of tables that form a join path
+    * **field_map** - (*dict, optional*) Passed through to Join init
+    
+    **Returns:**
+    
+    (*Join*) - A Join between all tables in the path
+    
     """
     join_parts = []
     if len(path) == 1:
@@ -392,19 +381,16 @@ class NeighborTable(PrintMixin):
 
 class DataSource(FieldManagerMixin, PrintMixin):
     """A component of a warehouse that houses one or more related tables
-
-    Parameters
-    ----------
-    name : str
-        The name of the datasource
-    metadata : SQLAlchemy metadata, optional
-        A SQLAlchemy metadata object that may have zillion configuration
-        information defined in the table and column `info.zillion`
-        attribute
-    config : dict, str, or buffer, optional
-        A dict adhering to the DataSourceConfigSchema or a file location to load
-        the config from
-
+    
+    **Parameters:**
+    
+    * **name** - (*str*) The name of the datasource
+    * **metadata** - (*SQLAlchemy metadata, optional*) A SQLAlchemy metadata
+    object that may have zillion configuration information defined in the table
+    and column `info.zillion` attribute
+    * **config** - (*dict, str, or buffer, optional*) A dict adhering to the
+    DataSourceConfigSchema or a file location to load the config from
+    
     """
 
     repr_attrs = ["name"]
@@ -465,17 +451,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def has_table(self, table):
         """Check whether the table is in this datasource's metadata
-
-        Parameters
-        ----------
-        table : SQLAlchemy Table
-            A SQLAlchemy table
-
-        Returns
-        -------
-        bool
-            True if the table's fullname is in the metadata.tables map
-
+        
+        **Parameters:**
+        
+        * **table** - (*SQLAlchemy Table*) A SQLAlchemy table
+        
+        **Returns:**
+        
+        (*bool*) - True if the table's fullname is in the metadata.tables map
+        
         """
         if isinstance(table, str):
             name = table
@@ -485,17 +469,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_table(self, fullname):
         """Get the table object from the datasource's metadata
-
-        Parameters
-        ----------
-        fullname : str
-            The full name of the table
-
-        Returns
-        -------
-        Table
-            The SQLAlchemy table object from the metadata
-
+        
+        **Parameters:**
+        
+        * **fullname** - (*str*) The full name of the table
+        
+        **Returns:**
+        
+        (*Table*) - The SQLAlchemy table object from the metadata
+        
         """
         table = self.metadata.tables[fullname]
         if not is_active(table):
@@ -504,19 +486,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_tables_with_field(self, field_name, table_type=None):
         """Get a list of Tables that have a field
-
-        Parameters
-        ----------
-        field_name : str
-            The name of the field to check for
-        table_type : str, optional
-            Check only this TableType
-
-        Returns
-        -------
-        list
-            A list of Table objects
-
+        
+        **Parameters:**
+        
+        * **field_name** - (*str*) The name of the field to check for
+        * **table_type** - (*str, optional*) Check only this TableType
+        
+        **Returns:**
+        
+        (*list*) - A list of Table objects
+        
         """
         tables = []
         for table in self.metadata.tables.values():
@@ -551,19 +530,17 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return columns
 
     def apply_config(self, config, reflect=False):
-        """Apply a datasource config to this datasource's metadata.
-        This will also ensure zillion info is present on the metadata,
-        populate global fields, and rebuild the datasource graph.
-
-        Parameters
-        ----------
-        config : dict
-            The datasource config to apply
-        reflect : bool, optional
-            If true, use SQLAlchemy to reflect the database. Table-level
-            reflection will also occur if any tables are created from data
-            URLs.
-
+        """Apply a datasource config to this datasource's metadata. This will
+        also ensure zillion info is present on the metadata, populate global
+        fields, and rebuild the datasource graph.
+        
+        **Parameters:**
+        
+        * **config** - (*dict*) The datasource config to apply
+        * **reflect** - (*bool, optional*) If true, use SQLAlchemy to reflect
+        the database. Table-level reflection will also occur if any tables are
+        created from data URLs.
+        
         """
         raiseifnot(self.metadata, "apply_config called with no datasource metadata")
 
@@ -590,17 +567,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def find_neighbor_tables(self, table):
         """Find tables that can be joined to or are parents of the given table
-
-        Parameters
-        ----------
-        table : SQLAlchemy Table
-            The table to find neighbors for
-
-        Returns
-        -------
-        list
-            A list of NeighborTables
-
+        
+        **Parameters:**
+        
+        * **table** - (*SQLAlchemy Table*) The table to find neighbors for
+        
+        **Returns:**
+        
+        (*list*) - A list of NeighborTables
+        
         """
         neighbor_tables = []
         fields = get_table_fields(table)
@@ -640,22 +615,21 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_possible_joins(self, table, grain):
         """This takes a given table (usually a metric table) and tries to find
-        one or more joins to each dimension of the grain. It's possible some
-        of these joins satisfy other parts of the grain too which leaves room
-        for consolidation, but it's also possible to have it generate
-        independent, non-overlapping joins to meet the grain.
-
-        Parameters
-        ----------
-        table : SQLAlchemy Table
-            Table to analyze for joins to grain
-        grain : iterable
-            An iterable of dimension names that the given table must join to
-
-        Returns
-        -------
-        dict
-            A mapping of dimension -> dimension joins
+        one or more joins to each dimension of the grain. It's possible some of
+        these joins satisfy other parts of the grain too which leaves room for
+        consolidation, but it's also possible to have it generate independent,
+        non-overlapping joins to meet the grain.
+        
+        **Parameters:**
+        
+        * **table** - (*SQLAlchemy Table*) Table to analyze for joins to grain
+        * **grain** - (*iterable*) An iterable of dimension names that the given
+        table must join to
+        
+        **Returns:**
+        
+        (*dict*) - A mapping of dimension -> dimension joins
+        
         """
         raiseifnot(
             self.has_table(table),
@@ -687,23 +661,20 @@ class DataSource(FieldManagerMixin, PrintMixin):
         self, ds_tables_with_field, field, grain, dimension_grain
     ):
         """Find table sets that meet the grain
-
-        Parameters
-        ----------
-        ds_tables_with_field : list of tables
-            A list of datasource tables that have the target field
-        field : str
-            The target field we are trying to cover
-        grain : iterable
-            The grain the table set must support
-        dimension_grain
-            The subset of the grain that are requested dimensions
-
-        Returns
-        -------
-        list
-            A list of TableSets
-
+        
+        **Parameters:**
+        
+        * **ds_tables_with_field** - (*list of tables*) A list of datasource
+        tables that have the target field
+        * **field** - (*str*) The target field we are trying to cover
+        * **grain** - (*iterable*) The grain the table set must support
+        * **dimension_grain** - The subset of the grain that are requested
+        dimensions
+        
+        **Returns:**
+        
+        (*list*) - A list of TableSets
+        
         """
         table_sets = []
         for field_table in ds_tables_with_field:
@@ -737,9 +708,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_params(self):
         """Get a simple dict representation of the datasource params. This is
-        currently not sufficient to completely rebuild the datasource.
-
-        """
+        currently not sufficient to completely rebuild the datasource."""
         # TODO: does this need to store entire config?
         # TODO: is the metadata URL exposing sensitive info?
         return dict(name=self.name, connect=str(self.metadata.bind.url))
@@ -772,8 +741,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 print(format_msg(column.info["zillion"], label=None, indent=4))
 
     def _load_adhoc_tables(self, config):
-        """Extract and init the adhoc tables in the DS config. This will
-        return a list of processed adhoc tables by name"""
+        """Extract and init the adhoc tables in the DS config. This will return
+        a list of processed adhoc tables by name"""
         ds_config_context = get_ds_config_context(self.name)
         adhoc_tables = []
 
@@ -1075,8 +1044,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     covered_fields.add(field)
 
     def _eliminate_redundant_joins(self, sorted_join_fields):
-        """Eliminate joins that aren't providing unique fields or are
-        just table supersets of other joins"""
+        """Eliminate joins that aren't providing unique fields or are just table
+        supersets of other joins"""
         joins_to_delete = set()
         for join, covered_fields in sorted_join_fields:
             if join in joins_to_delete:
@@ -1164,8 +1133,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def _consolidate_field_joins(self, grain, field_joins):
         """This takes a mapping of fields to joins that satisfy each field and
-        returns a minimized map of joins to fields satisfied by that join.
-        """
+        returns a minimized map of joins to fields satisfied by that join."""
 
         # Some preliminary shuffling of the inputs to support later logic
         join_fields = self._invert_field_joins(field_joins)
@@ -1236,24 +1204,21 @@ class DataSource(FieldManagerMixin, PrintMixin):
     @classmethod
     def from_data_url(cls, name, data_url, config=None, if_exists=IfExistsModes.FAIL):
         """Create a DataSource from a data url
-
-        Parameters
-        ----------
-        name : str
-            The name to give the datasource
-        data_url : str
-            A url pointing to a SQLite database to download
-        config : dict, optional
-            A DataSourceConfigSchema dict config. Note that the connect param of this
-            config will be overwritten if present.
-        if_exists : str, optional
-            Control behavior when the database already exists
-
-        Returns
-        -------
-        DataSource
-            A DataSource created from the data_url and config
-
+        
+        **Parameters:**
+        
+        * **name** - (*str*) The name to give the datasource
+        * **data_url** - (*str*) A url pointing to a SQLite database to download
+        * **config** - (*dict, optional*) A DataSourceConfigSchema dict config.
+        Note that the connect param of this config will be overwritten if
+        present.
+        * **if_exists** - (*str, optional*) Control behavior when the database
+        already exists
+        
+        **Returns:**
+        
+        (*DataSource*) - A DataSource created from the data_url and config
+        
         """
         config = (config or {}).copy()
         connect = config.get("connect", {})
@@ -1268,21 +1233,18 @@ class DataSource(FieldManagerMixin, PrintMixin):
     @classmethod
     def from_datatables(cls, name, datatables, config=None):
         """Create a DataSource from a list of datatables
-
-        Parameters
-        ----------
-        name : str
-            The name to give the datasource
-        datatables : list of AdHocDataTables
-            A list of AdHocDataTables to use to create the DataSource
-        config : dict, optional
-            A DataSourceConfigSchema dict config
-
-        Returns
-        -------
-        DataSource
-            A DataSource created from the datatables and config
-
+        
+        **Parameters:**
+        
+        * **name** - (*str*) The name to give the datasource
+        * **datatables** - (*list of AdHocDataTables*) A list of AdHocDataTables
+        to use to create the DataSource
+        * **config** - (*dict, optional*) A DataSourceConfigSchema dict config
+        
+        **Returns:**
+        
+        (*DataSource*) - A DataSource created from the datatables and config
+        
         """
         config = config or dict(tables={})
         ds_name = cls._check_or_create_name(name)
@@ -1323,8 +1285,28 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
 
 class AdHocDataTable(PrintMixin):
-    """Create an adhoc (temporary) representation of a table for use in an
-    adhoc datasource"""
+    """Create an adhoc (temporary) representation of a table for use in an adhoc
+    datasource
+
+    **Parameters:**
+
+    * **name** - (*str*) The name of the table
+    * **data** - (*iterable or DataFrame*) The data to create the adhoc
+    table from
+    * **table_type** - (*str*) Specify the TableType
+    * **columns** - (*dict, optional*) Column configuration for the table
+    * **primary_key** - (*list of str, optional*) A list of fields that make
+    up the primary key of the table
+    * **parent** - (*str, optional*) A reference to a parent table in the
+    same datasource
+    * **if_exists** - (*str, optional*) Control behavior when datatables
+    already exist in the database
+    * **schema** - (*str, optional*) The schema in which the table resides
+    * **kwargs** - Keyword arguments passed to
+    pandas.DataFrame.from_records if a DataFrame is created from iterable
+    data
+
+    """
 
     repr_attrs = ["name", "primary_key", "table_config"]
 
@@ -1344,29 +1326,6 @@ class AdHocDataTable(PrintMixin):
         """Initializes the datatable by parsing its config, but does not
         actually add it to a particular DB yet. It is assumed the DataSource
         will do that later.
-
-        Parameters
-        ----------
-        name : str
-            The name of the table
-        data : iterable or DataFrame
-            The data to create the adhoc table from
-        table_type : str
-            Specify the TableType
-        columns : dict, optional
-            Column configuration for the table
-        primary_key : list of str, optional
-            A list of fields that make up the primary key of the table
-        parent : str, optional
-            A reference to a parent table in the same datasource
-        if_exists : str, optional
-            Control behavior when datatables already exist in the database
-        schema : str, optional
-            The schema in which the table resides
-        **kwargs
-            Keyword arguments passed to pandas.DataFrame.from_records if
-            a DataFrame is created from iterable data
-
         """
         self.df_kwargs = kwargs or {}
         self.table_config = TableConfigSchema().load(
@@ -1404,21 +1363,20 @@ class AdHocDataTable(PrintMixin):
     def to_sql(
         self, engine, if_exists=IfExistsModes.FAIL, method="multi", chunksize=int(1e3)
     ):
-        """Use pandas.DataFrame.to_sql to push the adhoc table data to a SQL database.
-
-        Parameters
-        ----------
-        engine : SQLAlchemy connection engine
-            The engine used to connect to the database
-        if_exists : str, optional
-            Passed through to to_sql. An additional option of "ignore" is
-            supported which first checks if the table exists and if so takes
-            no action. The "append" option is not currently supported.
-        method : str, optional
-            Passed through to to_sql
-        chunksize : type, optional
-            Passed through to to_sql
-
+        """Use pandas.DataFrame.to_sql to push the adhoc table data to a SQL
+        database.
+        
+        **Parameters:**
+        
+        * **engine** - (*SQLAlchemy connection engine*) The engine used to
+        connect to the database
+        * **if_exists** - (*str, optional*) Passed through to to_sql. An
+        additional option of "ignore" is supported which first checks if the
+        table exists and if so takes no action. The "append" option is not
+        currently supported.
+        * **method** - (*str, optional*) Passed through to to_sql
+        * **chunksize** - (*type, optional*) Passed through to to_sql
+        
         """
         raiseifnot(
             if_exists in IfExistsModes, "Invalid if_exists value: %s" % if_exists
@@ -1444,12 +1402,12 @@ class AdHocDataTable(PrintMixin):
 
 
 class SQLiteDataTable(AdHocDataTable):
-    """AdHocDataTable from an existing sqlite database on the local
-    filesystem
-
+    """AdHocDataTable from an existing sqlite database on the local filesystem
+    
     Note: the "data" param to AdHocDataTable is ignored. This is simply a
     workaround to get an AdHocDataTable reference for an existing SQLite DB
     without having to recreate anything from data.
+    
     """
 
     def get_dataframe(self):
@@ -1496,11 +1454,9 @@ class JSONDataTable(AdHocDataTable):
 
 
 class HTMLDataTable(AdHocDataTable):
-    """AdHocDataTable from an html table using pandas.read_html. By default
-    it expects a table in the same format as produced by:
-    `df.reset_index().to_html("table.html", index=False)`
-
-    """
+    """AdHocDataTable from an html table using pandas.read_html. By default it
+    expects a table in the same format as produced by:
+    `df.reset_index().to_html("table.html", index=False)`"""
 
     def get_dataframe(self):
         dfs = pd.read_html(self.data, **self.df_kwargs)
@@ -1537,25 +1493,20 @@ class GoogleSheetsDataTable(AdHocDataTable):
 
 
 def datatable_from_config(name, config, schema=None, **kwargs):
-    """Factory to create an AdHocDataTable from a given config. The type of
-    the AdHocDataTable created will be inferred from the config["url"] param.
-
-    Parameters
-    ----------
-    name : str
-        The name of the table
-    config : dict
-        The configuration of the table
-    schema : str, optional
-        The schema in which the table resides
-    **kwargs
-        Passed to init of the particular AdHocDataTable class
-
-    Returns
-    -------
-    AdHocDataTable
-        Return the created AdHocDataTable (subclass)
-
+    """Factory to create an AdHocDataTable from a given config. The type of the
+    AdHocDataTable created will be inferred from the config["url"] param.
+    
+    **Parameters:**
+    
+    * **name** - (*str*) The name of the table
+    * **config** - (*dict*) The configuration of the table
+    * **schema** - (*str, optional*) The schema in which the table resides
+    * **kwargs** - Passed to init of the particular AdHocDataTable class
+    
+    **Returns:**
+    
+    (*AdHocDataTable*) - Return the created AdHocDataTable (subclass)
+    
     """
     url = config["data_url"]
     if url.endswith("csv"):

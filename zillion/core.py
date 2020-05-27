@@ -140,8 +140,8 @@ class TableTypes(metaclass=ClassValueContainsMeta):
 
 
 class AggregationTypes(metaclass=ClassValueContainsMeta):
-    """Allowed aggregation types. These aggregations are limited
-    by what can be done in most SQL databases"""
+    """Allowed aggregation types. These aggregations are limited by what can be
+    done in most SQL databases"""
 
     MEAN = "mean"
     SUM = "sum"
@@ -173,15 +173,13 @@ class TechnicalTypes(metaclass=ClassValueContainsMeta):
 
 class TechnicalModes(metaclass=ClassValueContainsMeta):
     """Allowed Technical modes
-
-    Attributes
-    ----------
-    GROUP : str
-        Apply the technical to the last grouping of the data for a
-        multi-dimensional report
-    ALL : str
-        Apply the technical across all result data
-
+    
+    **Attributes:**
+    
+    * **GROUP** - (*str*) Apply the technical to the last grouping of the data
+    for a multi-dimensional report
+    * **ALL** - (*str*) Apply the technical across all result data
+    
     """
 
     GROUP = "group"
@@ -189,7 +187,7 @@ class TechnicalModes(metaclass=ClassValueContainsMeta):
 
 
 class RollupTypes(metaclass=ClassValueContainsMeta):
-    """Allowed Rollup Types """
+    """Allowed Rollup Types"""
 
     TOTALS = "totals"
     ALL = "all"
@@ -211,11 +209,11 @@ class ExecutionState:
 
 
 class IfExistsModes(metaclass=ClassValueContainsMeta):
-    """Allowed modes when creating tables from data. This is based off of
-    pandas `if_exists` param in the `DataFrame.to_sql` method, with the
-    addition of an "ignore" option. The "append" option is also removed for
-    now since there isn't a safe/generic way to guarantee a proper primary key
-    has been set on the table."""
+    """Allowed modes when creating tables from data. This is based off of pandas
+    `if_exists` param in the `DataFrame.to_sql` method, with the addition of an
+    "ignore" option. The "append" option is also removed for now since there
+    isn't a safe/generic way to guarantee a proper primary key has been set on
+    the table."""
 
     FAIL = "fail"
     REPLACE = "replace"

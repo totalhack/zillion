@@ -79,18 +79,17 @@ class InvalidSQLAlchemyTypeString(Exception):
 
 
 def contains_sql_keywords(sql):
-    """Determine whether a SQL query contains special SQL keywords (DML, DDL, etc.)
-
-    Parameters
-    ----------
-    sql : str or sqlparse result
-        The SQL query to check for keywords
-
-    Returns
-    -------
-    bool
-        True if the SQL string contains keywords
-
+    """Determine whether a SQL query contains special SQL keywords (DML, DDL,
+    etc.)
+    
+    **Parameters:**
+    
+    * **sql** - (*str or sqlparse result*) The SQL query to check for keywords
+    
+    **Returns:**
+    
+    (*bool*) - True if the SQL string contains keywords
+    
     """
     if isinstance(sql, str):
         sql = sp.parse(sql)
@@ -108,20 +107,21 @@ def contains_sql_keywords(sql):
 
 def contains_aggregation(sql):
     """Determine whether a SQL query contains aggregation functions.
+    
+    **Warning:**
 
-    WARNING: this relies on a non-exhaustive list of SQL aggregation
-    functions to look for. This will likely need updating.
-
-    Parameters
-    ----------
-    sql : str or sqlparse result
-        The SQL query to check for aggregation functions
-
-    Returns
-    -------
-    bool
-        True if the SQL string contains aggregation
-
+    This relies on a non-exhaustive list of SQL aggregation functions
+    to look for. This will likely need updating.
+    
+    **Parameters:**
+    
+    * **sql** - (*str or sqlparse result*) The SQL query to check for
+    aggregation functions
+    
+    **Returns:**
+    
+    (*bool*) - True if the SQL string contains aggregation
+    
     """
     if isinstance(sql, str):
         sql = sp.parse(sql)
@@ -139,23 +139,21 @@ def contains_aggregation(sql):
 
 
 def type_string_to_sa_type(type_string):
-    """Convert a field type string to a SQLAlchemy type. The type string will
-    be evaluated as a python statement or class name to init from the
-    SQLAlchemy top level module. Dialect-specific SQLAlchemy types are not
-    currently supported.
-
-    Parameters
-    ----------
-    type_string : str
-        A string representing a SQLAlchemy type, such as "Integer", or
-        "String(32)". This does a case-insensitive search and will return the
-        first matching SQLAlchemy type.
-
-    Returns
-    -------
-    SQLAlchemy type object
-        An init'd SQLAlchemy type object
-
+    """Convert a field type string to a SQLAlchemy type. The type string will be
+    evaluated as a python statement or class name to init from the SQLAlchemy
+    top level module. Dialect-specific SQLAlchemy types are not currently
+    supported.
+    
+    **Parameters:**
+    
+    * **type_string** - (*str*) A string representing a SQLAlchemy type, such as
+    "Integer", or "String(32)". This does a case-insensitive search and will
+    return the first matching SQLAlchemy type.
+    
+    **Returns:**
+    
+    (*SQLAlchemy type object*) - An init'd SQLAlchemy type object
+    
     """
     try:
         tree = ast.parse(type_string)
@@ -180,10 +178,10 @@ def type_string_to_sa_type(type_string):
 
 
 def to_generic_sa_type(type):
-    """Return a generic SQLAlchemy type object from a type that may be
-    dialect-specific. This will attempt to preserver common type settings
-    such as specified field length, scale, and precision. On error it
-    will fall back to trying to init the generic type with no params.
+    """Return a generic SQLAlchemy type object from a type that may be dialect-
+    specific. This will attempt to preserver common type settings such as
+    specified field length, scale, and precision. On error it will fall back to
+    trying to init the generic type with no params.
     """
     params = {}
     for param in ["length", "precision", "scale"]:
@@ -199,17 +197,16 @@ def to_generic_sa_type(type):
 
 def infer_aggregation_and_rounding(column):
     """Infer the aggregation and rounding settings based on the column type
-
-    Parameters
-    ----------
-    column : SQLAlchemy column
-        The column to analyze
-
-    Returns
-    -------
-    AggregationType, int
-        A 2-item tuple of the aggregation type and rounding to use
-
+    
+    **Parameters:**
+    
+    * **column** - (*SQLAlchemy column*) The column to analyze
+    
+    **Returns:**
+    
+    (*AggregationType, int*) - A 2-item tuple of the aggregation type and
+    rounding to use
+    
     """
     if isinstance(column.type, tuple(INTEGER_SA_TYPES)):
         return AggregationTypes.SUM, 0
@@ -244,21 +241,18 @@ def is_numeric_type(type):
 def is_probably_metric(column, formula=None):
     """Determine if a column is probably a metric. This is used when trying to
     automatically init/reflect a datasource and determine the field types for
-    columns. The logic is very coarse, and should not be relied on for more
-    than quick/convenient use cases.
-
-    Parameters
-    ----------
-    column : SQLAlchemy column
-        The column to analyze
-    formula : str, optional
-        A formula to calculate the column
-
-    Returns
-    -------
-    bool
-        True if the column is probably a metric
-
+    columns. The logic is very coarse, and should not be relied on for more than
+    quick/convenient use cases.
+    
+    **Parameters:**
+    
+    * **column** - (*SQLAlchemy column*) The column to analyze
+    * **formula** - (*str, optional*) A formula to calculate the column
+    
+    **Returns:**
+    
+    (*bool*) - True if the column is probably a metric
+    
     """
     if formula and contains_aggregation(formula):
         return True
@@ -273,17 +267,15 @@ def is_probably_metric(column, formula=None):
 
 def sqla_compile(expr):
     """Compile a SQL expression
-
-    Parameters
-    ----------
-    expr : SQLAlchemy expression
-        The SQLAlchemy expression to compile
-
-    Returns
-    -------
-    str
-        The compiled expression string
-
+    
+    **Parameters:**
+    
+    * **expr** - (*SQLAlchemy expression*) The SQLAlchemy expression to compile
+    
+    **Returns:**
+    
+    (*str*) - The compiled expression string
+    
     """
     return str(expr.compile(compile_kwargs={"literal_binds": True}))
 
@@ -295,21 +287,20 @@ def printexpr(expr):
 
 def column_fullname(column, prefix=None):
     """Get a fully qualified name for a column
-
-    Parameters
-    ----------
-    column : SQLAlchemy column
-        A SQLAlchemy column object to get the full name for
-    prefix : str, optional
-        If specified, a manual prefix to prepend to the output string. This
-        will automatically be separted with a ".".
-
-    Returns
-    -------
-    str
-        A fully qualified column name. The exact format will vary depending on
-        your SQLAlchemy metadata, but an example would be: schema.table.column
-
+    
+    **Parameters:**
+    
+    * **column** - (*SQLAlchemy column*) A SQLAlchemy column object to get the
+    full name for
+    * **prefix** - (*str, optional*) If specified, a manual prefix to prepend to
+    the output string. This will automatically be separted with a ".".
+    
+    **Returns:**
+    
+    (*str*) - A fully qualified column name. The exact format will vary
+    depending on your SQLAlchemy metadata, but an example would be:
+    schema.table.column
+    
     """
     name = "%s.%s" % (column.table.fullname, column.name)
     if prefix:
@@ -331,38 +322,33 @@ def get_schema_and_table_name(table):
 
 def get_sqla_criterion_expr(column, criterion, negate=False):
     """Create a SQLAlchemy criterion expression
-
-    Parameters
-    ----------
-    column : SQLAlchemy column
-        A SQLAlchemy column object to be used in the expression
-    criterion : 3-item iterable
-        A 3-item tuple or list of the format [field, operation, value(s)]. The
-        supported operations are: =, !=, >, <, >=, <=, in, not in, between,
-        not between, like, not like. The value item may take on different
-        formats depending on the operation. In most cases passing an iterable
-        will result in multiple criteria of that operation being formed. For
-        example, ("my_field", "=", [1,2,3]) would logically or 3 conditions of
-        equality to the 3 values in the list. The "between" operations expect
-        each value to be a 2-item iterable representing the lower and upper
-        bound of the criterion.
-
-        TODO: more complete documentation of options/examples
-    negate : bool, optional
-        Negate the expression
-
-    Note
-    ----
+    
+    **Parameters:**
+    
+    * **column** - (*SQLAlchemy column*) A SQLAlchemy column object to be used
+    in the expression
+    * **criterion** - (*3-item iterable*) A 3-item tuple or list of the format
+    [field, operation, value(s)]. The supported operations are: `=, !=, >, <, >=,
+    <=, in, not in, between, not between, like, not like`. The value item may
+    take on different formats depending on the operation. In most cases passing
+    an iterable will result in multiple criteria of that operation being formed.
+    For example, ("my_field", "=", [1,2,3]) would logically or 3 conditions of
+    equality to the 3 values in the list. The "between" operations expect each
+    value to be a 2-item iterable representing the lower and upper bound of the
+    criterion.
+    * **negate** - (*bool, optional*) Negate the expression
+    
+    **Returns:**
+    
+    (*SQLAlchemy expression*) - A SQLALchemy expression representing the
+    criterion
+    
+    **Notes:**
+    
     Postgresql "like" is case sensitive, but mysql "like" is not. Postgresql
-    also supports "ilike" to specify case insensitive, so one option is to
-    look at the dialect to determine the function, but that is not supported
-    yet.
-
-    Returns
-    -------
-    SQLAlchemy expression
-        A SQLALchemy expression representing the criterion
-
+    also supports "ilike" to specify case insensitive, so one option is to look
+    at the dialect to determine the function, but that is not supported yet.
+    
     """
     field, op, values = criterion
     op = op.lower()
@@ -504,19 +490,16 @@ def to_sqlite_type(type):
 
 def filter_dialect_schemas(schemas, dialect):
     """Filter out a set of baseline/system schemas for a dialect
-
-    Parameters
-    ----------
-    schemas : list
-        A list of schema names
-    dialect : str
-        The name of a SQLAlchemy dialect
-
-    Returns
-    -------
-    list
-        A filtered list of schema names
-
+    
+    **Parameters:**
+    
+    * **schemas** - (*list*) A list of schema names
+    * **dialect** - (*str*) The name of a SQLAlchemy dialect
+    
+    **Returns:**
+    
+    (*list*) - A filtered list of schema names
+    
     """
     ignores = DIALECT_IGNORE_SCHEMAS.get(dialect, None)
     if not ignores:

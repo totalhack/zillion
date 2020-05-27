@@ -1,0 +1,62 @@
+site_name: Zillion
+site_description: Make sense of it all.
+site_author: totalhack
+site_url: https://totalhack.github.io/zillion/
+
+docs_dir: docs/mkdocs
+site_dir: docs/site
+
+repo_name: totalhack/zillion
+repo_url: https://github.com/totalhack/zillion
+
+copyright: Copyright &copy; 2020 - present @totalhack
+
+theme:
+  name: material
+  language: en
+  palette:
+    scheme: default
+    primary: blue grey
+    accent: light blue
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    logo: material/chart-donut
+  favicon: images/chart-donut.png
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github-alt
+      link: https://github.com/totalhack/zillion
+
+extra_css:
+ - css/extra.css
+
+markdown_extensions:
+  - codehilite:
+      guess_lang: false
+      use_pygments: true
+      noclasses: true
+      pygments_style: monokai
+  - toc:
+      permalink: true
+  - mkautodoc
+
+nav:
+  - 'Getting Started': 'index.md'
+  - 'API Reference':
+      - 'zillion.configs': 'zillion.configs.md'
+      - 'zillion.core': 'zillion.core.md'
+      - 'zillion.datasource': 'zillion.datasource.md'
+      - 'zillion.field': 'zillion.field.md'
+      - 'zillion.report': 'zillion.report.md'
+      - 'zillion.sql_utils': 'zillion.sql_utils.md'
+      - 'zillion.warehouse': 'zillion.warehouse.md'
+  - 'Contributing': 'contributing.md'
+  - 'Star on Github': 'https://github.com/totalhack/zillion'

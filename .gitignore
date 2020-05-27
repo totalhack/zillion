@@ -1,5 +1,6 @@
 *.egg-info
 build
+docs/site
 *.pyc
 *.out
 dist

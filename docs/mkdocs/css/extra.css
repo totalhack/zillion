@@ -1,0 +1,51 @@
+pre { color: white !important; }
+
+.md-clipboard:before {
+    color: rgb(255, 255, 255);
+}
+
+.codehilite:hover .md-clipboard:before,.md-typeset .highlight:hover .md-clipboard:before,pre:hover .md-clipboard:before {
+    color: rgba(255, 255, 255, 0.54) !important
+}
+
+.md-typeset code {
+    font-size: 0.87em;
+}
+
+.md-typeset pre > code {
+    background-color: transparent;
+    color: #cccccc;
+}
+
+.md-typeset p > code {
+    color: black;
+}
+
+.md-typeset li > code {
+    color: black;
+}
+
+/* mkautodoc */
+
+div.autodoc-docstring {
+  padding-left: 20px;
+  margin-bottom: 30px;
+  border-left: 5px solid rgba(230, 230, 230);
+}
+
+div.autodoc-members {
+  padding-left: 20px;
+  margin-bottom: 15px;
+}
+
+div.autodoc-signature {
+    color: black;
+}
+
+.autodoc-signature code {
+    color: black;
+}
+
+.autodoc-param {
+    font-size: 0.95em;
+}
