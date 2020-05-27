@@ -16,10 +16,9 @@ $ pip install zillion
 **Primer**
 ----------
 
-The following is meant to give a quick overview of some theory and nomenclature
-used in data warehousing with `Zillion`. Please also see the
-[docs](https://zillion.readthedocs.io/en/latest/) or skip
-below for a quickstart [example](#example-sales-analytics).
+The following is meant to give a quick overview of some theory and
+nomenclature used in data warehousing with `Zillion`. Skip below for a
+quickstart [example](#example-sales-analytics).
 
 In short: `Zillion` writes SQL for you and makes data accessible through a very
 simple API:
@@ -248,7 +247,7 @@ wh.print_info() # Formatted print of the Warehouse structure
 ```
 
 For a deeper dive of the config schema please see the full
-[docs](https://zillion.readthedocs.io/en/latest/zillion.configs.html).
+[docs](https://totalhack.github.io/zillion/zillion.configs/).
 
 <a name="example-reports"></a>
 
@@ -295,7 +294,7 @@ partner, and also a rollup of totals at the partner and campaign level.
 
 > *Note:* the output contains a special character to mark DataFrame rollup rows
 that were added to the result. The
-[ReportResult](https://zillion.readthedocs.io/en/latest/zillion.report.html#zillion.report.ReportResult)
+[ReportResult](https://totalhack.github.io/zillion/zillion.report/#reportresult)
 object contains some helper attributes to automatically access or filter
 rollups, as well as a `df_display` attribute that returns the result with
 friendlier display values substituted for special characters. The
@@ -328,8 +327,8 @@ Partner C    Campaign 1C      5.0    1.0    118.5
 ```
 
 See the `Report`
-[docs](https://zillion.readthedocs.io/en/latest/zillion.report.html#zillion.report.Report)
-for more information on supported rollup behavior.
+[docs](https://totalhack.github.io/zillion/zillion.report/#report) for more
+information on supported rollup behavior.
 
 **Example:** Save a report spec (not the data):
 
@@ -535,7 +534,7 @@ Technical computations are computed at the Combined Layer, whereas the "aggregat
 is done at the DataSource Layer (hence needing to define both above). 
 
 For more info on how shorthand technical strings are parsed, see the
-[parse_technical_string](https://zillion.readthedocs.io/en/latest/zillion.configs.html#zillion.configs.parse_technical_string)
+[parse_technical_string](https://totalhack.github.io/zillion/zillion.configs/#parse_technical_string)
 code. For a full list of supported technical types see
 `zillion.core.TechnicalTypes`.
 
