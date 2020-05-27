@@ -11,6 +11,12 @@ all: install
 clean:
 	rm -rf build dist *.egg-info
 
+docs:
+	cd docs; python build_markdown.py
+
+deploy_docs:
+	mkdocs gh-deploy
+
 develop:
 	$(PIP_CMD) install -U -e ./ --no-binary ":all:"
 
@@ -57,4 +63,4 @@ test_pip:
 	$(TEST_ENV)/bin/pip install -i "https://test.pypi.org/simple/" --extra-index-url "https://pypi.org/simple/" zillion==$(VERSION)
 	$(TEST_ENV)/bin/python -c "import zillion"
 
-.PHONY: dist clean test_env
+.PHONY: dist clean docs test_env

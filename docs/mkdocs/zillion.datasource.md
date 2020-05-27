@@ -2,7 +2,7 @@
 # Module zillion.datasource
 
 
-## [AdHocDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1286-L1399)
+## [AdHocDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1287-L1401)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -11,7 +11,7 @@
     :members: get_dataframe table_exists to_sql
 
 
-## [CSVDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1418-L1427)
+## [CSVDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1420-L1429)
 
 *Bases*: zillion.datasource.AdHocDataTable
 
@@ -20,7 +20,7 @@
     :members: get_dataframe table_exists to_sql
 
 
-## [DataSource](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L381-L1283)
+## [DataSource](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L382-L1284)
 
 *Bases*: zillion.field.FieldManagerMixin, tlbx.logging_utils.PrintMixin
 
@@ -29,7 +29,7 @@
     :members: add_dimension add_metric apply_config directly_has_dimension directly_has_field directly_has_metric find_descendent_tables find_neighbor_tables find_possible_table_sets from_data_url from_datatables get_child_field_managers get_columns_with_field get_dialect_name get_dim_tables_with_dim get_dimension get_dimension_configs get_dimension_names get_dimensions get_direct_dimension_configs get_direct_dimensions get_direct_metric_configs get_direct_metrics get_field get_field_instances get_field_managers get_field_names get_fields get_metric get_metric_configs get_metric_names get_metric_tables_with_metric get_metrics get_params get_possible_joins get_table get_tables_with_field has_dimension has_field has_metric has_table print_dimensions print_info print_metrics
 
 
-## [ExcelDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1430-L1441)
+## [ExcelDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1432-L1443)
 
 *Bases*: zillion.datasource.AdHocDataTable
 
@@ -38,7 +38,7 @@
     :members: get_dataframe table_exists to_sql
 
 
-## [GoogleSheetsDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1469-L1490)
+## [GoogleSheetsDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1471-L1492)
 
 *Bases*: zillion.datasource.AdHocDataTable
 
@@ -47,7 +47,7 @@
     :members: get_dataframe table_exists to_sql
 
 
-## [HTMLDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1454-L1466)
+## [HTMLDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1456-L1468)
 
 *Bases*: zillion.datasource.AdHocDataTable
 
@@ -56,7 +56,7 @@
     :members: get_dataframe table_exists to_sql
 
 
-## [JSONDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1444-L1451)
+## [JSONDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1446-L1453)
 
 *Bases*: zillion.datasource.AdHocDataTable
 
@@ -65,7 +65,7 @@
     :members: get_dataframe table_exists to_sql
 
 
-## [Join](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L254-L338)
+## [Join](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L254-L339)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -83,7 +83,7 @@
     
 
 
-## [NeighborTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L371-L378)
+## [NeighborTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L372-L379)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -92,7 +92,7 @@
     
 
 
-## [SQLiteDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1402-L1415)
+## [SQLiteDataTable](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1404-L1417)
 
 *Bases*: zillion.datasource.AdHocDataTable
 
@@ -122,7 +122,7 @@
     :docstring:
 
 
-## [datatable_from_config](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1493-L1535)
+## [datatable_from_config](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L1495-L1537)
 
 ::: zillion.datasource.datatable_from_config
     :docstring:
@@ -146,7 +146,7 @@
     :docstring:
 
 
-## [join_from_path](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L341-L368)
+## [join_from_path](https://github.com/totalhack/zillion/blob/master/zillion/datasource.py#L342-L369)
 
 ::: zillion.datasource.join_from_path
     :docstring:
