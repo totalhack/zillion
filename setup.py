@@ -42,13 +42,13 @@ for repo in git_requires:
 
 
 extras_require = {
-    "postgres": ["psycopg2"],
+    "postgres": ["psycopg2==2.8.5"],
     "dev": [
         "black",
         "pre-commit",
-        "pylint",
-        "pytest",
-        "twine",
+        "pylint==2.4.4",
+        "pytest==5.4.1",
+        "twine==3.1.1",
         "wheel",
         "mkdocs==1.1.2",
         "mkdocs-material==5.2.1",
