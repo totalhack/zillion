@@ -1327,7 +1327,6 @@ class Report(ExecutionStateMixin):
                     try:
                         query.kill()
                     except Exception as e:
-                        st()
                         setattr(e, "query", query)
                         exceptions.append(e)
 
