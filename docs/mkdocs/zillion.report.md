@@ -43,7 +43,7 @@
     
 
 
-## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1095-L1718)
+## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1095-L1717)
 
 *Bases*: zillion.report.ExecutionStateMixin
 
@@ -52,7 +52,7 @@
     :members: delete execute from_params get_dimension_grain get_grain get_json get_params kill load save
 
 
-## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1721-L1767)
+## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1720-L1766)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 

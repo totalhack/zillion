@@ -425,7 +425,7 @@ prefixed with "lead_" or "sale_" as specified by the optional
 `type_conversion_prefix` in the config for each table. Some examples of
 auto-generated dimensions include sale_hour, sale_day_name, sale_day_of_month,
 sale_month, sale_year, etc. To prevent type conversions, set
-`skip_conversion_fields` to `false` on your `DataSource` config.
+`skip_conversion_fields` to `true` on your `DataSource` config.
 
 See `zillion.field.TYPE_ALLOWED_CONVERSIONS` for more details on currently
 supported conversions.
@@ -510,7 +510,7 @@ data file is large. It is often better to sync and create your data ahead of
 time so you have complete schema control, but this method can be very useful
 in certain scenarios.
 
-> *Note:* be careful not to unintentionally overwrite existing tables in your database!
+> ⚠️ **Warning**: be careful not to overwrite existing tables in your database!
 
 <a name="technicals"></a>
 
