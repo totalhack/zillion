@@ -178,6 +178,29 @@ def test_report_count_aggr(wh):
     info(result.df)
 
 
+def test_report_criteria_between(wh):
+    metrics = ["leads"]
+    dimensions = ["partner_name"]
+    criteria = [("date", "between", ["2020-01-01", "2020-05-01"])]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount > 0
+    criteria = [("date", "not between", ["2020-01-01", "2020-05-01"])]
+    result = wh_execute(wh, locals())
+    assert result.rowcount == 0
+
+
+def test_report_criteria_in(wh):
+    metrics = ["leads"]
+    dimensions = ["date"]
+    criteria = [("date", "in", ["2020-04-29", "2020-04-30"])]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+    criteria = [("date", "not in", ["2020-04-29", "2020-04-30"])]
+    result = wh_execute(wh, locals())
+    assert result.rowcount == 0
+
+
 def test_report_pivot(wh):
     metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]

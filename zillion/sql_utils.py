@@ -386,15 +386,11 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
         else:
             clauses = [sa.not_(column.in_(values))]
     elif op == "between":
-        clauses = []
-        for value in values:
-            raiseifnot(len(value) == 2, "Between clause value must have length of 2")
-            clauses.append(column.between(value[0], value[1]))
+        raiseifnot(len(values) == 2, "Between clause value must have length of 2")
+        clauses = [column.between(values[0], values[1])]
     elif op == "not between":
-        clauses = []
-        for value in values:
-            raiseifnot(len(value) == 2, "Between clause value must have length of 2")
-            clauses.append(sa.not_(column.between(value[0], value[1])))
+        raiseifnot(len(values) == 2, "Between clause value must have length of 2")
+        clauses = [sa.not_(column.between(values[0], values[1]))]
     elif op == "like":
         clauses = [column.like(v) for v in values]
     elif op == "not like":
