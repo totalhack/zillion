@@ -5,7 +5,8 @@
             "display_name": "Revenue/Lead",
             "aggregation": "mean",
             "rounding": 2,
-            "formula": "{revenue}/{leads}"
+            "formula": "{revenue}/{leads}",
+            "description": "Revenue per Lead"
         },
         {
             "name": "rpl_weighted",

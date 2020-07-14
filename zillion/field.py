@@ -39,12 +39,16 @@ class Field(ConfigMixin, PrintMixin):
     
     * **name** - (*str*) The name of the field
     * **type** - (*str or SQLAlchemy type*) The column type for the field.
+    * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
     * **kwargs** - Additional attributes stored on the field object
     
     **Attributes:**
     
     * **name** - (*str*) The name of the field
     * **type** - (*str*) A string representing the generic SQLAlchemy type
+    * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
     * **sa_type** - (*SQLAlchemy type*) If a dialect-specific type object
     is passed in on init it will be coerced to a generic type.
     * **field_type** - (*str*) A valid FieldType string
@@ -57,7 +61,7 @@ class Field(ConfigMixin, PrintMixin):
     schema = FieldConfigSchema
 
     @initializer
-    def __init__(self, name, type, **kwargs):
+    def __init__(self, name, type, display_name=None, description=None, **kwargs):
         self.sa_type = None
         if isinstance(type, str):
             self.sa_type = type_string_to_sa_type(type)
@@ -145,6 +149,7 @@ class Metric(Field):
     * **name** - (*str*) The name of the field
     * **type** - (*str or SQLAlchemy type*) The column type for the field
     * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
     * **aggregation** - (*str, optional*) The AggregationType to apply to the
     metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -168,6 +173,7 @@ class Metric(Field):
         name,
         type,
         display_name=None,
+        description=None,
         aggregation=AggregationTypes.SUM,
         rounding=None,
         weighting_metric=None,
@@ -189,6 +195,7 @@ class Metric(Field):
             name,
             type,
             display_name=display_name,
+            description=description,
             aggregation=aggregation,
             rounding=rounding,
             weighting_metric=weighting_metric,
@@ -403,6 +410,7 @@ class FormulaMetric(FormulaField):
     * **name** - (*str*) The name of the metric
     * **formula** - (*str*) The formula used to calculate the metric
     * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
     * **aggregation** - (*str, optional*) The AggregationType to apply to the
     metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -427,6 +435,7 @@ class FormulaMetric(FormulaField):
         name,
         formula,
         display_name=None,
+        description=None,
         aggregation=AggregationTypes.SUM,
         rounding=None,
         weighting_metric=None,
@@ -441,6 +450,7 @@ class FormulaMetric(FormulaField):
             name,
             formula,
             display_name=display_name,
+            description=description,
             aggregation=aggregation,
             rounding=rounding,
             weighting_metric=weighting_metric,
@@ -469,6 +479,7 @@ class AdHocMetric(FormulaMetric):
     * **name** - (*str*) The name of the metric
     * **formula** - (*str*) The formula used to calculate the metric
     * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
     * **technical** - (*object, optional*) A Technical object or definition
     used to defined a technical computation to be applied to the metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -486,6 +497,7 @@ class AdHocMetric(FormulaMetric):
         name,
         formula,
         display_name=None,
+        description=None,
         technical=None,
         rounding=None,
         required_grain=None,
@@ -495,6 +507,7 @@ class AdHocMetric(FormulaMetric):
             name,
             formula,
             display_name=display_name,
+            description=description,
             technical=technical,
             rounding=rounding,
             required_grain=required_grain,
@@ -509,6 +522,7 @@ class AdHocMetric(FormulaMetric):
             field_def["name"],
             field_def["formula"],
             display_name=field_def["display_name"],
+            description=field_def["description"],
             technical=field_def["technical"],
             rounding=field_def["rounding"],
             required_grain=field_def["required_grain"],

@@ -545,6 +545,7 @@ class FieldConfigSchema(BaseSchema):
     * **type** - (*str*) A string representing the data type of the field. This
     will be converted to a SQLAlchemy type via `ast.literal_eval`.
     * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
 
     """
 
@@ -553,6 +554,7 @@ class FieldConfigSchema(BaseSchema):
     display_name = mfields.String(
         default=None, missing=None, validate=is_valid_field_display_name
     )
+    description = mfields.String(default=None, missing=None)
 
     @pre_load
     def _set_default_display_name(self, data, **kwargs):
@@ -573,6 +575,7 @@ class FormulaFieldConfigSchema(BaseSchema):
     datasources queries, so the syntax must match that of the combined query
     layer database.
     * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
     
     """
 
@@ -581,6 +584,7 @@ class FormulaFieldConfigSchema(BaseSchema):
     display_name = mfields.String(
         default=None, missing=None, validate=is_valid_field_display_name
     )
+    description = mfields.String(default=None, missing=None)
 
     @pre_load
     def _set_default_display_name(self, data, **kwargs):

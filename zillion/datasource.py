@@ -892,6 +892,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 for field_def, ds_formula in convs:
                     field_name = field_def.name
                     field_def = field_def.copy()
+                    if not field_def.description:
+                        field_def.description = "Automatic conversion field"
 
                     if column.zillion.type_conversion_prefix:
                         field_name = column.zillion.type_conversion_prefix + field_name

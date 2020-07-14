@@ -569,11 +569,11 @@ class DataSourceQuerySummary(PrintMixin):
         """Return a formatted summary of the DataSourceQuery results"""
         sql = self._format_query()
         parts = [
-            "%d rows in %.4f seconds" % (self.rowcount, self.duration),
+            "%s" % sql,
+            "\n%d rows in %.4f seconds" % (self.rowcount, self.duration),
             "Datasource: %s" % self.datasource_name,
             "Metrics: %s" % list(self.metrics),
             "Dimensions: %s" % list(self.dimensions),
-            "\n%s" % sql,
         ]
         return "\n".join(parts)
 
@@ -1767,20 +1767,23 @@ class ReportResult(PrintMixin):
         return self.df.loc[~self.rollup_mask]
 
     @property
+    def display_name_map(self):
+        """Get the map from default to display names"""
+        name_map = {v.name: v.display_name for v in self.dimensions.values()}
+        for column in self.df.columns:
+            if column in self.metrics:
+                name_map[column] = self.metrics[column].display_name
+            else:
+                # Some technicals add additional columns, this ensures they
+                # use a reasonable display format instead of getting ignored.
+                name_map[column] = default_field_display_name(column)
+        return name_map
+
+    @property
     def df_display(self):
         """Get the rows of the dataframe with data in display format. This
         includes replacing rollup markers with display values"""
         df = self.df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
         df.index.names = [v.display_name for v in self.dimensions.values()]
-
-        column_map = {}
-        for column in df.columns:
-            if column in self.metrics:
-                column_map[column] = self.metrics[column].display_name
-            else:
-                # Some technicals add additional columns, this ensures they
-                # use a reasonable display format instead of getting ignored.
-                column_map[column] = default_field_display_name(column)
-
-        df.rename(columns=column_map, inplace=True)
+        df.rename(columns=self.display_name_map, inplace=True)
         return df
