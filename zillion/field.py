@@ -144,6 +144,7 @@ class Metric(Field):
     
     * **name** - (*str*) The name of the field
     * **type** - (*str or SQLAlchemy type*) The column type for the field
+    * **display_name** - (*str, optional*) The display name of the field
     * **aggregation** - (*str, optional*) The AggregationType to apply to the
     metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -166,6 +167,7 @@ class Metric(Field):
         self,
         name,
         type,
+        display_name=None,
         aggregation=AggregationTypes.SUM,
         rounding=None,
         weighting_metric=None,
@@ -186,6 +188,7 @@ class Metric(Field):
         super(Metric, self).__init__(
             name,
             type,
+            display_name=display_name,
             aggregation=aggregation,
             rounding=rounding,
             weighting_metric=weighting_metric,
@@ -399,6 +402,7 @@ class FormulaMetric(FormulaField):
     
     * **name** - (*str*) The name of the metric
     * **formula** - (*str*) The formula used to calculate the metric
+    * **display_name** - (*str, optional*) The display name of the field
     * **aggregation** - (*str, optional*) The AggregationType to apply to the
     metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -422,6 +426,7 @@ class FormulaMetric(FormulaField):
         self,
         name,
         formula,
+        display_name=None,
         aggregation=AggregationTypes.SUM,
         rounding=None,
         weighting_metric=None,
@@ -435,6 +440,7 @@ class FormulaMetric(FormulaField):
         super(FormulaMetric, self).__init__(
             name,
             formula,
+            display_name=display_name,
             aggregation=aggregation,
             rounding=rounding,
             weighting_metric=weighting_metric,
@@ -462,6 +468,7 @@ class AdHocMetric(FormulaMetric):
 
     * **name** - (*str*) The name of the metric
     * **formula** - (*str*) The formula used to calculate the metric
+    * **display_name** - (*str, optional*) The display name of the field
     * **technical** - (*object, optional*) A Technical object or definition
     used to defined a technical computation to be applied to the metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -475,12 +482,19 @@ class AdHocMetric(FormulaMetric):
     schema = AdHocMetricSchema
 
     def __init__(
-        self, name, formula, technical=None, rounding=None, required_grain=None
+        self,
+        name,
+        formula,
+        display_name=None,
+        technical=None,
+        rounding=None,
+        required_grain=None,
     ):
         """Init an AdHoc representation of a Metric"""
         super(AdHocMetric, self).__init__(
             name,
             formula,
+            display_name=display_name,
             technical=technical,
             rounding=rounding,
             required_grain=required_grain,
@@ -494,6 +508,7 @@ class AdHocMetric(FormulaMetric):
         return cls(
             field_def["name"],
             field_def["formula"],
+            display_name=field_def["display_name"],
             technical=field_def["technical"],
             rounding=field_def["rounding"],
             required_grain=field_def["required_grain"],

@@ -326,7 +326,6 @@ def test_report_technical_rolling_sum(wh):
     # dims have been added as of the time of creating this test.
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = None
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
@@ -339,7 +338,6 @@ def test_report_technical_cumsum(wh):
     # dims have been added as of the time of creating this test.
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = None
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
@@ -352,7 +350,6 @@ def test_report_technical_diff(wh):
     # dims have been added as of the time of creating this test.
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = None
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
@@ -365,7 +362,6 @@ def test_report_technical_pct_diff(wh):
     # dims have been added as of the time of creating this test.
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = None
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
@@ -378,11 +374,22 @@ def test_report_technical_bollinger(wh):
     # dims have been added as of the time of creating this test.
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = None
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
+
+
+def test_report_technical_bollinger_display_name(wh):
+    metrics = ["revenue", "revenue_boll_5"]
+    # TODO: it doesnt make sense to use these dimensions, but no date/time
+    # dims have been added as of the time of creating this test.
+    dimensions = ["partner_name", "campaign_name"]
+    criteria = [("campaign_name", "!=", "Campaign 2B")]
+    result = wh_execute(wh, locals())
+    assert result
+    result = result.df_display
+    assert "Revenue Boll 5 Upper" in result.columns
 
 
 def test_report_no_dimensions(wh):
@@ -722,6 +729,22 @@ def test_report_adhoc_metric(wh):
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
+
+
+def test_report_adhoc_metric_display_name(wh):
+    metrics = [
+        "revenue",
+        {
+            "formula": "{revenue} > 3*{lead_id}",
+            "name": "testmetric",
+            "display_name": "Test Metric",
+        },
+    ]
+    dimensions = ["partner_name", "lead_id"]
+    result = wh_execute(wh, locals())
+    assert result
+    result = result.df_display
+    assert "Test Metric" in result.columns
 
 
 def test_report_adhoc_nested_metric(wh):

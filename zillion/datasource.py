@@ -11,14 +11,15 @@ import sqlalchemy as sa
 
 from zillion.configs import (
     load_datasource_config,
-    DATASOURCE_ALLOWABLE_CHARS,
-    DATASOURCE_ALLOWABLE_CHARS_STR,
+    DATASOURCE_NAME_ALLOWED_CHARS,
+    DATASOURCE_NAME_ALLOWED_CHARS_STR,
     TableInfo,
     ColumnInfo,
     DataSourceConfigSchema,
     DataSourceConnectSchema,
     TableConfigSchema,
     default_field_name,
+    default_field_display_name,
     is_valid_field_name,
     is_active,
     zillion_config,
@@ -896,6 +897,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         field_name = column.zillion.type_conversion_prefix + field_name
                         is_valid_field_name(field_name)
                         field_def.name = field_name
+                        field_def.display_name = default_field_display_name(field_name)
 
                     if field_name in table_fields:
                         dbg(
@@ -1275,10 +1277,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
             name = "zillion_ds_%s_%s" % (datestr, random.randint(0, 1e9))
             return name
         raiseifnot(
-            set(name) <= DATASOURCE_ALLOWABLE_CHARS,
+            set(name) <= DATASOURCE_NAME_ALLOWED_CHARS,
             (
                 'DataSource name "%s" has invalid characters. Allowed: %s'
-                % (name, DATASOURCE_ALLOWABLE_CHARS_STR)
+                % (name, DATASOURCE_NAME_ALLOWED_CHARS_STR)
             ),
         )
         return name

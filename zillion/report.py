@@ -15,7 +15,7 @@ import pandas as pd
 import sqlalchemy as sa
 from stopit import async_raise
 
-from zillion.configs import zillion_config
+from zillion.configs import zillion_config, default_field_display_name
 from zillion.core import *
 from zillion.field import get_table_fields, get_table_field_column, FormulaField
 from zillion.sql_utils import sqla_compile, get_sqla_criterion_expr, to_sqlite_type
@@ -1280,7 +1280,9 @@ class Report(ExecutionStateMixin):
                     self.pivot,
                 )
                 diff = time.time() - start
-                self.result = ReportResult(final_result, diff, summaries)
+                self.result = ReportResult(
+                    final_result, diff, summaries, self.metrics, self.dimensions
+                )
                 return self.result
             finally:
                 cr.clean_up()
@@ -1727,13 +1729,18 @@ class ReportResult(PrintMixin):
     * **duration** - (*float*) The report execution duration in seconds
     * **query_summaries** - (*list of DataSourceQuerySummary*) Summaries of the
     underyling query results.
+    * **metrics** - (*OrderedDict*) A mapping of requested metrics to Metric objects
+    * **dimensions** - (*OrderedDict*) A mapping of requested dimensions to Dimension
+    objects
     
     """
 
     repr_attrs = ["rowcount", "duration", "query_summaries"]
 
     @initializer
-    def __init__(self, df, duration, query_summaries):
+    def __init__(self, df, duration, query_summaries, metrics, dimensions):
+        raiseif(metrics and (not isinstance(metrics, OrderedDict)))
+        raiseif(dimensions and (not isinstance(dimensions, OrderedDict)))
         self.duration = round(duration, 4)
         self.rowcount = len(df)
 
@@ -1761,6 +1768,19 @@ class ReportResult(PrintMixin):
 
     @property
     def df_display(self):
-        """Get the rows of the dataframe with data in display format. Currently
-        this only means replacing rollup markers with display values"""
-        return self.df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
+        """Get the rows of the dataframe with data in display format. This
+        includes replacing rollup markers with display values"""
+        df = self.df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
+        df.index.names = [v.display_name for v in self.dimensions.values()]
+
+        column_map = {}
+        for column in df.columns:
+            if column in self.metrics:
+                column_map[column] = self.metrics[column].display_name
+            else:
+                # Some technicals add additional columns, this ensures they
+                # use a reasonable display format instead of getting ignored.
+                column_map[column] = default_field_display_name(column)
+
+        df.rename(columns=column_map, inplace=True)
+        return df

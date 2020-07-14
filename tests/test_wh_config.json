@@ -2,6 +2,7 @@
     "metrics": [
         {
             "name": "rpl",
+            "display_name": "Revenue/Lead",
             "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}"

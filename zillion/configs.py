@@ -22,15 +22,23 @@ from zillion.sql_utils import (
 )
 
 
-FIELD_ALLOWABLE_CHARS_STR = (
+FIELD_NAME_ALLOWED_CHARS_STR = (
     string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
 )
-FIELD_ALLOWABLE_CHARS = set(FIELD_ALLOWABLE_CHARS_STR)
+FIELD_NAME_ALLOWED_CHARS = set(FIELD_NAME_ALLOWED_CHARS_STR)
 
-DATASOURCE_ALLOWABLE_CHARS_STR = (
+FIELD_DISPLAY_NAME_ALLOWED_CHARS_STR = (
+    string.ascii_uppercase
+    + string.ascii_lowercase
+    + string.digits
+    + "_-:/|<>+-=@[]{}()$%&*?,. "
+)
+FIELD_DISPLAY_NAME_ALLOWED_CHARS = set(FIELD_DISPLAY_NAME_ALLOWED_CHARS_STR)
+
+DATASOURCE_NAME_ALLOWED_CHARS_STR = (
     string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
 )
-DATASOURCE_ALLOWABLE_CHARS = set(DATASOURCE_ALLOWABLE_CHARS_STR)
+DATASOURCE_NAME_ALLOWED_CHARS = set(DATASOURCE_NAME_ALLOWED_CHARS_STR)
 DATASOURCE_CONNECT_FUNC_DEFAULT = "zillion.datasource.url_connect"
 
 
@@ -163,7 +171,7 @@ def load_datasource_config_from_env(var, preserve_order=False):
 
 def field_safe_name(name):
     """Replace characters with underscores if they are not in
-    FIELD_ALLOWABLE_CHARS
+    FIELD_NAME_ALLOWED_CHARS
     
     **Parameters:**
     
@@ -175,7 +183,7 @@ def field_safe_name(name):
     
     """
     for char in name:
-        if char not in FIELD_ALLOWABLE_CHARS:
+        if char not in FIELD_NAME_ALLOWED_CHARS:
             name = name.replace(char, "_")
     return name
 
@@ -194,6 +202,23 @@ def default_field_name(column):
     
     """
     return field_safe_name(column_fullname(column))
+
+
+def default_field_display_name(name):
+    """Determine a default display name from the field name
+
+    **Parameters:**
+
+    * **name** - (*str*) The field name to process
+
+    **Returns:**
+
+    (*str*) - The field display name
+
+    """
+    name = field_safe_name(name)
+    display_name = " ".join(name.replace("_", " ").split()).title()
+    return display_name
 
 
 def is_active(obj):
@@ -230,11 +255,23 @@ def is_valid_field_name(val):
     """Validate field name"""
     if val is None:
         raise ValidationError("Field name can not be null")
-    if set(val) <= FIELD_ALLOWABLE_CHARS:
+    if set(val) <= FIELD_NAME_ALLOWED_CHARS:
         return True
     raise ValidationError(
         'Field name "%s" has invalid characters. Allowed: %s'
-        % (val, FIELD_ALLOWABLE_CHARS_STR)
+        % (val, FIELD_NAME_ALLOWED_CHARS_STR)
+    )
+
+
+def is_valid_field_display_name(val):
+    """Validate field display name"""
+    if val is None:
+        raise ValidationError("Field display name can not be null")
+    if set(val) <= FIELD_DISPLAY_NAME_ALLOWED_CHARS:
+        return True
+    raise ValidationError(
+        'Field display name "%s" has invalid characters. Allowed: %s'
+        % (val, FIELD_DISPLAY_NAME_ALLOWED_CHARS_STR)
     )
 
 
@@ -507,11 +544,22 @@ class FieldConfigSchema(BaseSchema):
     * **name** - (*str*) The name of the field
     * **type** - (*str*) A string representing the data type of the field. This
     will be converted to a SQLAlchemy type via `ast.literal_eval`.
-    
+    * **display_name** - (*str, optional*) The display name of the field
+
     """
 
     name = mfields.String(required=True, validate=is_valid_field_name)
     type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
+    display_name = mfields.String(
+        default=None, missing=None, validate=is_valid_field_display_name
+    )
+
+    @pre_load
+    def _set_default_display_name(self, data, **kwargs):
+        """Set a default display name based on the field name"""
+        if not data.get("display_name", None):
+            data["display_name"] = default_field_display_name(data["name"])
+        return data
 
 
 class FormulaFieldConfigSchema(BaseSchema):
@@ -524,11 +572,22 @@ class FormulaFieldConfigSchema(BaseSchema):
     Formula fields are applied at the combined query layer, rather than in
     datasources queries, so the syntax must match that of the combined query
     layer database.
+    * **display_name** - (*str, optional*) The display name of the field
     
     """
 
     name = mfields.String(required=True, validate=is_valid_field_name)
     formula = mfields.String(required=True)
+    display_name = mfields.String(
+        default=None, missing=None, validate=is_valid_field_display_name
+    )
+
+    @pre_load
+    def _set_default_display_name(self, data, **kwargs):
+        """Set a default display name based on the field name"""
+        if not data.get("display_name", None):
+            data["display_name"] = default_field_display_name(data["name"])
+        return data
 
 
 class MetricConfigSchemaMixin:

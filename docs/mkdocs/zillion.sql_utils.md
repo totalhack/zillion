@@ -8,7 +8,7 @@
     :docstring:
 
 
-## [check_metadata_url](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L417-L430)
+## [check_metadata_url](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L413-L426)
 
 ::: zillion.sql_utils.check_metadata_url
     :docstring:
@@ -20,7 +20,7 @@
     :docstring:
 
 
-## [comment](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L433-L436)
+## [comment](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L429-L432)
 
 ::: zillion.sql_utils.comment
     :docstring:
@@ -38,19 +38,19 @@
     :docstring:
 
 
-## [filter_dialect_schemas](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L491-L518)
+## [filter_dialect_schemas](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L487-L514)
 
 ::: zillion.sql_utils.filter_dialect_schemas
     :docstring:
 
 
-## [get_postgres_pid](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L532-L536)
+## [get_postgres_pid](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L528-L532)
 
 ::: zillion.sql_utils.get_postgres_pid
     :docstring:
 
 
-## [get_postgres_schemas](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L521-L529)
+## [get_postgres_schemas](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L517-L525)
 
 ::: zillion.sql_utils.get_postgres_schemas
     :docstring:
@@ -62,13 +62,13 @@
     :docstring:
 
 
-## [get_schemas](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L467-L470)
+## [get_schemas](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L463-L466)
 
 ::: zillion.sql_utils.get_schemas
     :docstring:
 
 
-## [get_sqla_criterion_expr](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L323-L414)
+## [get_sqla_criterion_expr](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L323-L410)
 
 ::: zillion.sql_utils.get_sqla_criterion_expr
     :docstring:
@@ -110,19 +110,19 @@
     :docstring:
 
 
-## [to_mysql_type](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L476-L478)
+## [to_mysql_type](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L472-L474)
 
 ::: zillion.sql_utils.to_mysql_type
     :docstring:
 
 
-## [to_postgresql_type](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L481-L483)
+## [to_postgresql_type](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L477-L479)
 
 ::: zillion.sql_utils.to_postgresql_type
     :docstring:
 
 
-## [to_sqlite_type](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L486-L488)
+## [to_sqlite_type](https://github.com/totalhack/zillion/blob/master/zillion/sql_utils.py#L482-L484)
 
 ::: zillion.sql_utils.to_sqlite_type
     :docstring:

@@ -168,6 +168,18 @@ def test_warehouse_has_zillion_info_no_config(ds_config):
     assert not wh.get_datasource("testdb1").dimension_tables
 
 
+def test_display_name(config):
+    wh = Warehouse(config=config)
+    partner_name = wh.get_field("partner_name")  # Regular dim/field
+    assert partner_name.display_name == "Partner Name"
+    rpl = wh.get_field("rpl")  # Formula Metric
+    assert rpl.display_name == "Revenue/Lead"
+    main_sales_created_at = wh.get_field("main_sales_created_at")  # Field from column
+    assert main_sales_created_at.display_name == "Main Sales Created At"
+    sale_hour = wh.get_field("sale_hour")  # Auto conversion field
+    assert sale_hour.display_name == "Sale Hour"
+
+
 def test_reserved_field_name(config):
     config["datasources"]["testdb1"]["metrics"].append(
         {"name": "row_hash", "type": "integer", "aggregation": AggregationTypes.SUM}
