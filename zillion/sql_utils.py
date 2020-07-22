@@ -359,7 +359,7 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
     has_null = any([v is None for v in values])
 
     if op == "=":
-        clauses = [column == v if v is not None else column._is(None) for v in values]
+        clauses = [column == v if v is not None else column.is_(None) for v in values]
     elif op == "!=":
         clauses = [column != v if v is not None else column.isnot(None) for v in values]
     elif op == ">":
@@ -373,7 +373,7 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
     elif op == "in":
         if has_null:
             clauses = [
-                column == v if v is not None else column._is(None) for v in values
+                column == v if v is not None else column.is_(None) for v in values
             ]
         else:
             clauses = [column.in_(values)]

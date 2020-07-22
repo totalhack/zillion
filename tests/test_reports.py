@@ -19,6 +19,15 @@ def test_basic_report(wh):
     info(result.df)
 
 
+def test_report_none_criteria(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "campaign_name"]
+    criteria = [("partner_name", "=", None)]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount == 0
+    info(result.df)
+
+
 def test_report_sequential_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
@@ -217,6 +226,20 @@ def test_report_df_display(wh):
     metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]
     rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df_display)
+
+
+def test_report_df_display_no_dims(wh):
+    metrics = ["revenue", "main_sales_quantity"]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df_display)
+
+
+def test_report_df_display_no_metrics(wh):
+    dimensions = ["partner_name", "campaign_name"]
     result = wh_execute(wh, locals())
     assert result
     info(result.df_display)

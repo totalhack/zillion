@@ -1784,6 +1784,7 @@ class ReportResult(PrintMixin):
         """Get the rows of the dataframe with data in display format. This
         includes replacing rollup markers with display values"""
         df = self.df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
-        df.index.names = [v.display_name for v in self.dimensions.values()]
+        if self.dimensions:
+            df.index.names = [v.display_name for v in self.dimensions.values()]
         df.rename(columns=self.display_name_map, inplace=True)
         return df
