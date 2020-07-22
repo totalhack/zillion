@@ -1073,23 +1073,43 @@ def get_dialect_type_conversions(dialect, column):
 
 
 DATETIME_CONVERSION_FIELDS = [
-    Dimension("year", "Integer"),
-    Dimension("quarter", "String(8)"),
-    Dimension("quarter_of_year", "SmallInteger"),
-    Dimension("month", "String(8)"),
-    Dimension("month_name", "String(8)"),
-    Dimension("month_of_year", "SmallInteger"),
-    Dimension("date", "String(10)"),
-    Dimension("day_name", "String(10)"),
-    Dimension("day_of_week", "SmallInteger"),
-    Dimension("day_of_month", "SmallInteger"),
-    Dimension("day_of_year", "SmallInteger"),
-    Dimension("hour", "String(20)"),
-    Dimension("hour_of_day", "SmallInteger"),
-    Dimension("minute", "String(20)"),
-    Dimension("minute_of_hour", "SmallInteger"),
-    Dimension("datetime", "String(20)"),
-    Dimension("unixtime", "BigInteger"),
+    Dimension("year", "Integer", description="Year"),
+    Dimension("quarter", "String(8)", description="Year and quarter (YYYY-QN)"),
+    Dimension(
+        "quarter_of_year", "SmallInteger", description="Numeric quarter of the year"
+    ),
+    Dimension("month", "String(8)", description="Year and month (YYYY-MM)"),
+    Dimension("month_name", "String(8)", description="Full name of the month"),
+    Dimension("month_of_year", "SmallInteger", description="Numeric month of the year"),
+    Dimension("date", "String(10)", description="Date string formatted YYYY-MM-DD"),
+    Dimension("day_name", "String(10)", description="Full name of a day of the week"),
+    Dimension(
+        "day_of_week",
+        "SmallInteger",
+        description="Numeric day of the week (monday = 1)",
+    ),
+    Dimension("day_of_month", "SmallInteger", description="Numeric day of the month"),
+    Dimension("day_of_year", "SmallInteger", description="Numeric day of the year"),
+    Dimension(
+        "hour",
+        "String(20)",
+        description="Datetime string rounded to the hour (YYYY-MM-DD HH:00:00)",
+    ),
+    Dimension("hour_of_day", "SmallInteger", description="Numeric hour of day (0-23)"),
+    Dimension(
+        "minute",
+        "String(20)",
+        description="Datetime string rounded to the minute (YYYY-MM-DD HH:MM:00)",
+    ),
+    Dimension(
+        "minute_of_hour", "SmallInteger", description="Numeric minute of the hour"
+    ),
+    Dimension(
+        "datetime",
+        "String(20)",
+        description="Datetime string formatted YYYY-MM-DD HH:MM:SS",
+    ),
+    Dimension("unixtime", "BigInteger", description="Unix time in seconds"),
 ]
 
 DATE_CONVERSION_FIELDS = []

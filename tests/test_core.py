@@ -184,10 +184,13 @@ def test_field_description(config):
     wh = Warehouse(config=config)
     partner_name = wh.get_field("partner_name")  # Regular dim/field
     assert partner_name.description is None
+    print(partner_name.display_name, partner_name.description)
     rpl = wh.get_field("rpl")  # Formula Metric
     assert rpl.description is not None
+    print(rpl.display_name, rpl.description)
     sale_hour = wh.get_field("sale_hour")  # Auto conversion field
     assert sale_hour.description is not None
+    print(sale_hour.display_name, sale_hour.description)
 
 
 def test_reserved_field_name(config):
