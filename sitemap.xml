@@ -1,39 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url>
      <loc>https://totalhack.github.io/zillion/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.configs/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.core/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.datasource/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.field/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.report/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.sql_utils/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/zillion.warehouse/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url><url>
      <loc>https://totalhack.github.io/zillion/contributing/</loc>
-     <lastmod>2020-07-14</lastmod>
+     <lastmod>2020-07-23</lastmod>
      <changefreq>daily</changefreq>
     </url>
 </urlset>
