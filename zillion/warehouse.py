@@ -242,11 +242,13 @@ class Warehouse(FieldManagerMixin):
         """
         Report.delete(spec_id)
 
-    def save_report(self, **kwargs):
+    def save_report(self, meta=None, **kwargs):
         """Init a Report and save it as a ReportSpec
         
         **Parameters:**
         
+        * **meta** - (*object, optional*) A metadata object to be
+        serialized as JSON and stored with the report
         * ****kwargs** - Passed through to Report
         
         **Returns:**
@@ -255,7 +257,7 @@ class Warehouse(FieldManagerMixin):
         
         """
         report = Report(self, **kwargs)
-        report.save()
+        report.save(meta=meta)
         return report
 
     def execute(

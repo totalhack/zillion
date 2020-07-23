@@ -834,6 +834,18 @@ def test_report_save_and_load(wh):
         wh.delete_report(spec_id)
 
 
+def test_report_save_with_meta(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_name"]
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    spec_id = report.save(meta=dict(title="My test report"))
+    try:
+        report = wh.load_report(spec_id)
+        assert report.meta and report.meta.get("title", None) == "My test report"
+    finally:
+        wh.delete_report(spec_id)
+
+
 def test_report_save_and_load_adhoc_metric(wh):
     metrics = ["revenue", {"formula": "{revenue} > 3*{lead_id}", "name": "testmetric"}]
     dimensions = ["partner_name", "lead_id"]
