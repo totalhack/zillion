@@ -99,7 +99,7 @@ DataSource Layer
 
 The Combined Layer is just another SQL database (in-memory SQLite by default)
 that is used to tie the datasource data together and apply a few additional
-features such as rollups, row filters, pivots, and technical computations.
+features such as rollups, row filters, row limits, sorting, pivots, and technical computations.
 
 ---
 

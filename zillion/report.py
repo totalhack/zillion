@@ -654,7 +654,9 @@ class BaseCombinedResult:
         """Clean up any resources that can/should be cleaned up"""
         raise NotImplementedError
 
-    def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
+    def get_final_result(
+        self, metrics, dimensions, row_filters, rollup, pivot, order_by, limit
+    ):
         """Get the final result from the combined result table"""
         raise NotImplementedError
 
@@ -752,7 +754,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 self.cursor.executemany(insert_sql, values)
             self.conn.commit()
 
-    def get_final_result(self, metrics, dimensions, row_filters, rollup, pivot):
+    def get_final_result(
+        self, metrics, dimensions, row_filters, rollup, pivot, order_by, limit
+    ):
         """Get the final reseult from the combined result table
         
         **Parameters:**
@@ -766,6 +770,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         * **rollup** - (*str or int*) Controls how metrics are rolled up /
         aggregated by dimension. See the Report docs for more details.
         * **pivot** - (*list*) A list of dimensions to pivot to columns
+        * **order_by** - (*list*) A list of (field, asc/desc) tuples that
+        control the ordering of the returned result
+        * **limit** - (*int*) A limit on the number of rows returned
         
         **Returns:**
         
@@ -823,6 +830,18 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         if pivot and not df.empty:
             df = df.unstack(pivot)
+
+        if order_by and not (df.empty and df.index.empty):
+            ob_fields = []
+            ascending = []
+            for row in order_by:
+                field, ob_type = row
+                ob_fields.append(field)
+                ascending.append(True if ob_type == OrderByTypes.ASC else False)
+            df = df.sort_values(by=ob_fields, ascending=ascending)
+
+        if limit and not (df.empty and df.index.empty):
+            df = df.iloc[:limit]
 
         dbg(df)
         dbg("Final result took %.3fs" % (time.time() - start))
@@ -1138,8 +1157,21 @@ class Report(ExecutionStateMixin):
         * Any other non-None value would raise an error
     
     * **pivot** - (*list, optional*) A list of dimensions to pivot to columns
+    * **order_by** - (*list, optional*) A list of (field, asc/desc) tuples that
+    control the ordering of the returned result
+    * **limit** - (*int, optional*) A limit on the number of rows returned
     * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
     specific to this report
+    
+    **Notes:**
+    
+    The order_by and limit functionality is only applied on the final/combined
+    result, NOT in your DataSource queries. In most cases when you are dealing
+    with DataSource tables that are of a decent size you will want to make sure
+    to include criteria that limit the scope of your query and/or take advantage
+    of underlying table indexing. If you were to use order_by or limit without
+    any criteria or dimensions, you would effectively select all rows from the
+    underlying datasource table into memory (or at least try to).
     
     """
 
@@ -1152,6 +1184,8 @@ class Report(ExecutionStateMixin):
         row_filters=None,
         rollup=None,
         pivot=None,
+        order_by=None,
+        limit=None,
         adhoc_datasources=None,
     ):
         start = time.time()
@@ -1202,7 +1236,21 @@ class Report(ExecutionStateMixin):
         if pivot:
             raiseifnot(
                 set(self.pivot).issubset(set(self.dimensions)),
-                "Pivot columms must be a subset of dimensions",
+                "Pivot fields must be a subset of dimensions",
+            )
+
+        # TODO: apply order_by and limits at the datasource level
+        # when possible.
+
+        self.order_by = order_by or []
+        if order_by:
+            self._check_order_by(self.order_by)
+
+        self.limit = limit or None
+        if self.limit is not None:
+            raiseifnot(
+                isinstance(self.limit, int) and self.limit > 0,
+                "Limit must be an integer > 0",
             )
 
         self.adhoc_datasources = adhoc_datasources or []
@@ -1237,6 +1285,8 @@ class Report(ExecutionStateMixin):
                 row_filters=self.row_filters,
                 rollup=self.rollup,
                 pivot=self.pivot,
+                order_by=self.order_by,
+                limit=self.limit,
             ),
             datasources=datasources,
             used_datasources=used_datasources,
@@ -1297,6 +1347,8 @@ class Report(ExecutionStateMixin):
                     self.row_filters,
                     self.rollup,
                     self.pivot,
+                    self.order_by,
+                    self.limit,
                 )
                 diff = time.time() - start
                 self.result = ReportResult(
@@ -1418,6 +1470,26 @@ class Report(ExecutionStateMixin):
             row[0] = field
             final_criteria.append(row)
         return final_criteria
+
+    def _check_order_by(self, order_by):
+        """Validate the format of the order_by specification"""
+        raiseifnot(
+            isinstance(order_by, (tuple, list)), "order_by must be a tuple or list"
+        )
+        fields = set()
+        for row in order_by:
+            raiseifnot(
+                len(row) == 2,
+                "order_by must be an iterable of (field, order type) pairs",
+            )
+            field, ob_type = row
+            raiseifnot(ob_type in OrderByTypes, "Invalid order_by type: %s" % ob_type)
+            fields.add(field)
+
+        raiseifnot(
+            fields.issubset(set(self.dimensions) | set(self.metrics)),
+            "Order by fields must be a subset of Report fields",
+        )
 
     def _add_ds_fields(self, field):
         """Add all datasource fields that are part of this field. This will add

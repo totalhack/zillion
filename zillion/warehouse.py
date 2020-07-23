@@ -268,6 +268,8 @@ class Warehouse(FieldManagerMixin):
         row_filters=None,
         rollup=None,
         pivot=None,
+        order_by=None,
+        limit=None,
         adhoc_datasources=None,
     ):
         """Build and execute a Report
@@ -287,6 +289,8 @@ class Warehouse(FieldManagerMixin):
             row_filters=row_filters,
             rollup=rollup,
             pivot=pivot,
+            order_by=order_by,
+            limit=limit,
             adhoc_datasources=adhoc_datasources,
         )
         result = report.execute()

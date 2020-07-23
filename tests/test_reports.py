@@ -222,6 +222,50 @@ def test_report_pivot(wh):
     info(result.df)
 
 
+def test_report_order_by(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "lead_id"]
+    order_by = [("partner_name", "desc"), ("lead_id", "asc")]
+    result = wh_execute(wh, locals())
+    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
+    info(result.df)
+
+
+def test_report_order_by_only_dims(wh):
+    dimensions = ["partner_name", "campaign_name"]
+    order_by = [("partner_name", "desc"), ("campaign_name", "asc")]
+    result = wh_execute(wh, locals())
+    # assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
+    info(result.df)
+
+
+def test_report_limit(wh):
+    metrics = ["revenue"]
+    dimensions = ["lead_id"]
+    limit = 2
+    result = wh_execute(wh, locals())
+    assert result and len(result.df) == 2
+    info(result.df)
+
+
+def test_report_limit_only_dims(wh):
+    dimensions = ["partner_name", "campaign_name"]
+    limit = 2
+    result = wh_execute(wh, locals())
+    assert result and len(result.df) == 2
+    info(result.df)
+
+
+def test_report_order_by_and_limit(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "lead_id"]
+    order_by = [("partner_name", "desc"), ("lead_id", "asc")]
+    limit = 1
+    result = wh_execute(wh, locals())
+    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner C"
+    info(result.df)
+
+
 def test_report_df_display(wh):
     metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]

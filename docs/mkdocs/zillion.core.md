@@ -9,14 +9,14 @@
     
 
 
-## [DataSourceQueryModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L196-L200)
+## [DataSourceQueryModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L203-L207)
 
 ::: zillion.core.DataSourceQueryModes
     :docstring:
     
 
 
-## [ExecutionState](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L203-L208)
+## [ExecutionState](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L210-L215)
 
 ::: zillion.core.ExecutionState
     :docstring:
@@ -30,9 +30,16 @@
     
 
 
-## [IfExistsModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L211-L221)
+## [IfExistsModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L218-L228)
 
 ::: zillion.core.IfExistsModes
+    :docstring:
+    
+
+
+## [OrderByTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L196-L200)
+
+::: zillion.core.OrderByTypes
     :docstring:
     
 
@@ -77,7 +84,7 @@
     :docstring:
 
 
-## [download_file](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L262-L272)
+## [download_file](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L269-L279)
 
 ::: zillion.core.download_file
     :docstring:
@@ -89,7 +96,7 @@
     :docstring:
 
 
-## [igetattr](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L236-L243)
+## [igetattr](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L243-L250)
 
 ::: zillion.core.igetattr
     :docstring:
@@ -101,19 +108,19 @@
     :docstring:
 
 
-## [raiseif](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L224-L227)
+## [raiseif](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L231-L234)
 
 ::: zillion.core.raiseif
     :docstring:
 
 
-## [raiseifnot](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L230-L233)
+## [raiseifnot](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L237-L240)
 
 ::: zillion.core.raiseifnot
     :docstring:
 
 
-## [read_filepath_or_buffer](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L246-L259)
+## [read_filepath_or_buffer](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L253-L266)
 
 ::: zillion.core.read_filepath_or_buffer
     :docstring:

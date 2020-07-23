@@ -193,6 +193,13 @@ class RollupTypes(metaclass=ClassValueContainsMeta):
     ALL = "all"
 
 
+class OrderByTypes(metaclass=ClassValueContainsMeta):
+    """Allowed Order By Types"""
+
+    ASC = "asc"
+    DESC = "desc"
+
+
 class DataSourceQueryModes(metaclass=ClassValueContainsMeta):
     """Allowed datasource query modes"""
 

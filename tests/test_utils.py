@@ -264,6 +264,8 @@ def wh_execute_args(d):
             "row_filters",
             "rollup",
             "pivot",
+            "order_by",
+            "limit",
             "adhoc_datasources",
         ]
     )
