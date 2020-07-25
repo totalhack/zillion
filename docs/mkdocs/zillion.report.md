@@ -2,7 +2,7 @@
 # Module zillion.report
 
 
-## [BaseCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L605-L701)
+## [BaseCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L605-L703)
 
 ::: zillion.report.BaseCombinedResult
     :docstring:
@@ -43,7 +43,7 @@
     
 
 
-## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1111-L1827)
+## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1122-L1835)
 
 *Bases*: zillion.report.ExecutionStateMixin
 
@@ -52,7 +52,7 @@
     :members: delete execute from_params get_dimension_grain get_grain get_json get_params kill load save
 
 
-## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1830-L1898)
+## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1838-L1906)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -61,7 +61,7 @@
     
 
 
-## [SQLiteMemoryCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L704-L1108)
+## [SQLiteMemoryCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L706-L1119)
 
 *Bases*: zillion.report.BaseCombinedResult
 

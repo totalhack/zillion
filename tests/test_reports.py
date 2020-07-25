@@ -217,8 +217,10 @@ def test_report_pivot(wh):
     row_filters = [("revenue", ">", 11)]
     rollup = RollupTypes.TOTALS
     pivot = ["partner_name"]
+    limit = 3
+    order_by = [("revenue", OrderByTypes.ASC)]
     result = wh_execute(wh, locals())
-    assert result
+    assert result and result.df.loc["Campaign 1C"]["revenue"]["Partner C"] == 118.5
     info(result.df)
 
 
@@ -235,7 +237,7 @@ def test_report_order_by_only_dims(wh):
     dimensions = ["partner_name", "campaign_name"]
     order_by = [("partner_name", "desc"), ("campaign_name", "asc")]
     result = wh_execute(wh, locals())
-    # assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
+    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
     info(result.df)
 
 
@@ -295,10 +297,10 @@ def test_report_technical_ma(wh):
     # dims have been added as of the time of creating this test.
     dimensions = ["partner_name", "campaign_name"]
     criteria = [("campaign_name", "!=", "Campaign 2B")]
-    row_filters = [("revenue", ">", 8)]
+    row_filters = [("revenue_ma_5", ">", 82)]
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
-    assert result
+    assert result and len(result.df) == 3
     info(result.df)
 
 
@@ -374,7 +376,7 @@ def test_report_no_dimension_technical(wh):
             info(result.df)
 
 
-def test_report_technical_ma_formula(wh):
+def test_report_technical_formula_ma(wh):
     metrics = ["revenue", "rpl", "rpl_ma_5"]
     # TODO: it doesnt make sense to use these dimensions, but no date/time
     # dims have been added as of the time of creating this test.

@@ -778,6 +778,13 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         
         (*DataFrame*) - A DataFrame with the final report result
         
+        **Notes:**
+        
+        The ordering of operations is meant to roughly parallel that of
+        MySQL's rollup, having, order by and limit behavior. The operations
+        are applied in the following order: technicals, rollups, rounding,
+        row_filters, order_by, limit, pivot.
+        
         """
         start = time.time()
         columns = []
@@ -816,9 +823,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
-        if row_filters and not df.empty:
-            df = self._apply_row_filters(df, row_filters, metrics, dimensions)
-
         if technicals and not df.empty:
             df = self._apply_technicals(df, technicals, rounding)
 
@@ -828,8 +832,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         if rounding and not df.empty:
             df = df.round(rounding)
 
-        if pivot and not df.empty:
-            df = df.unstack(pivot)
+        if row_filters and not df.empty:
+            df = self._apply_row_filters(df, row_filters, metrics, dimensions)
 
         if order_by and not (df.empty and df.index.empty):
             ob_fields = []
@@ -842,6 +846,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         if limit and not (df.empty and df.index.empty):
             df = df.iloc[:limit]
+
+        if pivot and not df.empty:
+            df = df.unstack(pivot)
 
         dbg(df)
         dbg("Final result took %.3fs" % (time.time() - start))
