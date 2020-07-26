@@ -210,6 +210,17 @@ def test_report_criteria_in(wh):
     assert result.rowcount == 0
 
 
+def test_row_filter_single_dimension(wh):
+    metrics = ["leads", "sales"]
+    dimensions = ["month"]
+    criteria = [["year", "=", "2020"]]
+    rollup = "totals"
+    row_filters = [["leads", ">", "10"]]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
 def test_report_pivot(wh):
     metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]

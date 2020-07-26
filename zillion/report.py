@@ -971,7 +971,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             filter_parts.append("(%s %s %s)" % (field, op, value))
         result = df.query(" and ".join(filter_parts))
         # https://stackoverflow.com/questions/28772494/how-do-you-update-the-levels-of-a-pandas-multiindex-after-slicing-its-dataframe
-        result.index = result.index.remove_unused_levels()
+        if dimensions and len(dimensions) > 1:
+            result.index = result.index.remove_unused_levels()
         return result
 
     def _get_multi_rollup_df(self, df, rollup, dimensions, aggrs, wavgs):
