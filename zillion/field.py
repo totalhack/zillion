@@ -376,6 +376,11 @@ class FormulaField(Field):
     def _check_formula_fields(self, warehouse, adhoc_fms=None):
         """Check that all underlying fields exist in the warehouse"""
         fields, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
+        if not fields:
+            raise InvalidFieldException(
+                "No fields found in formula for field:%s formula:%s"
+                % (self.name, self.formula)
+            )
         for field in fields:
             warehouse.get_field(field, adhoc_fms=adhoc_fms)
 
