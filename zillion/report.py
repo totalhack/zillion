@@ -724,7 +724,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         for field_name, field in self.ds_dimensions.items():
             type_str = str(to_sqlite_type(field.sa_type))
-            clause = "%s %s NOT NULL" % (field_name, type_str)
+            clause = "%s %s DEFAULT NULL" % (field_name, type_str)
             column_clauses.append(clause)
 
         for field_name, field in self.ds_metrics.items():
