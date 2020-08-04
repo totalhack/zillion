@@ -248,7 +248,9 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             self.covers_metric(metric), "Metric %s can not be covered by query" % metric
         )
         self.table_set.target_fields.add(metric)
-        self.metrics[metric] = self.table_set.datasource.get_metric(metric)
+        # TODO: this implies metrics defined on multiple levels will
+        # favor warehouse-level definition.
+        self.metrics[metric] = self.warehouse.get_metric(metric)
         self.select = self.select.column(self._get_field_expression(metric))
 
     def get_conn(self):
