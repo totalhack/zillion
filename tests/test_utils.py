@@ -266,6 +266,7 @@ def wh_execute_args(d):
             "pivot",
             "order_by",
             "limit",
+            "limit_first",
             "adhoc_datasources",
         ]
     )

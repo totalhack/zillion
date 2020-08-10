@@ -657,7 +657,15 @@ class BaseCombinedResult:
         raise NotImplementedError
 
     def get_final_result(
-        self, metrics, dimensions, row_filters, rollup, pivot, order_by, limit
+        self,
+        metrics,
+        dimensions,
+        row_filters,
+        rollup,
+        pivot,
+        order_by,
+        limit,
+        limit_first,
     ):
         """Get the final result from the combined result table"""
         raise NotImplementedError
@@ -757,7 +765,15 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             self.conn.commit()
 
     def get_final_result(
-        self, metrics, dimensions, row_filters, rollup, pivot, order_by, limit
+        self,
+        metrics,
+        dimensions,
+        row_filters,
+        rollup,
+        pivot,
+        order_by,
+        limit,
+        limit_first,
     ):
         """Get the final reseult from the combined result table
         
@@ -775,6 +791,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         * **order_by** - (*list*) A list of (field, asc/desc) tuples that
         control the ordering of the returned result
         * **limit** - (*int*) A limit on the number of rows returned
+        * **limit_first** - (*bool, optional*) Whether to apply limits before
+        rollups/ordering
         
         **Returns:**
         
@@ -782,10 +800,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         
         **Notes:**
         
-        The ordering of operations is meant to roughly parallel that of
+        The default ordering of operations is meant to roughly parallel that of
         MySQL's rollup, having, order by and limit behavior. The operations
         are applied in the following order: technicals, rollups, rounding,
-        row_filters, order_by, limit, pivot.
+        order_by, row_filters, limit, pivot. If you set `limit_first=True`
+        the the row_filter and limit operations are moved ahead of the rollups:
+        technicals, row_filters, limit, rollups, rounding, order_by, pivot.
         
         """
         start = time.time()
@@ -828,14 +848,14 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         if technicals and not df.empty:
             df = self._apply_technicals(df, technicals, rounding)
 
+        if limit_first:
+            df = self._apply_limits(df, row_filters, limit, metrics, dimensions)
+
         if rollup and not df.empty:
             df = self._apply_rollup(df, rollup, metrics, dimensions)
 
         if rounding and not df.empty:
             df = df.round(rounding)
-
-        if row_filters and not df.empty:
-            df = self._apply_row_filters(df, row_filters, metrics, dimensions)
 
         if order_by and not (df.empty and df.index.empty):
             ob_fields = []
@@ -846,8 +866,8 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 ascending.append(True if ob_type == OrderByTypes.ASC else False)
             df = df.sort_values(by=ob_fields, ascending=ascending)
 
-        if limit and not (df.empty and df.index.empty):
-            df = df.iloc[:limit]
+        if not limit_first:
+            df = self._apply_limits(df, row_filters, limit, metrics, dimensions)
 
         if pivot and not df.empty:
             df = df.unstack(pivot)
@@ -1121,6 +1141,33 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             tech.apply(df, metric, rounding=rounding)
         return df
 
+    def _apply_limits(self, df, row_filters, limit, metrics, dimensions):
+        """Apply row filters and limits to the DataFrame
+        
+        **Parameters:**
+        
+        * **df** - (*DataFrame*) The DataFrame to apply filters/limits to
+        * **row_filters** - (*list*) A list of criteria to filter which rows get
+        returned
+        * **limit** - (*int*) A limit on the number of rows returned
+        * **metrics** - (*OrderedDict*) An OrderedDict mapping metric names to
+        Metric objects
+        * **dimensions** - (*OrderedDict*) An OrderedDict mapping dimension
+        names to Dimension objects
+        
+        **Returns:**
+        
+        (*DataFrame*) - A DataFrame that has the filters/limits applied
+        
+        """
+        if row_filters and not df.empty:
+            df = self._apply_row_filters(df, row_filters, metrics, dimensions)
+
+        if limit and not (df.empty and df.index.empty):
+            df = df.iloc[:limit]
+
+        return df
+
 
 class Report(ExecutionStateMixin):
     """Build a report against a warehouse. On init DataSource queries are built,
@@ -1170,6 +1217,8 @@ class Report(ExecutionStateMixin):
     * **order_by** - (*list, optional*) A list of (field, asc/desc) tuples that
     control the ordering of the returned result
     * **limit** - (*int, optional*) A limit on the number of rows returned
+    * **limit_first** - (*bool, optional*) Whether to apply limits before
+    rollups/ordering
     * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
     specific to this report
     
@@ -1196,6 +1245,7 @@ class Report(ExecutionStateMixin):
         pivot=None,
         order_by=None,
         limit=None,
+        limit_first=False,
         adhoc_datasources=None,
     ):
         start = time.time()
@@ -1262,6 +1312,7 @@ class Report(ExecutionStateMixin):
                 isinstance(self.limit, int) and self.limit > 0,
                 "Limit must be an integer > 0",
             )
+        self.limit_first = limit_first
 
         self.adhoc_datasources = adhoc_datasources or []
 
@@ -1297,6 +1348,7 @@ class Report(ExecutionStateMixin):
                 pivot=self.pivot,
                 order_by=self.order_by,
                 limit=self.limit,
+                limit_first=self.limit_first,
             ),
             datasources=datasources,
             used_datasources=used_datasources,
@@ -1359,6 +1411,7 @@ class Report(ExecutionStateMixin):
                     self.pivot,
                     self.order_by,
                     self.limit,
+                    self.limit_first,
                 )
                 diff = time.time() - start
                 self.result = ReportResult(

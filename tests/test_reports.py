@@ -279,6 +279,17 @@ def test_report_order_by_and_limit(wh):
     info(result.df)
 
 
+def test_report_limit_first(wh):
+    metrics = ["revenue"]
+    dimensions = ["lead_id"]
+    rollup = RollupTypes.TOTALS
+    limit = 2
+    limit_first = True
+    result = wh_execute(wh, locals())
+    assert result and len(result.df) == 3 and result.df["revenue"].values[-1] == 83.0
+    info(result.df)
+
+
 def test_report_df_display(wh):
     metrics = ["revenue", "main_sales_quantity"]
     dimensions = ["partner_name", "campaign_name"]
