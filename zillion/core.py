@@ -89,6 +89,10 @@ class ReportException(ZillionException):
     pass
 
 
+class InvalidReportIdException(ZillionException):
+    pass
+
+
 class UnsupportedGrainException(ZillionException):
     pass
 

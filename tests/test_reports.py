@@ -927,6 +927,11 @@ def test_report_save_and_load_adhoc_metric(wh):
         wh.delete_report(spec_id)
 
 
+def test_report_load_invalid_id(wh):
+    with pytest.raises(InvalidReportIdException):
+        result = wh.execute_id(-1)
+
+
 def test_report_adhoc_datasource(wh, adhoc_ds):
     metrics = ["revenue", "adhoc_metric"]
     dimensions = ["partner_name"]

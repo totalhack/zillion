@@ -1830,6 +1830,10 @@ class Report(ExecutionStateMixin):
         
         """
         spec = cls._load_report_spec(spec_id)
+        if not spec:
+            raise InvalidReportIdException(
+                "Could not find report for spec id: %s" % spec_id
+            )
         params = json.loads(spec["params"])
         meta = json.loads(spec["meta"]) if spec["meta"] else None
         result = cls.from_params(warehouse, params, adhoc_datasources=adhoc_datasources)
@@ -1888,6 +1892,10 @@ class Report(ExecutionStateMixin):
         
         """
         spec = cls._load_report_spec(spec_id)
+        if not spec:
+            raise InvalidReportIdException(
+                "Could not find report for spec id: %s" % spec_id
+            )
         return json.loads(spec["params"])
 
 
