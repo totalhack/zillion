@@ -1,6 +1,8 @@
 # pylint: disable=unused-import,missing-class-docstring
 import logging
+import os
 import requests
+import time
 
 from tlbx import (
     st,
@@ -33,6 +35,7 @@ from tlbx import (
 
 ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
 RESERVED_FIELD_NAMES = set(["row_hash"])
+DEFAULT_REPLACE_AFTER = "1 days"
 
 default_logger = logging.getLogger("zillion")
 default_logger.setLevel(logging.INFO)
@@ -232,6 +235,16 @@ class IfExistsModes(metaclass=ClassValueContainsMeta):
     IGNORE = "ignore"
 
 
+class IfFileExistsModes(IfExistsModes):
+    """An extension of the modes above specific to downloaded files. This
+    allows the config to specify that a downloaded file should be replaced
+    after a certain amount of time. See code that uses this for implementation
+    details.
+    """
+
+    REPLACE_AFTER = "replace_after"
+
+
 def raiseif(cond, msg="", exc=ZillionException):
     """Convenience assert-like utility"""
     if cond:
@@ -281,3 +294,13 @@ def download_file(url, outfile=None):
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
     return outfile
+
+
+def get_modified_time(fname):
+    """Utility to get the modified time of a file"""
+    return os.stat(fname).st_mtime
+
+
+def get_time_since_modified(fname):
+    """Utility to get the time since a file was last modified"""
+    return time.time() - get_modified_time(fname)

@@ -89,6 +89,41 @@ def test_datasource_config_data_url(ds_config):
     assert ds
 
 
+def test_datasource_config_data_url_replace_after(ds_config):
+    ds_config["connect"] = {
+        "params": {
+            "data_url": "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true",
+            "if_exists": "replace_after",
+            "replace_after": "0 minutes",
+        }
+    }
+    ds = DataSource("testdb1", config=ds_config)
+    fname = "/tmp/testdb1.db"
+    mtime = get_modified_time(fname)
+    assert (time.time() - mtime) < 5  # Make sure the file is ~new
+    assert ds
+
+    ds_config["connect"]["params"]["replace_after"] = "1 minutes"
+    ds = DataSource("testdb1", config=ds_config)
+    new_mtime = get_modified_time(fname)
+    assert new_mtime == mtime  # Make sure it was not replaced
+
+
+def test_parse_replace_after():
+    assert int(parse_replace_after("1 seconds")) == 1
+    assert int(parse_replace_after("1 Minutes")) == 60
+    assert int(parse_replace_after("10 hours")) == 60 * 60 * 10
+    assert int(parse_replace_after("1.2 days")) == 60 * 60 * 24 * 1.2
+    assert int(parse_replace_after("0 weeks")) == 0
+
+    with pytest.raises(ZillionException):
+        parse_replace_after(" weeks")
+    with pytest.raises(ZillionException):
+        parse_replace_after("a weeks")
+    with pytest.raises(ZillionException):
+        parse_replace_after("1 x")
+
+
 def test_datasource_from_data_url(ds_config):
     data_url = "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true"
     ds = DataSource.from_data_url("testdb1", data_url, ds_config, if_exists="replace")

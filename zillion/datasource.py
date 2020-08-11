@@ -72,7 +72,40 @@ def connect_url_to_metadata(url, ds_name=None):
     return metadata
 
 
-def data_url_to_metadata(data_url, ds_name, if_exists=IfExistsModes.FAIL):
+def parse_replace_after(replace_after):
+    """Parse a case-insensitive interval string of the format "number interval".
+    The number may be a float, and the inverval options are: seconds, minutes,
+    hours, days, weeks.
+    """
+    parts = replace_after.lower().strip().split()
+    raiseifnot(
+        len(parts) == 2,
+        "Invalid replace_after format: '%s' expected: 'number interval'",
+    )
+
+    multipliers = dict(
+        seconds=1, minutes=60, hours=60 * 60, days=24 * 60 * 60, weeks=7 * 24 * 60 * 60
+    )
+
+    try:
+        num = float(parts[0])
+    except ValueError:
+        raise ZillionException("Invalid replace_after numeric value: %s" % parts[0])
+
+    try:
+        multiplier = multipliers[parts[1]]
+    except KeyError:
+        raise ZillionException("Invalid replace_after interval value: %s" % parts[1])
+
+    return num * multiplier
+
+
+def data_url_to_metadata(
+    data_url,
+    ds_name,
+    if_exists=IfFileExistsModes.FAIL,
+    replace_after=DEFAULT_REPLACE_AFTER,
+):
     """Create a bound SQLAlchemy MetaData object from a data URL. The ds_name
     param is used to determine datasource config context for variable
     substitution."""
@@ -80,9 +113,13 @@ def data_url_to_metadata(data_url, ds_name, if_exists=IfExistsModes.FAIL):
 
     skip = False
     if os.path.isfile(dbfile):
-        raiseif(if_exists == IfExistsModes.FAIL, "File %s already exists" % dbfile)
-        if if_exists == IfExistsModes.IGNORE:
+        raiseif(if_exists == IfFileExistsModes.FAIL, "File %s already exists" % dbfile)
+        if if_exists == IfFileExistsModes.IGNORE:
             skip = True
+        if if_exists == IfFileExistsModes.REPLACE_AFTER:
+            seconds = parse_replace_after(replace_after)
+            if get_time_since_modified(dbfile) < seconds:
+                skip = True
 
     if not skip:
         data_url = populate_url_context(data_url, ds_name)
@@ -156,7 +193,13 @@ def get_adhoc_datasource_url(ds_name):
     return "sqlite:///%s" % get_adhoc_datasource_filename(ds_name)
 
 
-def url_connect(ds_name, connect_url=None, data_url=None, if_exists=IfExistsModes.FAIL):
+def url_connect(
+    ds_name,
+    connect_url=None,
+    data_url=None,
+    if_exists=IfFileExistsModes.FAIL,
+    replace_after=DEFAULT_REPLACE_AFTER,
+):
     """A URL-based datasource connector. This is meant to be used as the "func"
     value of a DataSourceConnectSchema. Only one of connect_url or data_url may
     be specified.
@@ -175,18 +218,27 @@ def url_connect(ds_name, connect_url=None, data_url=None, if_exists=IfExistsMode
     control handling of existing data under the same filename. If "fail", an
     exception will be raised if the file already exists. If "ignore", it will
     skip downloading the file if it exists. If "replace", it will create or
-    replace the file.
+    replace the file. If "replace_after" it will check the age of the file and
+    replace it after the age interval provided in the `replace_after` param.
+    * **replace_after** - (*str, optional*) If `if_exists` is "replace_after, use
+    this value to determine the age threshold. The format is "number interval",
+    where the number may be an int or float and the interval options are: seconds,
+    minutes, hours, days, weeks. Note that this only occurs when `url_connect` is
+    called, which is typically on datasource init; it does not replace itself
+    periodically while the datasource is instantiated.
     
     """
     raiseif(connect_url and data_url, "Only one of connect_url or data_url may be set")
     raiseifnot(connect_url or data_url, "One of connect_url or data_url must be set")
     if if_exists and data_url:
         raiseifnot(
-            if_exists in IfExistsModes, "Invalid if_exists value: %s" % if_exists
+            if_exists in IfFileExistsModes, "Invalid if_exists value: %s" % if_exists
         )
 
     if data_url:
-        return data_url_to_metadata(data_url, ds_name, if_exists=if_exists)
+        return data_url_to_metadata(
+            data_url, ds_name, if_exists=if_exists, replace_after=replace_after
+        )
 
     return connect_url_to_metadata(connect_url, ds_name=ds_name)
 
@@ -1206,7 +1258,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return joins
 
     @classmethod
-    def from_data_url(cls, name, data_url, config=None, if_exists=IfExistsModes.FAIL):
+    def from_data_url(
+        cls,
+        name,
+        data_url,
+        config=None,
+        if_exists=IfFileExistsModes.FAIL,
+        replace_after=DEFAULT_REPLACE_AFTER,
+    ):
         """Create a DataSource from a data url
         
         **Parameters:**
@@ -1218,6 +1277,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
         present.
         * **if_exists** - (*str, optional*) Control behavior when the database
         already exists
+        * **replace_after** - (*str, optional*) Replace the data file after this
+        interval if `if_exists` is "replace_after". See `url_connect` docs for
+        more information.
         
         **Returns:**
         
@@ -1231,6 +1293,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
             warn("Overwriting datasource connect settings for from_data_url()")
         connect["func"] = "zillion.datasource.url_connect"
         connect["params"] = dict(data_url=data_url, if_exists=if_exists)
+        if replace_after:
+            connect["params"]["replace_after"] = replace_after
         config["connect"] = connect
         return cls(name, config=config)
 
