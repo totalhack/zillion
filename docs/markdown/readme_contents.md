@@ -3,7 +3,7 @@
 **Installation**
 ----------------
 
-> ⚠️ **Warning**: This project is in an alpha state and is rapidly changing.
+> ⚠️ **Warning**: This project is in an alpha state and is rapidly changing. Please test carefully for production usage and report any issues.
 
 ```shell
 $ pip install zillion

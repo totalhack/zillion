@@ -2,4 +2,4 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 ![Python 3](https://img.shields.io/badge/python-3-blue.svg)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/zillion)
+[![Downloads](https://pepy.tech/badge/zillion)](https://pepy.tech/project/zillion)
