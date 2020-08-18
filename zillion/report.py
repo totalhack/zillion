@@ -18,6 +18,7 @@ from stopit import async_raise
 from zillion.configs import zillion_config, default_field_display_name
 from zillion.core import *
 from zillion.field import get_table_fields, get_table_field_column, FormulaField
+from zillion.model import zillion_engine, ReportSpecs
 from zillion.sql_utils import sqla_compile, get_sqla_criterion_expr, to_sqlite_type
 
 logging.getLogger(name="stopit").setLevel(logging.ERROR)
@@ -35,20 +36,6 @@ PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT: "sum",
     AggregationTypes.COUNT_DISTINCT: "sum",
 }
-
-zillion_engine = sa.create_engine(zillion_config["ZILLION_DB_URL"])
-zillion_metadata = sa.MetaData()
-zillion_metadata.bind = zillion_engine
-
-ReportSpecs = sa.Table(
-    "report_specs",
-    zillion_metadata,
-    sa.Column("id", sa.Integer, primary_key=True),
-    sa.Column("params", sa.Text),
-    sa.Column("meta", sa.Text),
-    sa.Column("created_at", sa.DateTime, server_default=sa.func.NOW()),
-)
-zillion_metadata.create_all(zillion_engine)
 
 
 class ExecutionStateMixin:
@@ -1364,23 +1351,27 @@ class Report(ExecutionStateMixin):
         **Parameters:**
         
         * **meta** - (*object, optional*) A metadata object to be
-        serialized as JSON and stored with the report.
+        serialized as JSON and stored with the report
         
         **Returns:**
         
         (*int*) - The ID of the saved ReportSpec
         
         """
-        # params = self.get_params()
-        # params["meta"] = meta
-        # spec_json = json.dumps(params)
+        raiseifnot(
+            self.warehouse.id,
+            "The Warehouse must be saved before ReportSpecs can be saved",
+        )
         conn = zillion_engine.connect()
         try:
             result = conn.execute(
-                ReportSpecs.insert(), params=self.get_json(), meta=json.dumps(meta)
+                ReportSpecs.insert(),
+                warehouse_id=self.warehouse.id,
+                params=self.get_json(),
+                meta=json.dumps(meta),
             )
             spec_id = result.inserted_primary_key[0]
-            raiseifnot(spec_id, "No report spec ID found!")
+            raiseifnot(spec_id, "No report spec ID found")
         finally:
             conn.close()
         self.spec_id = spec_id
@@ -1829,7 +1820,7 @@ class Report(ExecutionStateMixin):
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         
         """
-        spec = cls._load_report_spec(spec_id)
+        spec = cls._load_report_spec(warehouse, spec_id)
         if not spec:
             raise InvalidReportIdException(
                 "Could not find report for spec id: %s" % spec_id
@@ -1841,7 +1832,31 @@ class Report(ExecutionStateMixin):
         return result
 
     @classmethod
-    def delete(cls, spec_id):
+    def load_warehouse_id_for_report(cls, spec_id):
+        """Get the Warehouse ID for a particular report spec
+        
+        **Parameters:**
+        
+        * **spec_id** - (*int*) A ReportSpec ID
+        
+        **Returns:**
+        
+        (*dict*) - A Warehouse ID
+                
+        """
+        s = sa.select([ReportSpecs.c.warehouse_id]).where(ReportSpecs.c.id == spec_id)
+        conn = zillion_engine.connect()
+        try:
+            result = conn.execute(s)
+            row = result.fetchone()
+            if not row:
+                return None
+            return row["warehouse_id"]
+        finally:
+            conn.close()
+
+    @classmethod
+    def delete(cls, warehouse, spec_id):
         """Delete a saved report spec
         
         **Parameters:**
@@ -1849,7 +1864,11 @@ class Report(ExecutionStateMixin):
         * **spec_id** - (*int*) The ID of a ReportSpec to delete
         
         """
-        s = ReportSpecs.delete().where(ReportSpecs.c.id == spec_id)
+        s = ReportSpecs.delete().where(
+            sa.and_(
+                ReportSpecs.c.warehouse_id == warehouse.id, ReportSpecs.c.id == spec_id
+            )
+        )
         conn = zillion_engine.connect()
         try:
             conn.execute(s)
@@ -1857,11 +1876,13 @@ class Report(ExecutionStateMixin):
             conn.close()
 
     @classmethod
-    def _load_report_spec(cls, spec_id):
-        """Get a ReportSpec from a ReportSpec ID
+    def _load_report_spec(cls, warehouse, spec_id):
+        """Get a ReportSpec row from a ReportSpec ID. The report spec must
+        exist within the context of the given warehouse.
         
         **Parameters:**
         
+        * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **spec_id** - (*int*) The ID of the ReportSpec to load
         
         **Returns:**
@@ -1869,7 +1890,14 @@ class Report(ExecutionStateMixin):
         (*dict*) - A ReportSpec row
         
         """
-        s = sa.select(ReportSpecs.c).where(ReportSpecs.c.id == spec_id)
+        raiseifnot(
+            warehouse.id, "trying to load ReportSpec for unspecified Warehouse ID"
+        )
+        s = sa.select(ReportSpecs.c).where(
+            sa.and_(
+                ReportSpecs.c.warehouse_id == warehouse.id, ReportSpecs.c.id == spec_id
+            )
+        )
         conn = zillion_engine.connect()
         try:
             result = conn.execute(s)
@@ -1879,11 +1907,12 @@ class Report(ExecutionStateMixin):
             conn.close()
 
     @classmethod
-    def _load_params(cls, spec_id):
+    def _load_params(cls, warehouse, spec_id):
         """Get Report params from a ReportSpec ID
         
         **Parameters:**
         
+        * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **spec_id** - (*int*) The ID of the ReportSpec to load params for
         
         **Returns:**
@@ -1891,7 +1920,7 @@ class Report(ExecutionStateMixin):
         (*dict*) - A dict of Report params
         
         """
-        spec = cls._load_report_spec(spec_id)
+        spec = cls._load_report_spec(warehouse, spec_id)
         if not spec:
             raise InvalidReportIdException(
                 "Could not find report for spec id: %s" % spec_id

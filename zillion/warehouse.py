@@ -2,6 +2,8 @@ from collections import defaultdict, OrderedDict
 import logging
 import time
 
+import sqlalchemy as sa
+
 from zillion.configs import (
     WarehouseConfigSchema,
     load_warehouse_config,
@@ -11,6 +13,7 @@ from zillion.configs import (
 from zillion.core import *
 from zillion.datasource import DataSource
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
+from zillion.model import zillion_engine, Warehouses
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
 
@@ -23,6 +26,9 @@ class Warehouse(FieldManagerMixin):
     against and combine data in report results. The warehouse may contain global
     definitions for metrics and dimensions, and will also perform integrity
     checks of any added datasources.
+    
+    Note that the id, name, and meta attributes will only be populated when
+    the Warehouse is persisted or loaded from a database. 
     
     **Parameters:**
     
@@ -38,6 +44,9 @@ class Warehouse(FieldManagerMixin):
     """
 
     def __init__(self, config=None, datasources=None, ds_priority=None):
+        self.id = None
+        self.name = None
+        self.meta = None
         self._datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
@@ -73,7 +82,11 @@ class Warehouse(FieldManagerMixin):
             )
 
     def __repr__(self):
-        return "<%s> Datasources: %s" % (self.__class__.__name__, self.datasource_names)
+        return "<%s(name=%s)> Datasources: %s" % (
+            self.__class__.__name__,
+            self.name,
+            self.datasource_names,
+        )
 
     @property
     def datasources(self):
@@ -230,6 +243,10 @@ class Warehouse(FieldManagerMixin):
         (*Report*) - A report built from this report spec
         
         """
+        raiseifnot(
+            self.id,
+            "The Warehouse must be saved before ReportSpecs can be loaded for the Warehouse",
+        )
         return Report.load(self, spec_id, adhoc_datasources=adhoc_datasources)
 
     def delete_report(self, spec_id):
@@ -240,10 +257,15 @@ class Warehouse(FieldManagerMixin):
         * **spec_id** - (*int*) The ID of a report spec to delete
         
         """
-        Report.delete(spec_id)
+        raiseifnot(
+            self.id,
+            "The Warehouse must be saved before ReportSpecs can be deleted for the Warehouse",
+        )
+        Report.delete(self, spec_id)
 
     def save_report(self, meta=None, **kwargs):
-        """Init a Report and save it as a ReportSpec
+        """Init a Report and save it as a ReportSpec. Note that the Warehouse
+        must be saved before any ReportSpecs can be saved for the Warehouse.
         
         **Parameters:**
         
@@ -256,9 +278,55 @@ class Warehouse(FieldManagerMixin):
         (*Report*) - The built report with the spec ID populated
         
         """
+        raiseifnot(
+            self.id,
+            "The Warehouse must be saved before ReportSpecs can be saved for the Warehouse",
+        )
         report = Report(self, **kwargs)
         report.save(meta=meta)
         return report
+
+    def save(self, name, config_url, meta=None):
+        """Save the warehouse config and return the ID
+        
+        **Parameters:**
+
+        * **name** - (*str*) A name to give the Warehouse
+        * **config_url** - (*str*) A URL pointing to a config file that can
+        be used to recreate the warehouse
+        * **meta** - (*object, optional*) A metadata object to be
+        serialized as JSON and stored with the warehouse
+        
+        **Returns:**
+        
+        (*int*) - The ID of the saved Warehouse
+        
+        """
+        raiseifnot(name, "A unique name must be specified to save a Warehouse")
+        raiseifnot(
+            # TODO: better check for valid URL
+            config_url and isinstance(config_url, str),
+            "A config URL must be specified to save a Warehouse",
+        )
+
+        params = dict(ds_priority=self.ds_priority, config=config_url)
+
+        conn = zillion_engine.connect()
+        try:
+            result = conn.execute(
+                Warehouses.insert(),
+                name=name,
+                params=json.dumps(params),
+                meta=json.dumps(meta),
+            )
+            wh_id = result.inserted_primary_key[0]
+            raiseifnot(wh_id, "No warehouse ID found")
+        finally:
+            conn.close()
+        self.id = wh_id
+        self.meta = meta
+        self.name = name
+        return wh_id
 
     def execute(
         self,
@@ -858,3 +926,103 @@ class Warehouse(FieldManagerMixin):
                 grain,
             )
         return msg
+
+    @classmethod
+    def load(cls, id):
+        """Load a Warehouse from a Warehouse ID
+        
+        **Parameters:**
+        
+        * **id** - (*int*) A Warehouse ID
+        
+        **Returns:**
+        
+        (*Warehouse*) - A Warehouse object
+        
+        """
+        wh = cls._load_warehouse(id)
+        if not wh:
+            raise InvalidWarehouseIdException(
+                "Could not find Warehouse for id: %s" % id
+            )
+
+        params = json.loads(wh["params"])
+        meta = json.loads(wh["meta"]) if wh["meta"] else None
+        result = Warehouse(**params)
+        result.meta = meta
+        result.name = wh.name
+        result.id = id
+        return result
+
+    @classmethod
+    def load_warehouse_for_report(cls, spec_id):
+        """Load the warehouse corresponding to the ReportSpec
+        
+        **Parameters:**
+        
+        * **spec_id** - (*int*) A ReportSpec ID
+        
+        **Returns:**
+        
+        (*Warehouse*) - A Warehouse object
+        
+        """
+        wh_id = Report.load_warehouse_id_for_report(spec_id)
+        raiseifnot(wh_id, "No warehouse ID found for spec ID %s" % spec_id)
+        return cls.load(wh_id)
+
+    @classmethod
+    def load_report_and_warehouse(cls, spec_id):
+        """Load a Report and Warehouse from a ReportSpec. The Warehouse
+        will be populated on the returned Report object.
+        
+        **Parameters:**
+        
+        * **spec_id** - (*int*) A ReportSpec ID
+        
+        **Returns:**
+        
+        (*Report*) - A Report built from this report spec
+        
+        """
+        wh = cls.load_warehouse_for_report(spec_id)
+        return wh.load_report(spec_id)
+
+    @classmethod
+    def delete(cls, id):
+        """Delete a saved warehouse. Note that this does not delete
+        any report specs that reference this warehouse ID.
+        
+        **Parameters:**
+        
+        * **id** - (*int*) The ID of a Warehouse to delete
+        
+        """
+        s = Warehouses.delete().where(Warehouses.c.id == id)
+        conn = zillion_engine.connect()
+        try:
+            conn.execute(s)
+        finally:
+            conn.close()
+
+    @classmethod
+    def _load_warehouse(cls, id):
+        """Get a Warehouse row from a Warehouse ID
+        
+        **Parameters:**
+        
+        * **id** - (*int*) The ID of the Warehouse to load
+        
+        **Returns:**
+        
+        (*dict*) - A Warehouse row
+                
+        """
+        s = sa.select(Warehouses.c).where(Warehouses.c.id == id)
+        conn = zillion_engine.connect()
+        try:
+            result = conn.execute(s)
+            row = result.fetchone()
+            return row
+        finally:
+            conn.close()

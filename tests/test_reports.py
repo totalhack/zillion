@@ -889,47 +889,52 @@ def test_report_multi_datasource(wh):
     info(result.df)
 
 
-def test_report_save_and_load(wh):
+def test_report_save_and_load(saved_wh):
     metrics = ["revenue", "leads", "sales"]
     dimensions = ["partner_name"]
-    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    report = Report(saved_wh, metrics=metrics, dimensions=dimensions)
     spec_id = report.save()
+
+    # Sneaking a test of these in here too
+    wh = Warehouse.load_warehouse_for_report(spec_id)
+    report = Warehouse.load_report_and_warehouse(spec_id)
+
     try:
-        result = wh.execute_id(spec_id)
+        result = saved_wh.execute_id(spec_id)
         assert result
         info(result.df)
     finally:
-        wh.delete_report(spec_id)
+        saved_wh.delete_report(spec_id)
 
 
-def test_report_save_with_meta(wh):
+def test_report_save_with_meta(saved_wh):
     metrics = ["revenue"]
     dimensions = ["partner_name"]
-    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    report = Report(saved_wh, metrics=metrics, dimensions=dimensions)
     spec_id = report.save(meta=dict(title="My test report"))
     try:
-        report = wh.load_report(spec_id)
+        report = saved_wh.load_report(spec_id)
         assert report.meta and report.meta.get("title", None) == "My test report"
     finally:
-        wh.delete_report(spec_id)
+        saved_wh.delete_report(spec_id)
 
 
-def test_report_save_and_load_adhoc_metric(wh):
+def test_report_adhoc_metric_save_and_load(saved_wh):
     metrics = ["revenue", {"formula": "{revenue} > 3*{lead_id}", "name": "testmetric"}]
     dimensions = ["partner_name", "lead_id"]
-    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    report = Report(saved_wh, metrics=metrics, dimensions=dimensions)
     spec_id = report.save()
     try:
-        result = wh.execute_id(spec_id)
+        result = saved_wh.execute_id(spec_id)
         assert result
         info(result.df)
     finally:
-        wh.delete_report(spec_id)
+        saved_wh.delete_report(spec_id)
 
 
-def test_report_load_invalid_id(wh):
+def test_report_load_invalid_id(saved_wh):
     with pytest.raises(InvalidReportIdException):
-        result = wh.execute_id(-1)
+        result = saved_wh.execute_id(-1)
 
 
 def test_report_adhoc_datasource(wh, adhoc_ds):
@@ -940,33 +945,33 @@ def test_report_adhoc_datasource(wh, adhoc_ds):
     info(result.df)
 
 
-def test_report_save_and_load_adhoc_datasource(wh, adhoc_ds):
+def test_report_save_and_load_adhoc_datasource(saved_wh, adhoc_ds):
     metrics = ["revenue", "leads", "adhoc_metric"]
     dimensions = ["partner_name"]
-    report = wh.save_report(
+    report = saved_wh.save_report(
         metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
     )
     spec_id = report.save()
     try:
-        result = wh.execute_id(spec_id, adhoc_datasources=[adhoc_ds])
+        result = saved_wh.execute_id(spec_id, adhoc_datasources=[adhoc_ds])
         assert result
         info(result.df)
     finally:
-        wh.delete_report(spec_id)
+        saved_wh.delete_report(spec_id)
 
 
-def test_report_missing_adhoc_datasource_save_and_load(wh, adhoc_ds):
+def test_report_missing_adhoc_datasource_save_and_load(saved_wh, adhoc_ds):
     metrics = ["revenue", "leads", "adhoc_metric"]
     dimensions = ["partner_name"]
-    report = wh.save_report(
+    report = saved_wh.save_report(
         metrics=metrics, dimensions=dimensions, adhoc_datasources=[adhoc_ds]
     )
     spec_id = report.save()
     try:
         with pytest.raises(ReportException):
-            result = wh.execute_id(spec_id)
+            result = saved_wh.execute_id(spec_id)
     finally:
-        wh.delete_report(spec_id)
+        saved_wh.delete_report(spec_id)
 
 
 def test_report_invalid_adhoc_datasource(wh, adhoc_ds):

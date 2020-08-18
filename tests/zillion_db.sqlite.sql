@@ -1,7 +1,19 @@
-CREATE TABLE IF NOT EXISTS "report_specs" (
-  id INTEGER NOT NULL, 
+
+CREATE TABLE IF NOT EXISTS warehouses (
+  id INTEGER NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  params TEXT NOT NULL,
+  meta TEXT,
+  created_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
+  PRIMARY KEY (id),
+  UNIQUE (name)
+);
+
+CREATE TABLE IF NOT EXISTS report_specs (
+  id INTEGER NOT NULL,
+  warehouse_id INTEGER NOT NULL,
   params TEXT,
   meta TEXT,
-  created_at DATETIME DEFAULT (CURRENT_TIMESTAMP), 
+  created_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
   PRIMARY KEY (id)
 );

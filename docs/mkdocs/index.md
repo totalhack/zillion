@@ -363,12 +363,24 @@ information on supported rollup behavior.
 
 **Example:** Save a report spec (not the data):
 
+First you must make sure you have saved your `Warehouse`, as saved reports
+are scoped to a particular `Warehouse` ID. To save a `Warehouse`
+you must provide a URL that points to the complete config.
+
 ```python
+name = "My Unique Warehouse Name"
+config_url = <some url pointing to a complete warehouse config>
+wh.save(name, config_url) # wh.id is populated after this
+
 spec_id = wh.save_report(
     metrics=["sales", "leads", "revenue"],
     dimensions=["partner_name"]
 )
 ```
+
+> *Note*: If you built your `Warehouse` in python from a list of `DataSources`,
+or passed in a `dict` for the `config` param on init, there currently is not
+a built-in way to output a complete config to a file for reference when saving.
 
 **Example:** Load and run a report from a spec ID:
 

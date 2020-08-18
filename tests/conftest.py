@@ -1,4 +1,5 @@
 import pytest
+import time
 
 from .test_utils import *
 
@@ -37,6 +38,19 @@ def adhoc_config():
 @pytest.fixture(scope="function")
 def wh(config):
     return Warehouse(config=config)
+
+
+@pytest.fixture(scope="function")
+def saved_wh():
+    name = "test_warehouse_%s" % time.time()
+    config_url = REMOTE_CONFIG_URL
+    wh = Warehouse(config=config_url)
+    wh_id = wh.save(name, config_url, meta=dict(test=1))
+    yield wh
+    try:
+        Warehouse.delete(wh_id)
+    except:
+        pass
 
 
 @pytest.fixture(scope="function")
