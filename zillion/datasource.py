@@ -5,6 +5,7 @@ import random
 from urllib.parse import urlparse, urlunparse, parse_qs
 
 import pandas as pd
+from pandas.io.sql import SQLTable, pandasSQL_builder
 import networkx as nx
 from orderedset import OrderedSet
 import sqlalchemy as sa
@@ -1369,6 +1370,8 @@ class AdHocDataTable(PrintMixin):
     same datasource
     * **if_exists** - (*str, optional*) Control behavior when datatables
     already exist in the database
+    * **fillna_value** - (*str or int, optional*) Fill null values in primary
+    key columns with this value before writing to a SQL database.
     * **schema** - (*str, optional*) The schema in which the table resides
     * **kwargs** - Keyword arguments passed to
     pandas.DataFrame.from_records if a DataFrame is created from iterable
@@ -1388,6 +1391,7 @@ class AdHocDataTable(PrintMixin):
         primary_key=None,
         parent=None,
         if_exists=IfExistsModes.FAIL,
+        fillna_value="",
         schema=None,
         **kwargs
     ):
@@ -1396,6 +1400,25 @@ class AdHocDataTable(PrintMixin):
         will do that later.
         """
         self.df_kwargs = kwargs or {}
+
+        self.primary_key_columns = None
+        if primary_key:
+            if not columns:
+                # Assume specified primary key fields match column names
+                self.primary_key_columns = self.primary_key
+            else:
+                pk_columns = []
+                for pk in self.primary_key:
+                    found = False
+                    for column_name, column_config in columns.items():
+                        if pk in column_config.get("fields", []):
+                            pk_columns.append(column_name)
+                            found = True
+                            break
+                    if not found:
+                        pk_columns.append(pk)
+                self.primary_key_columns = pk_columns
+
         self.table_config = TableConfigSchema().load(
             dict(
                 type=table_type,
@@ -1422,7 +1445,9 @@ class AdHocDataTable(PrintMixin):
         kwargs = self.df_kwargs.copy()
         if self.columns:
             kwargs["columns"] = self.columns
-        return pd.DataFrame.from_records(self.data, self.primary_key, **kwargs)
+        return pd.DataFrame.from_records(
+            self.data, index=self.primary_key_columns, **kwargs
+        )
 
     def table_exists(self, engine):
         """Determine if this table exists"""
@@ -1431,19 +1456,18 @@ class AdHocDataTable(PrintMixin):
     def to_sql(
         self, engine, if_exists=IfExistsModes.FAIL, method="multi", chunksize=int(1e3)
     ):
-        """Use pandas.DataFrame.to_sql to push the adhoc table data to a SQL
-        database.
+        """Use pandas to push the adhoc table data to a SQL database.
         
         **Parameters:**
         
         * **engine** - (*SQLAlchemy connection engine*) The engine used to
         connect to the database
-        * **if_exists** - (*str, optional*) Passed through to to_sql. An
+        * **if_exists** - (*str, optional*) Passed through to pandas. An
         additional option of "ignore" is supported which first checks if the
         table exists and if so takes no action. The "append" option is not
         currently supported.
-        * **method** - (*str, optional*) Passed through to to_sql
-        * **chunksize** - (*type, optional*) Passed through to to_sql
+        * **method** - (*str, optional*) Passed through to pandas
+        * **chunksize** - (*type, optional*) Passed through to pandas
         
         """
         raiseifnot(
@@ -1458,15 +1482,30 @@ class AdHocDataTable(PrintMixin):
 
         df = self.get_dataframe()
 
-        # Note: this hits limits in allowed sqlite params if chunks are too large
-        df.to_sql(
+        if self.primary_key_columns:
+            if isinstance(df.index, pd.MultiIndex):
+                df.index = pd.MultiIndex.from_frame(
+                    df.index.to_frame().fillna(self.fillna_value)
+                )
+            else:
+                df.index = df.index.fillna(self.fillna_value)
+
+        # Note: we are doing this instead of df.to_sql since to_sql doesn't
+        # support creating primary keys on table creation via the keys= param.
+        # To prevent unnecessary indexes from being created we also reset_index
+        # and set index=False.
+        table = SQLTable(
             self.name,
-            engine,
+            pandasSQL_builder(engine, schema=self.schema),
+            frame=df.reset_index(),
+            index=False,
+            keys=df.index.names,
             if_exists=if_exists,
-            method=method,
-            chunksize=chunksize,
             schema=self.schema,
         )
+        table.create()
+        # Note: this hits limits in allowed sqlite params if chunks are too large
+        table.insert(chunksize, method=method)
 
 
 class SQLiteDataTable(AdHocDataTable):
@@ -1489,9 +1528,10 @@ class CSVDataTable(AdHocDataTable):
     """AdHocDataTable from a JSON file using pandas.read_csv"""
 
     def get_dataframe(self):
+        info("Reading CSV from %s" % self.data)
         return pd.read_csv(
             self.data,
-            index_col=self.primary_key,
+            index_col=self.primary_key_columns,
             usecols=list(self.columns.keys()) if self.columns else None,
             **self.df_kwargs
         )
@@ -1501,13 +1541,14 @@ class ExcelDataTable(AdHocDataTable):
     """AdHocDataTable from a JSON file using pandas.read_excel"""
 
     def get_dataframe(self):
+        info("Reading Excel File from %s" % self.data)
         df = pd.read_excel(
             self.data,
             usecols=list(self.columns.keys()) if self.columns else None,
             **self.df_kwargs
         )
-        if self.primary_key and df.index.names != self.primary_key:
-            df = df.set_index(self.primary_key)
+        if self.primary_key_columns and df.index.names != self.primary_key_columns:
+            df = df.set_index(self.primary_key_columns)
         return df
 
 
@@ -1515,9 +1556,10 @@ class JSONDataTable(AdHocDataTable):
     """AdHocDataTable from a JSON file using pandas.read_json"""
 
     def get_dataframe(self, orient="table"):
+        info("Reading JSON from %s" % self.data)
         df = pd.read_json(self.data, orient=orient, **self.df_kwargs)
-        if self.primary_key and df.index.names != self.primary_key:
-            df = df.set_index(self.primary_key)
+        if self.primary_key_columns and df.index.names != self.primary_key_columns:
+            df = df.set_index(self.primary_key_columns)
         return df
 
 
@@ -1527,12 +1569,13 @@ class HTMLDataTable(AdHocDataTable):
     `df.reset_index().to_html("table.html", index=False)`"""
 
     def get_dataframe(self):
+        info("Reading HTML from %s" % self.data)
         dfs = pd.read_html(self.data, **self.df_kwargs)
         raiseifnot(dfs, "No html table found")
         raiseifnot(len(dfs) == 1, "More than one html table found")
         df = dfs[0]
-        if self.primary_key and df.index.names != self.primary_key:
-            df = df.set_index(self.primary_key)
+        if self.primary_key_columns and df.index.names != self.primary_key_columns:
+            df = df.set_index(self.primary_key_columns)
         return df
 
 
@@ -1552,9 +1595,10 @@ class GoogleSheetsDataTable(AdHocDataTable):
         else:
             raise ZillionException("Unsupported google docs URL: %s" % url)
 
+        info("Reading Google Sheets CSV from %s" % url)
         return pd.read_csv(
             url,
-            index_col=self.primary_key,
+            index_col=self.primary_key_columns,
             usecols=list(self.columns.keys()) if self.columns else None,
             **self.df_kwargs
         )

@@ -2,6 +2,7 @@ from collections import OrderedDict
 import pytest
 import time
 
+from marshmallow import ValidationError
 import sqlalchemy as sa
 
 from .test_utils import *
@@ -243,6 +244,14 @@ def test_reserved_field_name(config):
     ds = DataSource("testdb1", config=config["datasources"]["testdb1"])
     with pytest.raises(WarehouseException):
         wh = Warehouse(config=config, datasources=[ds])
+
+
+def test_field_name_starts_with_number(config):
+    config["datasources"]["testdb1"]["metrics"].append(
+        {"name": "1test", "type": "integer", "aggregation": AggregationTypes.SUM}
+    )
+    with pytest.raises(ValidationError):
+        ds = DataSource("testdb1", config=config["datasources"]["testdb1"])
 
 
 def test_dimension_to_config(config):

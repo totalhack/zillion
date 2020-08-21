@@ -255,6 +255,8 @@ def is_valid_field_name(val):
     """Validate field name"""
     if val is None:
         raise ValidationError("Field name can not be null")
+    if val[0] in string.digits:
+        raise ValidationError("Field name can not start with a number")
     if set(val) <= FIELD_NAME_ALLOWED_CHARS:
         return True
     raise ValidationError(
@@ -374,8 +376,8 @@ class PolyNested(mfields.Nested):
                 continue
             return result
         raise ValidationError(
-            "Could not deserialize value with PolyNested schemas. Data:%s\nSchemas:%s"
-            % (value, self.nested)
+            "Could not deserialize value with PolyNested schemas. Errors:%s Data:%s Schemas:%s"
+            % (errors, value, self.nested)
         )
 
 
