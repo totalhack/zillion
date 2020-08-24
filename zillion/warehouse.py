@@ -60,6 +60,8 @@ class Warehouse(FieldManagerMixin):
             self.apply_config(config, skip_integrity_checks=True)
 
         raiseifnot(self._datasources, "No datasources provided or found in config")
+
+        self._add_default_display_names()
         self.run_integrity_checks()
 
         self.ds_priority = ds_priority or list(self._datasources.keys())

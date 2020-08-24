@@ -13,6 +13,7 @@ from zillion.configs import (
     create_technical,
     is_valid_field_name,
     is_active,
+    default_field_display_name,
 )
 from zillion.core import *
 from zillion.sql_utils import (
@@ -759,6 +760,13 @@ class FieldManagerMixin:
         fields.update(getattr(self, self.dimensions_attr))
         return fields
 
+    def get_direct_fields(self):
+        """Get a dict of all fields directly supported by this FieldManager"""
+        fields = {}
+        fields.update(getattr(self, self.metrics_attr))
+        fields.update(getattr(self, self.dimensions_attr))
+        return fields
+
     def get_direct_metric_configs(self):
         """Get a dict of metric configs directly supported by this
         FieldManager"""
@@ -821,6 +829,23 @@ class FieldManagerMixin:
             warn("Dimension %s already exists on %s" % (dimension.name, self))
             return
         getattr(self, self.dimensions_attr)[dimension.name] = dimension
+
+    def _add_default_display_names(self, adhoc_fms=None, display_names=None):
+        """Populate default display names on all fields"""
+        fields = self.get_direct_fields()
+        display_names = display_names or {}
+        for field, config in fields.items():
+            if display_names.get(field, None) and not config.display_name:
+                # Make sure we use consistent names if one was specified
+                # in a parent field manager.
+                config.display_name = display_names[field]
+            else:
+                default = default_field_display_name(field)
+                config.display_name = config.display_name or default
+                display_names[field] = config.display_name
+
+        for fm in self.get_field_managers(adhoc_fms=adhoc_fms):
+            fm._add_default_display_names(display_names=display_names)
 
     def _populate_global_fields(self, config, force=False):
         """Populate fields on this FieldManager from a config

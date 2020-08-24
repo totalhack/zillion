@@ -558,13 +558,6 @@ class FieldConfigSchema(BaseSchema):
     )
     description = mfields.String(default=None, missing=None)
 
-    @pre_load
-    def _set_default_display_name(self, data, **kwargs):
-        """Set a default display name based on the field name"""
-        if not data.get("display_name", None):
-            data["display_name"] = default_field_display_name(data["name"])
-        return data
-
 
 class FormulaFieldConfigSchema(BaseSchema):
     """The based schema of a formula field configuration
@@ -587,13 +580,6 @@ class FormulaFieldConfigSchema(BaseSchema):
         default=None, missing=None, validate=is_valid_field_display_name
     )
     description = mfields.String(default=None, missing=None)
-
-    @pre_load
-    def _set_default_display_name(self, data, **kwargs):
-        """Set a default display name based on the field name"""
-        if not data.get("display_name", None):
-            data["display_name"] = default_field_display_name(data["name"])
-        return data
 
 
 class MetricConfigSchemaMixin:
