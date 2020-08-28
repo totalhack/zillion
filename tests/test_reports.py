@@ -189,11 +189,13 @@ def test_report_count_aggr(wh):
 
 def test_report_criteria_between(wh):
     metrics = ["leads"]
-    dimensions = ["partner_name"]
-    criteria = [("date", "between", ["2020-01-01", "2020-05-01"])]
+    dimensions = ["lead_id"]
+    criteria = [("lead_id", "between", [1, 5])]
+
     result = wh_execute(wh, locals())
     assert result and result.rowcount > 0
-    criteria = [("date", "not between", ["2020-01-01", "2020-05-01"])]
+
+    criteria = [("lead_id", "not between", [1, 10])]
     result = wh_execute(wh, locals())
     assert result.rowcount == 0
 
@@ -202,10 +204,15 @@ def test_report_criteria_in(wh):
     metrics = ["leads"]
     dimensions = ["date"]
     criteria = [("date", "in", ["2020-04-29", "2020-04-30"])]
+
     result = wh_execute(wh, locals())
     assert result
-    info(result.df)
+
     criteria = [("date", "not in", ["2020-04-29", "2020-04-30"])]
+    result = wh_execute(wh, locals())
+    assert result.rowcount == 0
+
+    criteria = [("date", "in", "2020-04-29, 2020-04-30")]
     result = wh_execute(wh, locals())
     assert result.rowcount == 0
 
@@ -219,6 +226,16 @@ def test_row_filter_single_dimension(wh):
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
+
+
+def test_row_filter_invalid_type(wh):
+    metrics = ["leads", "sales"]
+    dimensions = ["month"]
+    criteria = [["year", "=", "2020"]]
+    rollup = "totals"
+    row_filters = [["leads", ">", "x"]]
+    with pytest.raises(ZillionException):
+        result = wh_execute(wh, locals())
 
 
 def test_report_pivot(wh):
@@ -1132,7 +1149,7 @@ def test_row_filter_sql_injection(wh):
     metrics = ["leads", "revenue"]
     dimensions = ["partner_name"]
     row_filters = [("revenue", ">", "11;select * from leads")]
-    with pytest.raises(SyntaxError):
+    with pytest.raises(ZillionException):
         result = wh_execute(wh, locals())
 
 

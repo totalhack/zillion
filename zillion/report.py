@@ -19,7 +19,12 @@ from zillion.configs import zillion_config, default_field_display_name
 from zillion.core import *
 from zillion.field import get_table_fields, get_table_field_column, FormulaField
 from zillion.model import zillion_engine, ReportSpecs
-from zillion.sql_utils import sqla_compile, get_sqla_criterion_expr, to_sqlite_type
+from zillion.sql_utils import (
+    sqla_compile,
+    get_sqla_criterion_expr,
+    to_sqlite_type,
+    type_string_to_sa_type,
+)
 
 logging.getLogger(name="stopit").setLevel(logging.ERROR)
 
@@ -30,7 +35,7 @@ ROLLUP_INDEX_LABEL = chr(1114111)
 # conflicting with actual report data.
 ROLLUP_INDEX_DISPLAY_LABEL = "::"
 
-ROW_FILTER_OPS = [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
+ROW_FILTER_OPS = [">", ">=", "<", "<=", "=", "==", "!="]
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT: "sum",
@@ -970,14 +975,37 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         
         """
         filter_parts = []
+        fields = {}
+        fields.update(metrics)
+        fields.update(dimensions)
+
         for row_filter in row_filters:
             field, op, value = row_filter
             raiseifnot(
-                (field in metrics) or (field in dimensions),
-                'Row filter field "%s" is not in result table' % field,
+                field in fields, 'Row filter field "%s" is not in result table' % field
             )
+
+            if op == "=":
+                op = "=="  # pandas expects this for comparison
             raiseifnot(op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op)
+
+            sa_type = type_string_to_sa_type(fields[field].type)
+            py_type = sa_type.python_type
+
+            if not isinstance(value, py_type):
+                try:
+                    value = py_type(value)
+                except Exception as e:
+                    raise ZillionException(
+                        "Row filter for field '%s' has invalid value type %s and could not be converted to %s"
+                        % (field, type(value), py_type)
+                    )
+
+            if isinstance(value, str):
+                value = "'%s'" % value
+
             filter_parts.append("(%s %s %s)" % (field, op, value))
+
         result = df.query(" and ".join(filter_parts))
         # https://stackoverflow.com/questions/28772494/how-do-you-update-the-levels-of-a-pandas-multiindex-after-slicing-its-dataframe
         if dimensions and len(dimensions) > 1:
