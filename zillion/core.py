@@ -36,6 +36,24 @@ from tlbx import (
 ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
 RESERVED_FIELD_NAMES = set(["row_hash"])
 DEFAULT_REPLACE_AFTER = "1 days"
+CRITERIA_OPERATIONS = set(
+    [
+        ">",
+        ">=",
+        "<",
+        "<=",
+        "=",
+        "!=",
+        "in",
+        "not in",
+        "between",
+        "not between",
+        "like",
+        "not like",
+    ]
+)
+ROW_FILTER_OPERATIONS = set([">", ">=", "<", "<=", "=", "!="])
+
 
 default_logger = logging.getLogger("zillion")
 default_logger.setLevel(logging.INFO)
@@ -243,6 +261,9 @@ class IfFileExistsModes(IfExistsModes):
     """
 
     REPLACE_AFTER = "replace_after"
+
+
+# ---- TODO: move below to utils file
 
 
 def raiseif(cond, msg="", exc=ZillionException):

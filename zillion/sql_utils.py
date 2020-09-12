@@ -328,14 +328,13 @@ def get_sqla_criterion_expr(column, criterion, negate=False):
     * **column** - (*SQLAlchemy column*) A SQLAlchemy column object to be used
     in the expression
     * **criterion** - (*3-item iterable*) A 3-item tuple or list of the format
-    [field, operation, value(s)]. The supported operations are: `=, !=, >, <, >=,
-    <=, in, not in, between, not between, like, not like`. The value item may
-    take on different formats depending on the operation. In most cases passing
-    an iterable will result in multiple criteria of that operation being formed.
-    For example, ("my_field", "=", [1,2,3]) would logically or 3 conditions of
-    equality to the 3 values in the list. The "between" operations expect each
-    value to be a 2-item iterable representing the lower and upper bound of the
-    criterion.
+    [field, operation, value(s)]. See `core.CRITERIA_OPERATIONS` for supported
+    operations. The value item may take on different formats depending on the
+    operation. In most cases passing an iterable will result in multiple
+    criteria of that operation being formed. For example, ("my_field", "=",
+    [1,2,3]) would logically or 3 conditions of equality to the 3 values in the
+    list. The "between" operations expect each value to be a 2-item iterable
+    representing the lower and upper bound of the criterion.
     * **negate** - (*bool, optional*) Negate the expression
     
     **Returns:**

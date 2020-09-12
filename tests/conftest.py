@@ -74,18 +74,18 @@ def mysql_wh(mysql_ds):
 
 
 @pytest.fixture(scope="function")
-def postgres_ds_config():
-    return load_datasource_config("test_postgres_ds_config.json")
+def postgresql_ds_config():
+    return load_datasource_config("test_postgresql_ds_config.json")
 
 
 @pytest.fixture(scope="function")
-def postgres_ds(postgres_ds_config):
-    return DataSource("postgres", config=postgres_ds_config)
+def postgresql_ds(postgresql_ds_config):
+    return DataSource("postgresql", config=postgresql_ds_config)
 
 
 @pytest.fixture(scope="function")
-def postgres_wh(postgres_ds):
-    return Warehouse(datasources=[postgres_ds])
+def postgresql_wh(postgresql_ds):
+    return Warehouse(datasources=[postgresql_ds])
 
 
 @pytest.fixture

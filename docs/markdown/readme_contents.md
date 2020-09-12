@@ -427,7 +427,7 @@ happens to be SQLite in our example.
 ### **Type Conversions**
 
 Our example also automatically created a handful of dimensions from the
-"created_at" columns of the leads and sales tables. Support for type
+"created_at" columns of the leads and sales tables. Support for automatic type
 conversions is limited, but for date/datetime columns in supported
 `DataSource` technologies you can get a variety of dimensions for free this
 way.
@@ -435,12 +435,21 @@ way.
 The output of `wh.print_info` will show the added dimensions, which are
 prefixed with "lead_" or "sale_" as specified by the optional
 `type_conversion_prefix` in the config for each table. Some examples of
-auto-generated dimensions include sale_hour, sale_day_name, sale_day_of_month,
-sale_month, sale_year, etc. To prevent type conversions, set
-`skip_conversion_fields` to `true` on your `DataSource` config.
+auto-generated dimensions in our example warehouse include sale_hour,
+sale_day_name, sale_month, sale_year, etc. 
 
-See `zillion.field.TYPE_ALLOWED_CONVERSIONS` for more details on currently
-supported conversions.
+As an optimization in the where clause of underlying report queries, `Zillion` 
+will try to apply conversions to criteria values instead of columns. For example, 
+it is generally more efficient to query as `my_datetime > '2020-01-01' and my_datetime < '2020-01-02'`
+instead of `DATE(my_datetime) == '2020-01-01'`, because the latter can prevent index
+usage in many database technologies. The ability to apply conversions to values
+instead of columns varies by field and `DataSource` technology as well. 
+
+To prevent type conversions, set `skip_conversion_fields` to `true` on your
+`DataSource` config.
+
+See `zillion.field.TYPE_ALLOWED_CONVERSIONS` and `zillion.field.DIALECT_CONVERSIONS`
+for more details on currently supported conversions.
 
 <a name="config-variables"></a>
 

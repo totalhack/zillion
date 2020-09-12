@@ -3,6 +3,7 @@
 * [zillion.configs](zillion.configs.md)
 * [zillion.core](zillion.core.md)
 * [zillion.datasource](zillion.datasource.md)
+* [zillion.dialects](zillion.dialects.md)
 * [zillion.field](zillion.field.md)
 * [zillion.model](zillion.model.md)
 * [zillion.report](zillion.report.md)

@@ -60,7 +60,7 @@ def test_mysql_multithreaded_timeout(mysql_wh):
             result = mysql_wh.execute(metrics, dimensions=dimensions)
 
 
-def test_mysql_date_conversions(mysql_wh):
+def test_mysql_date_dimension_conversions(mysql_wh):
     params = get_date_conversion_test_params()
     result = mysql_wh.execute(**params)
     assert result
@@ -69,3 +69,15 @@ def test_mysql_date_conversions(mysql_wh):
     info(df)
     for field, value in EXPECTED_DATE_CONVERSION_VALUES:
         assert row[field] == value
+
+
+def test_mysql_where_criteria_conversions(mysql_wh):
+    metrics = ["clicks"]
+    dimensions = ["campaign_created_at"]
+    for field, op, val in CRITERIA_CONVERSION_TESTS:
+        print("criteria:", field, op, val)
+        criteria = [("campaign_name", "=", "Campaign 2B"), (field, op, val)]
+        result = wh_execute(mysql_wh, locals())
+        assert result.df.index.any()
+        assert len(result.df) == 1
+        assert result.df["clicks"][0] == 85

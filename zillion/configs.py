@@ -328,6 +328,45 @@ def is_valid_technical(val):
     return True
 
 
+def is_valid_datasource_criteria_conversions(val):
+    """Validate datasource criteria conversions"""
+    if val is None:
+        return True
+    if not isinstance(val, dict):
+        raise ValidationError(
+            "Invalid datasource criteria conversion, must be a dict "
+            "mapping criteria operations to criteria conversions: %s" % val
+        )
+    for op, new_criteria in val.items():
+        if op not in CRITERIA_OPERATIONS:
+            raise ValidationError("Invalid criteria operation: %s" % op)
+        if not isinstance(new_criteria, list):
+            raise ValidationError(
+                "Criteria conversions must be a list of new criteria to apply: %s"
+                % new_criteria
+            )
+        for row in new_criteria:
+            if not len(row) == 2:
+                raise ValidationError(
+                    "Criteria conversion row must have 2 items: %s" % row
+                )
+            row_op, row_formula = row
+            if not row_op in CRITERIA_OPERATIONS:
+                raise ValidationError("Invalid criteria operation: %s" % row)
+            # We allow 2-item list/tuple for between/in criteria, otherwise
+            # it must be a string.
+            if not isinstance(row_formula, str):
+                allows_list = row_op in ["between", "not between", "in", "not in"]
+                valid_list = (
+                    isinstance(row_formula, (list, tuple)) and len(row_formula) == 2
+                )
+                if not allows_list or not valid_list:
+                    raise ValidationError(
+                        "Invalid criteria conversion values: %s" % row
+                    )
+    return True
+
+
 def is_valid_connect_type(val):
     """Validate technical type"""
     if isinstance(val, str):
@@ -406,6 +445,17 @@ class TechnicalField(mfields.Field):
         super()._validate(value)
 
 
+class DataSourceCriteriaConversionsField(mfields.Field):
+    """A field for defining column-level criteria conversions. This allows
+    for optimizing queries by converting values instead of applying a
+    function on the column to evaluate criteria, which can otherwise 
+    prevent index usage."""
+
+    def _validate(self, value):
+        is_valid_datasource_criteria_conversions(value)
+        super()._validate(value)
+
+
 class ColumnFieldConfigSchema(BaseSchema):
     """The schema of a column's field attribute
     
@@ -419,6 +469,9 @@ class ColumnFieldConfigSchema(BaseSchema):
 
     name = mfields.Str(required=True, validate=is_valid_field_name)
     ds_formula = mfields.Str(required=True)
+    ds_criteria_conversions = DataSourceCriteriaConversionsField(
+        default=None, missing=None
+    )
 
 
 class ColumnFieldConfigField(mfields.Field):
@@ -935,6 +988,16 @@ class ColumnInfo(ZillionInfo, PrintMixin):
         if isinstance(field, str):
             return None
         return field.get("ds_formula", None)
+
+    def get_criteria_conversion(self, field_name, operation):
+        """Get the datasource-level criteria conversion for a field/operation"""
+        field = self.get_field(field_name)
+        if not isinstance(field, dict):
+            return None
+        convs = field.get("ds_criteria_conversions", None)
+        if not convs:
+            return None
+        return convs.get(operation, None)
 
     def _add_field_to_map(self, field):
         """Add to the map of fields on this column"""

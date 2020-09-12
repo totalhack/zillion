@@ -245,7 +245,6 @@ EXPECTED_DATE_CONVERSION_VALUES = [
     ("campaign_minute", "2019-03-26 21:02:00"),
     ("campaign_minute_of_hour", 2),
     ("campaign_datetime", "2019-03-26 21:02:15"),
-    ("campaign_unixtime", 1553634135),
 ]
 
 
@@ -254,6 +253,68 @@ def get_date_conversion_test_params():
     criteria = [("campaign_name", "=", "Campaign 2B")]
     dimensions = ["campaign_%s" % v.name for v in DATETIME_CONVERSION_FIELDS]
     return dict(metrics=metrics, criteria=criteria, dimensions=dimensions)
+
+
+CRITERIA_CONVERSION_TESTS = [
+    # TODO: add value validation for every case
+    ("campaign_date", "=", "2019-03-26"),
+    ("campaign_date", "!=", "2019-03-25"),
+    ("campaign_date", ">", "2019-03-25"),
+    ("campaign_date", ">=", "2019-03-26"),
+    ("campaign_date", "<", "2019-03-27"),
+    ("campaign_date", "<=", "2019-03-26"),
+    ("campaign_date", "between", ["2019-03-26", "2019-03-27"]),
+    ("campaign_date", "not between", ["2019-03-25", "2019-03-25"]),
+    #
+    ("campaign_year", "=", "2019"),
+    ("campaign_year", "!=", "2020"),
+    ("campaign_year", ">", "2018"),
+    ("campaign_year", ">=", "2019"),
+    ("campaign_year", "<", "2020"),
+    ("campaign_year", "<=", "2019"),
+    ("campaign_year", "between", ["2019", "2020"]),
+    ("campaign_year", "not between", ["2017", "2018"]),
+    #
+    ("campaign_month", "=", "2019-03"),
+    ("campaign_month", "!=", "2019-02"),
+    ("campaign_month", ">", "2019-02"),
+    ("campaign_month", ">=", "2019-03"),
+    ("campaign_month", "<", "2019-04"),
+    ("campaign_month", "<=", "2019-03"),
+    ("campaign_month", "between", ["2019-03", "2019-03"]),
+    ("campaign_month", "not between", ["2019-01", "2019-02"]),
+    #
+    ("campaign_hour", "=", "2019-03-26 21:00:00"),
+    ("campaign_hour", "!=", "2019-03-26 20:00:00"),
+    ("campaign_hour", ">", "2019-03-26 04:00:00"),
+    ("campaign_hour", ">=", "2019-03-26 21:00:00"),
+    ("campaign_hour", "<", "2019-03-26 22:00:00"),
+    ("campaign_hour", ">=", "2019-03-26 21:00:00"),
+    ("campaign_hour", "between", ["2019-03-26 20:00:00", "2019-03-26 22:00:00"]),
+    ("campaign_hour", "not between", ["2019-03-26 04:00:00", "2019-03-26 05:00:00"]),
+    #
+    ("campaign_minute", "=", "2019-03-26 21:02:00"),
+    ("campaign_minute", "!=", "2019-03-26 21:01:00"),
+    ("campaign_minute", ">", "2019-03-26 21:01:00"),
+    ("campaign_minute", ">=", "2019-03-26 21:02:00"),
+    ("campaign_minute", "<", "2019-03-26 21:03:00"),
+    ("campaign_minute", ">=", "2019-03-26 21:02:00"),
+    ("campaign_minute", "between", ["2019-03-26 21:01:00", "2019-03-26 21:02:00"]),
+    ("campaign_minute", "not between", ["2019-03-26 21:01:00", "2019-03-26 21:01:00"]),
+    #
+    ("campaign_datetime", "=", "2019-03-26 21:02:15"),
+    ("campaign_datetime", "!=", "2019-03-26 21:02:00"),
+    ("campaign_datetime", ">", "2019-03-26 21:02:10"),
+    ("campaign_datetime", ">=", "2019-03-26 21:02:15"),
+    ("campaign_datetime", "<", "2019-03-26 21:02:16"),
+    ("campaign_datetime", "<=", "2019-03-26 21:02:15"),
+    ("campaign_datetime", "between", ["2019-03-26 21:02:15", "2019-03-26 21:02:16"]),
+    (
+        "campaign_datetime",
+        "not between",
+        ["2019-03-26 21:00:01", "2019-03-26 21:00:02"],
+    ),
+]
 
 
 def wh_execute_args(d):

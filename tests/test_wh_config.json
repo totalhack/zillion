@@ -102,13 +102,17 @@
             "name": "revenue_required_grain",
             "type": "numeric(10,2)",
             "aggregation": "sum",
-            "required_grain": ["campaign_name"]
+            "required_grain": [
+                "campaign_name"
+            ]
         },
         {
             "name": "revenue_per_lead_required_grain",
             "aggregation": "mean",
             "formula": "1.0*{revenue}/{leads}",
-            "required_grain": ["campaign_name"]
+            "required_grain": [
+                "campaign_name"
+            ]
         },
         {
             "name": "revenue_formula_required_grain",
@@ -116,14 +120,12 @@
             "formula": "1.0*{revenue_required_grain}"
         }
     ],
-
     "dimensions": [
         {
             "name": "partner_name",
             "type": "string(32)"
         }
     ],
-    
     "datasources": {
         "testdb1": {
             "connect": "sqlite:///testdb1",
@@ -176,56 +178,79 @@
                 "main.partners": {
                     "type": "dimension",
                     "create_fields": true,
-                    "primary_key": ["partner_id"],
+                    "primary_key": [
+                        "partner_id"
+                    ],
                     "columns": {
                         "id": {
-                            "fields": ["partner_id"]
+                            "fields": [
+                                "partner_id"
+                            ]
                         },
                         "name": {
-                            "fields": ["partner_name", "ds_partner_name"]
+                            "fields": [
+                                "partner_name",
+                                "ds_partner_name"
+                            ]
                         }
                     }
                 },
-                
                 "main.campaigns": {
                     "type": "dimension",
                     "create_fields": true,
                     "parent": "main.partners",
-                    "primary_key": ["campaign_id"],
+                    "primary_key": [
+                        "campaign_id"
+                    ],
                     "columns": {
                         "id": {
-                            "fields": ["campaign_id"]
+                            "fields": [
+                                "campaign_id"
+                            ]
                         },
                         "name": {
                             "fields": [
                                 "campaign_name",
-                                {"name":"campaign_name_length", "ds_formula": "LENGTH(campaigns.name)"}
+                                {
+                                    "name": "campaign_name_length",
+                                    "ds_formula": "LENGTH(campaigns.name)"
+                                }
                             ]
                         },
                         "partner_id": {
-                            "fields": ["partner_id"]
+                            "fields": [
+                                "partner_id"
+                            ]
                         },
                         "created_at": {
-                            "fields": ["campaign_created_at"],
+                            "fields": [
+                                "campaign_created_at"
+                            ],
                             "allow_type_conversions": true,
                             "type_conversion_prefix": "campaign_"
                         }
                     }
                 },
-
                 "main.leads": "test_table_config.json",
-                
                 "main.sales": {
                     "type": "metric",
                     "create_fields": true,
                     "parent": "main.leads",
-                    "primary_key": ["sale_id"],
+                    "primary_key": [
+                        "sale_id"
+                    ],
                     "columns": {
                         "id": {
                             "fields": [
                                 "sale_id",
-                                {"name":"sales", "ds_formula": "COUNT(DISTINCT sales.id)"},
-                                {"name":"ds_sales", "ds_formula": "COUNT(DISTINCT sales.id)"}
+                                {
+                                    "name": "sales",
+                                    "ds_formula": "COUNT(DISTINCT sales.id)"
+                                },
+                                {
+                                    "name": "ds_sales",
+                                    "ds_formula": "COUNT(DISTINCT sales.id)"
+                                }
                             ]
                         },
                         "created_at": {
@@ -233,7 +258,20 @@
                             "type_conversion_prefix": "sale_"
                         },
                         "lead_id": {
-                            "fields": ["lead_id"]
+                            "fields": [
+                                {
+                                    "name": "lead_id",
+                                    "ds_formula": "sales.lead_id",
+                                    "ds_criteria_conversions": {
+                                        "=": [
+                                            [
+                                                "=",
+                                                "{}"
+                                            ]
+                                        ]
+                                    }
+                                }
+                            ]
                         },
                         "revenue": {
                             "fields": [
@@ -246,16 +284,24 @@
                                 "revenue_pct_diff",
                                 "revenue_mean",
                                 "revenue_required_grain",
-                                {"name": "revenue_ds", "ds_formula": "IFNULL(sales.revenue, 0)"},
-                                {"name": "revenue_mean_ds_weighted", "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"},
-                                {"name": "revenue_decile", "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"}
+                                {
+                                    "name": "revenue_ds",
+                                    "ds_formula": "IFNULL(sales.revenue, 0)"
+                                },
+                                {
+                                    "name": "revenue_mean_ds_weighted",
+                                    "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"
+                                },
+                                {
+                                    "name": "revenue_decile",
+                                    "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"
+                                }
                             ]
                         }
                     }
                 }
             }
         },
-
         "testdb2": "test_sqlite_ds_config.json"
     }
 }

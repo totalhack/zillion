@@ -867,15 +867,16 @@ def test_report_adhoc_nested_metric(wh):
     info(result.df)
 
 
-def test_report_where_date_conversion(wh):
-    criteria = [
-        ("campaign_name", "=", "Campaign 2B"),
-        ("campaign_date", "=", "2019-03-26"),
-    ]
+def test_report_where_criteria_conversions(wh):
+    metrics = ["leads"]
     dimensions = ["campaign_created_at"]
-    result = wh_execute(wh, locals())
-    assert result.df.index.any()
-    info(result.df)
+    for field, op, val in CRITERIA_CONVERSION_TESTS:
+        print("criteria:", field, op, val)
+        criteria = [("campaign_name", "=", "Campaign 2B"), (field, op, val)]
+        result = wh_execute(wh, locals())
+        assert result.df.index.any()
+        assert len(result.df) == 1
+        assert result.df["leads"][0] == 1
 
 
 def test_report_sqlite_date_conversions(wh):
@@ -1120,19 +1121,10 @@ def test_adhoc_metric_sql_injection(wh):
         result = wh_execute(wh, locals())
 
 
-# def test_adhoc_dimension_sql_injection(wh):
-#     metrics = ["leads", "sales"]
-#     dimensions = [
-#         "partner_name",
-#         {"formula": "{lead_id} > 3;drop table leads", "name": "testdim"},
-#     ]
-#     with pytest.raises(DisallowedSQLException):
-#         result = wh_execute(wh, locals())
-
-
 def test_criteria_sql_injection(wh):
     metrics = ["leads", "sales"]
     dimensions = ["campaign_name"]
+
     criteria = [("campaign_name", "!=", "Campaign 2B';select * from leads --")]
     result = wh_execute(wh, locals())
 
@@ -1143,6 +1135,18 @@ def test_criteria_sql_injection(wh):
     criteria = [("campaign_name", "select * from leads", "Campaign 2B")]
     with pytest.raises(ZillionException):
         result = wh_execute(wh, locals())
+
+    criteria = [("campaign_date", "=", "select * from leads --")]
+    result = wh_execute(wh, locals())
+
+    criteria = [("campaign_date", "=", "';select * from leads --")]
+    result = wh_execute(wh, locals())
+
+    criteria = [("campaign_date", "=", "'select * from leads;'")]
+    result = wh_execute(wh, locals())
+
+    criteria = [("campaign_date", "=", '";select * from leads --')]
+    result = wh_execute(wh, locals())
 
 
 def test_row_filter_sql_injection(wh):

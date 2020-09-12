@@ -2,42 +2,42 @@
 # Module zillion.core
 
 
-## [AggregationTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L149-L158)
+## [AggregationTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L167-L176)
 
 ::: zillion.core.AggregationTypes
     :docstring:
     
 
 
-## [DataSourceQueryModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L210-L214)
+## [DataSourceQueryModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L228-L232)
 
 ::: zillion.core.DataSourceQueryModes
     :docstring:
     
 
 
-## [ExecutionState](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L217-L222)
+## [ExecutionState](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L235-L240)
 
 ::: zillion.core.ExecutionState
     :docstring:
     
 
 
-## [FieldTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L135-L139)
+## [FieldTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L153-L157)
 
 ::: zillion.core.FieldTypes
     :docstring:
     
 
 
-## [IfExistsModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L225-L235)
+## [IfExistsModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L243-L253)
 
 ::: zillion.core.IfExistsModes
     :docstring:
     
 
 
-## [IfFileExistsModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L238-L245)
+## [IfFileExistsModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L256-L263)
 
 *Bases*: zillion.core.IfExistsModes
 
@@ -46,108 +46,108 @@
     
 
 
-## [OrderByTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L203-L207)
+## [OrderByTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L221-L225)
 
 ::: zillion.core.OrderByTypes
     :docstring:
     
 
 
-## [RollupTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L196-L200)
+## [RollupTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L214-L218)
 
 ::: zillion.core.RollupTypes
     :docstring:
     
 
 
-## [TableTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L142-L146)
+## [TableTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L160-L164)
 
 ::: zillion.core.TableTypes
     :docstring:
     
 
 
-## [TechnicalModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L181-L193)
+## [TechnicalModes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L199-L211)
 
 ::: zillion.core.TechnicalModes
     :docstring:
     
 
 
-## [TechnicalTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L161-L178)
+## [TechnicalTypes](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L179-L196)
 
 ::: zillion.core.TechnicalTypes
     :docstring:
     
 
 
-## [dbg](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L44-L48)
+## [dbg](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L62-L66)
 
 ::: zillion.core.dbg
     :docstring:
 
 
-## [dbgsql](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L51-L55)
+## [dbgsql](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L69-L73)
 
 ::: zillion.core.dbgsql
     :docstring:
 
 
-## [download_file](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L286-L296)
+## [download_file](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L307-L317)
 
 ::: zillion.core.download_file
     :docstring:
 
 
-## [error](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L72-L76)
+## [error](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L90-L94)
 
 ::: zillion.core.error
     :docstring:
 
 
-## [get_modified_time](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L299-L301)
+## [get_modified_time](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L320-L322)
 
 ::: zillion.core.get_modified_time
     :docstring:
 
 
-## [get_time_since_modified](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L304-L306)
+## [get_time_since_modified](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L325-L327)
 
 ::: zillion.core.get_time_since_modified
     :docstring:
 
 
-## [igetattr](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L260-L267)
+## [igetattr](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L281-L288)
 
 ::: zillion.core.igetattr
     :docstring:
 
 
-## [info](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L58-L62)
+## [info](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L76-L80)
 
 ::: zillion.core.info
     :docstring:
 
 
-## [raiseif](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L248-L251)
+## [raiseif](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L269-L272)
 
 ::: zillion.core.raiseif
     :docstring:
 
 
-## [raiseifnot](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L254-L257)
+## [raiseifnot](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L275-L278)
 
 ::: zillion.core.raiseifnot
     :docstring:
 
 
-## [read_filepath_or_buffer](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L270-L283)
+## [read_filepath_or_buffer](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L291-L304)
 
 ::: zillion.core.read_filepath_or_buffer
     :docstring:
 
 
-## [warn](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L65-L69)
+## [warn](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L83-L87)
 
 ::: zillion.core.warn
     :docstring:

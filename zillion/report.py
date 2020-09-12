@@ -14,6 +14,7 @@ from pymysql import escape_string
 import pandas as pd
 import sqlalchemy as sa
 from stopit import async_raise
+from tlbx import is_int
 
 from zillion.configs import zillion_config, default_field_display_name
 from zillion.core import *
@@ -34,8 +35,6 @@ ROLLUP_INDEX_LABEL = chr(1114111)
 # This is more friendly for front-end viewing, but has a better chance of
 # conflicting with actual report data.
 ROLLUP_INDEX_DISPLAY_LABEL = "::"
-
-ROW_FILTER_OPS = [">", ">=", "<", "<=", "=", "==", "!="]
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT: "sum",
@@ -510,15 +509,58 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
         return sqla_join
 
+    def _convert_criteria(self, field, conversion, value):
+        """Convert the values of a criteria according to the conversion formulas
+        provided for this field. A single criteria may expand into multiple criteria."""
+        final_criteria = []
+        for new_op, new_values in conversion:
+            if not isinstance(new_values, (list, tuple)):
+                new_values = [new_values]
+
+            fmt_values = []
+            for new_value in new_values:
+                # Substitute the original value(s) into the formula
+                if not isinstance(value, (list, tuple)):
+                    orig_values = [value]
+                else:
+                    orig_values = value[:]
+                new_value = sa.text(new_value)
+                if new_value._bindparams:
+                    value_map = {str(i): v for i, v in enumerate(orig_values)}
+                    new_value = new_value.bindparams(
+                        **{
+                            str(i): v
+                            for i, v in enumerate(orig_values)
+                            if str(i) in new_value._bindparams
+                        }
+                    )
+                fmt_values.append(new_value)
+            final_criteria.append((field.name, new_op, fmt_values))
+        return final_criteria
+
     def _add_where(self, select):
         """Add a where clause to a SQLAlchemy select"""
         if not self.criteria:
             return select
+
         for row in self.criteria:
-            field = row[0]
-            expr = self._get_field_expression(field.name, label=False)
-            criterion = sa.and_(get_sqla_criterion_expr(expr, row))
-            select = select.where(criterion)
+            # A single criteria may be converted into multiple criteria
+            # with column criteria conversions.
+            field, op, value = row
+            column = self._column_for_field(field.name)
+
+            conv = column.zillion.get_criteria_conversion(field.name, op)
+            if conv:
+                expr = field.get_ds_expression(column, label=False, ignore_formula=True)
+                final_criteria = self._convert_criteria(field, conv, value)
+            else:
+                expr = self._get_field_expression(field.name, label=False)
+                final_criteria = [row]
+
+            for criteria in final_criteria:
+                criterion = sa.and_(get_sqla_criterion_expr(expr, criteria))
+                select = select.where(criterion)
+
         return select
 
     def _add_group_by(self, select):
@@ -985,9 +1027,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 field in fields, 'Row filter field "%s" is not in result table' % field
             )
 
+            raiseifnot(
+                op in ROW_FILTER_OPERATIONS, "Invalid row filter operation: %s" % op
+            )
             if op == "=":
                 op = "=="  # pandas expects this for comparison
-            raiseifnot(op in ROW_FILTER_OPS, "Invalid row filter operation: %s" % op)
 
             sa_type = type_string_to_sa_type(fields[field].type)
             py_type = sa_type.python_type
@@ -1200,7 +1244,7 @@ class Report(ExecutionStateMixin):
     by" in a SQL query.
     * **criteria** - (*list, optional*) A list of criteria to be applied when
     querying. Each criteria in the list is represented by a 3-item list or
-    tuple. See `sql_utils.get_sqla_criterion_expr` for all supported
+    tuple. See `core.CRITERIA_OPERATIONS` for all supported
     operations. Note that some operations, such as "like", have varying
     behavior by datasource dialect. Some examples:
         * ["field_a", ">", 1]
@@ -1211,7 +1255,7 @@ class Report(ExecutionStateMixin):
     * **row_filters** - (*list, optional*) A list of criteria to apply at the
     final step (combined query layer) to filter which rows get returned. The
     format here is the same as for the criteria arg, though the operations are
-    limited to: [">", ">=", "<", "<=", "==", "!=", "in", "not in"]
+    limited to the values of `core.ROW_FILTER_OPERATIONS`.
     * **rollup** - (*str or int, optional*) Controls how metrics are rolled up
     / aggregated by dimension depth. If not passed no rollup will be
     computed. If the special value "totals" is passed, only a final tally

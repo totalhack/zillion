@@ -22,6 +22,7 @@ from zillion.configs import (
     default_field_name,
     default_field_display_name,
     is_valid_field_name,
+    is_valid_datasource_criteria_conversions,
     is_active,
     zillion_config,
     EXCLUDE,
@@ -942,9 +943,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     )
                     types_converted.add(type(column.type))
 
-                for field_def, ds_formula in convs:
+                for conv in convs:
+                    field = conv["field"]
+                    ds_formula = conv["ds_formula"]
+                    ds_criteria_conversions = conv["ds_criteria_conversions"]
+                    is_valid_datasource_criteria_conversions(ds_criteria_conversions)
+                    field_def = field.copy()
                     field_name = field_def.name
-                    field_def = field_def.copy()
+
                     if not field_def.description:
                         field_def.description = "Automatic conversion field"
 
@@ -965,7 +971,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         % (field_name, column_fullname(column))
                     )
                     column.zillion.add_field(
-                        dict(name=field_name, ds_formula=ds_formula)
+                        dict(
+                            name=field_name,
+                            ds_formula=ds_formula,
+                            ds_criteria_conversions=ds_criteria_conversions,
+                        )
                     )
 
                     if not self.has_field(field_name):

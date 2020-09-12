@@ -16,6 +16,7 @@ from zillion.configs import (
     default_field_display_name,
 )
 from zillion.core import *
+from zillion.dialects import *
 from zillion.sql_utils import (
     aggregation_to_sqla_func,
     contains_aggregation,
@@ -97,7 +98,7 @@ class Field(ConfigMixin, PrintMixin):
         """
         return None, None
 
-    def get_ds_expression(self, column, label=True):
+    def get_ds_expression(self, column, label=True, ignore_formula=False):
         """Get the datasource-level sql expression for this field
         
         **Parameters:**
@@ -105,10 +106,12 @@ class Field(ConfigMixin, PrintMixin):
         * **column** - (*Column*) A SQLAlchemy column that supports this field
         * **label** - (*bool, optional*) If true, label the expression with the
         field name
+        * **ignore_formula** - (*bool, optional*) If true, don't apply any available
+        datasource formulas
         
         """
         ds_formula = column.zillion.field_ds_formula(self.name)
-        if not ds_formula:
+        if ignore_formula or (not ds_formula):
             if label:
                 return column.label(self.name)
             return column
@@ -345,7 +348,7 @@ class FormulaField(Field):
         raw_formula = self.formula.format(**field_formula_map)
         return raw_fields, raw_formula
 
-    def get_ds_expression(self, column, label=True):
+    def get_ds_expression(self, *args, **kwargs):
         """Raise an error if called on FormulaFields"""
         raise ZillionException("Formula-based Fields do not support get_ds_expression")
 
@@ -1057,10 +1060,22 @@ def get_conversions_for_type(coltype):
     no conversions are found.
     
     """
-    for basetype, convs in TYPE_ALLOWED_CONVERSIONS.items():
+    for basetype, fields in TYPE_ALLOWED_CONVERSIONS.items():
         if issubclass(coltype, basetype):
-            return convs
+            return fields
     return None
+
+
+def replace_non_named_formula_args(formula, column):
+    """Do formula arg replacement but raise an error if any named args are present"""
+    format_args = get_string_format_args(formula)
+    raiseif(
+        any([x != "" for x in format_args]),
+        "Formula has unexpected named format arguments: %s" % formula,
+    )
+    if format_args:
+        formula = formula.format(*[column_fullname(column) for i in format_args])
+    return formula
 
 
 def get_dialect_type_conversions(dialect, column):
@@ -1073,31 +1088,47 @@ def get_dialect_type_conversions(dialect, column):
     
     **Returns:**
     
-    (*list*) - A list of tuples of (field, conversion formula)
+    (*list*) - A list of dicts containing datasource formulas and criteria
+    conversions for each field this column can be converted to
     
     """
     coltype = type(column.type)
-    conv_info = get_conversions_for_type(coltype)
-    if not conv_info:
+    conv_fields = get_conversions_for_type(coltype)
+    if not conv_fields:
         return []
 
     results = []
-    allowed = conv_info["allowed_conversions"]
-    convs = conv_info["dialect_conversions"]
-
-    for field_def in allowed:
-        field_name = field_def.name
-        conv = convs[dialect].get(field_name, None)
-        if not conv:
+    for field in conv_fields:
+        field_name = field.name
+        dialect_field_convs = DIALECT_CONVERSIONS[dialect].get(field_name, None)
+        if not dialect_field_convs:
             continue
-        format_args = get_string_format_args(conv)
-        raiseif(
-            any([x != "" for x in format_args]),
-            "Field conversion has non-named format arguments: %s" % conv,
+
+        if isinstance(dialect_field_convs, str):
+            ds_formula = dialect_field_convs
+            ds_criteria_conversions = None
+        else:
+            ds_formula = dialect_field_convs.get("ds_formula", None)
+            ds_criteria_conversions = dialect_field_convs.get(
+                "ds_criteria_conversions", None
+            )
+
+        raiseifnot(
+            ds_formula or ds_criteria_conversions,
+            "One of ds_formula or ds_criteria_conversions must be set on dialect conversions for %s/%s"
+            % (dialect, field_name),
         )
-        if format_args:
-            conv = conv.format(*[column_fullname(column) for i in format_args])
-        results.append((field_def, conv))
+
+        if ds_formula:
+            ds_formula = replace_non_named_formula_args(ds_formula, column)
+
+        results.append(
+            dict(
+                field=field,
+                ds_formula=ds_formula,
+                ds_criteria_conversions=ds_criteria_conversions,
+            )
+        )
 
     return results
 
@@ -1139,7 +1170,8 @@ DATETIME_CONVERSION_FIELDS = [
         "String(20)",
         description="Datetime string formatted YYYY-MM-DD HH:MM:SS",
     ),
-    Dimension("unixtime", "BigInteger", description="Unix time in seconds"),
+    # TODO: not fully tested/supported yet, ignore for now
+    # Dimension("unixtime", "BigInteger", description="Unix time in seconds"),
 ]
 
 DATE_CONVERSION_FIELDS = []
@@ -1148,116 +1180,25 @@ for _dim in DATETIME_CONVERSION_FIELDS:
         break
     DATE_CONVERSION_FIELDS.append(_dim)
 
-# Somewhat adhering to ISO 8601, but ignoring the "T" between the date/time
-# and not including timezone offsets for now because zillion assumes
-# everything is in the same timezone (or the datasource formulas take care of
-# aligning timezones).
-DIALECT_DATE_CONVERSIONS = {
-    "sqlite": {
-        "year": "cast(strftime('%Y', {}) as integer)",
-        "quarter": "strftime('%Y', {}) || '-Q' || ((cast(strftime('%m', {}) as integer) + 2) / 3)",  # 2020-Q1
-        "quarter_of_year": "(cast(strftime('%m', {}) as integer) + 2) / 3",
-        "month": "strftime('%Y-%m', {})",
-        "month_name": (
-            "CASE strftime('%m', {}) "
-            "WHEN '01' THEN 'January' "
-            "WHEN '02' THEN 'February' "
-            "WHEN '03' THEN 'March' "
-            "WHEN '04' THEN 'April' "
-            "WHEN '05' THEN 'May' "
-            "WHEN '06' THEN 'June' "
-            "WHEN '07' THEN 'July' "
-            "WHEN '08' THEN 'August' "
-            "WHEN '09' THEN 'September' "
-            "WHEN '10' THEN 'October' "
-            "WHEN '11' THEN 'November' "
-            "WHEN '12' THEN 'December' "
-            "ELSE NULL "
-            "END"
-        ),
-        "month_of_year": "cast(strftime('%m', {}) as integer)",
-        "date": "strftime('%Y-%m-%d', {})",
-        "day_name": (
-            "CASE cast(strftime('%w', {}) as integer) "
-            "WHEN 0 THEN 'Sunday' "
-            "WHEN 1 THEN 'Monday' "
-            "WHEN 2 THEN 'Tuesday' "
-            "WHEN 3 THEN 'Wednesday' "
-            "WHEN 4 THEN 'Thursday' "
-            "WHEN 5 THEN 'Friday' "
-            "WHEN 6 THEN 'Saturday' "
-            "ELSE NULL "
-            "END"
-        ),
-        "day_of_week": "(cast(strftime('%w', {}) as integer) + 6) % 7 + 1",  # Convert to Monday = 1
-        "day_of_month": "cast(strftime('%d', {}) as integer)",
-        "day_of_year": "cast(strftime('%j', {}) as integer)",
-        "hour": "strftime('%Y-%m-%d %H:00:00', {})",
-        "hour_of_day": "cast(strftime('%H', {}) as integer)",
-        "minute": "strftime('%Y-%m-%d %H:%M:00', {})",
-        "minute_of_hour": "cast(strftime('%M', {}) as integer)",
-        "datetime": "strftime('%Y-%m-%d %H:%M:%S', {})",
-        "unixtime": "cast(strftime('%s', {}) as integer)",
-    },
-    "mysql": {
-        "year": "EXTRACT(YEAR FROM {})",
-        "quarter": "CONCAT(YEAR({}), '-Q', QUARTER({}))",
-        "quarter_of_year": "EXTRACT(QUARTER FROM {})",
-        "month": "DATE_FORMAT({}, '%Y-%m')",
-        "month_name": "MONTHNAME({})",
-        "month_of_year": "EXTRACT(MONTH FROM {})",
-        "date": "DATE_FORMAT({}, '%Y-%m-%d')",
-        "day_name": "DAYNAME({})",
-        "day_of_week": "WEEKDAY({}) + 1",  # Monday = 1
-        "day_of_month": "EXTRACT(DAY FROM {})",
-        "day_of_year": "DAYOFYEAR({})",
-        "hour": "DATE_FORMAT({}, '%Y-%m-%d %H:00:00')",
-        "hour_of_day": "EXTRACT(HOUR FROM {})",
-        "minute": "DATE_FORMAT({}, '%Y-%m-%d %H:%i:00')",
-        "minute_of_hour": "EXTRACT(MINUTE FROM {})",
-        "datetime": "DATE_FORMAT({}, '%Y-%m-%d %H:%i:%S')",
-        "unixtime": "UNIX_TIMESTAMP({})",
-    },
-    "postgresql": {
-        "year": "EXTRACT(YEAR FROM {})",
-        "quarter": "TO_CHAR({}, 'FMYYYY-\"Q\"Q')",
-        "quarter_of_year": "EXTRACT(QUARTER FROM {})",
-        "month": "TO_CHAR({}, 'FMYYYY-MM')",
-        "month_name": "TO_CHAR({}, 'FMMonth')",
-        "month_of_year": "EXTRACT(MONTH FROM {})",
-        "date": "TO_CHAR({}, 'FMYYYY-MM-DD')",
-        "day_name": "TO_CHAR({}, 'FMDay')",
-        "day_of_week": "EXTRACT(ISODOW FROM {})",  # Monday = 1
-        "day_of_month": "EXTRACT(DAY FROM {})",
-        "day_of_year": "EXTRACT(DOY FROM {})",
-        "hour": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:00:00')",
-        "hour_of_day": "EXTRACT(HOUR FROM {})",
-        "minute": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:00')",
-        "minute_of_hour": "EXTRACT(MINUTE FROM {})",
-        "datetime": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:SS')",
-        "unixtime": "EXTRACT(epoch from {})",
-    },
+# Map all dialect-specific type conversions, including ds_formulas that can
+# be applied directly to columns (i.e. DATE(some_datetime) == '2020-01-01')
+# and ds_criteria_conversions that can apply conversions to criteria values
+# instead.
+#
+# Note: For date types: somewhat adhering to ISO 8601, but ignoring the "T"
+# between the date/time and not including timezone offsets for now because
+# zillion assumes everything is in the same timezone (or the datasource
+# formulas take care of aligning timezones).
+DIALECT_CONVERSIONS = {
+    "sqlite": SQLITE_DIALECT_CONVERSIONS,
+    "mysql": MYSQL_DIALECT_CONVERSIONS,
+    "postgresql": POSTGRESQL_DIALECT_CONVERSIONS,
 }
 
 TYPE_ALLOWED_CONVERSIONS = {
-    sa.DateTime: {
-        "allowed_conversions": DATETIME_CONVERSION_FIELDS,
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
-    sa.DATETIME: {
-        "allowed_conversions": DATETIME_CONVERSION_FIELDS,
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
-    sa.TIMESTAMP: {
-        "allowed_conversions": DATETIME_CONVERSION_FIELDS,
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
-    sa.Date: {
-        "allowed_conversions": DATE_CONVERSION_FIELDS,  # DATE_HIERARCHY[0 : DATE_HIERARCHY.index("hour")],
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
-    sa.DATE: {
-        "allowed_conversions": DATE_CONVERSION_FIELDS,  # DATE_HIERARCHY[0 : DATE_HIERARCHY.index("hour")],
-        "dialect_conversions": DIALECT_DATE_CONVERSIONS,
-    },
+    sa.DateTime: DATETIME_CONVERSION_FIELDS,
+    sa.DATETIME: DATETIME_CONVERSION_FIELDS,
+    sa.TIMESTAMP: DATETIME_CONVERSION_FIELDS,
+    sa.Date: DATE_CONVERSION_FIELDS,
+    sa.DATE: DATE_CONVERSION_FIELDS,
 }
