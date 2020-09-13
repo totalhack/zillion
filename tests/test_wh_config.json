@@ -6,7 +6,10 @@
             "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "description": "Revenue per Lead"
+            "description": "Revenue per Lead",
+            "meta": {
+                "metafield": "metavalue"
+            }
         },
         {
             "name": "rpl_weighted",

@@ -421,7 +421,16 @@ class PolyNested(mfields.Nested):
 
 
 class BaseSchema(Schema):
-    """Base Schema with custom JSON module"""
+    """Base Schema with custom JSON module
+    
+    **Attributes:**
+    
+    * **meta** - (*dict, optional) A dict of additional custom attributes for
+    the config object
+    
+    """
+
+    meta = mfields.Dict(keys=mfields.Str(), missing=None, required=False)
 
     class Meta:
         """Use the json module as imported from tlbx"""
@@ -600,7 +609,7 @@ class FieldConfigSchema(BaseSchema):
     * **type** - (*str*) A string representing the data type of the field. This
     will be converted to a SQLAlchemy type via `ast.literal_eval`.
     * **display_name** - (*str, optional*) The display name of the field
-    * **description** - (*str, optional*) The description of the field
+    * **description** - (*str, optional*) The description of the field    
 
     """
 

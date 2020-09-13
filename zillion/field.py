@@ -43,6 +43,7 @@ class Field(ConfigMixin, PrintMixin):
     * **type** - (*str or SQLAlchemy type*) The column type for the field.
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
+    * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **kwargs** - Additional attributes stored on the field object
     
     **Attributes:**
@@ -51,6 +52,7 @@ class Field(ConfigMixin, PrintMixin):
     * **type** - (*str*) A string representing the generic SQLAlchemy type
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
+    * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **sa_type** - (*SQLAlchemy type*) If a dialect-specific type object
     is passed in on init it will be coerced to a generic type.
     * **field_type** - (*str*) A valid FieldType string
@@ -63,7 +65,9 @@ class Field(ConfigMixin, PrintMixin):
     schema = FieldConfigSchema
 
     @initializer
-    def __init__(self, name, type, display_name=None, description=None, **kwargs):
+    def __init__(
+        self, name, type, display_name=None, description=None, meta=None, **kwargs
+    ):
         self.sa_type = None
         if isinstance(type, str):
             self.sa_type = type_string_to_sa_type(type)
@@ -154,6 +158,7 @@ class Metric(Field):
     * **type** - (*str or SQLAlchemy type*) The column type for the field
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
+    * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **aggregation** - (*str, optional*) The AggregationType to apply to the
     metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -178,6 +183,7 @@ class Metric(Field):
         type,
         display_name=None,
         description=None,
+        meta=None,
         aggregation=AggregationTypes.SUM,
         rounding=None,
         weighting_metric=None,
@@ -200,6 +206,7 @@ class Metric(Field):
             type,
             display_name=display_name,
             description=description,
+            meta=meta,
             aggregation=aggregation,
             rounding=rounding,
             weighting_metric=weighting_metric,
@@ -420,6 +427,7 @@ class FormulaMetric(FormulaField):
     * **formula** - (*str*) The formula used to calculate the metric
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
+    * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **aggregation** - (*str, optional*) The AggregationType to apply to the
     metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -445,6 +453,7 @@ class FormulaMetric(FormulaField):
         formula,
         display_name=None,
         description=None,
+        meta=None,
         aggregation=AggregationTypes.SUM,
         rounding=None,
         weighting_metric=None,
@@ -460,6 +469,7 @@ class FormulaMetric(FormulaField):
             formula,
             display_name=display_name,
             description=description,
+            meta=meta,
             aggregation=aggregation,
             rounding=rounding,
             weighting_metric=weighting_metric,
@@ -489,6 +499,7 @@ class AdHocMetric(FormulaMetric):
     * **formula** - (*str*) The formula used to calculate the metric
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
+    * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **technical** - (*object, optional*) A Technical object or definition
     used to defined a technical computation to be applied to the metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -507,6 +518,7 @@ class AdHocMetric(FormulaMetric):
         formula,
         display_name=None,
         description=None,
+        meta=None,
         technical=None,
         rounding=None,
         required_grain=None,
@@ -517,6 +529,7 @@ class AdHocMetric(FormulaMetric):
             formula,
             display_name=display_name,
             description=description,
+            meta=meta,
             technical=technical,
             rounding=rounding,
             required_grain=required_grain,
@@ -532,6 +545,7 @@ class AdHocMetric(FormulaMetric):
             field_def["formula"],
             display_name=field_def["display_name"],
             description=field_def["description"],
+            meta=field_def["meta"],
             technical=field_def["technical"],
             rounding=field_def["rounding"],
             required_grain=field_def["required_grain"],
@@ -690,12 +704,6 @@ class FieldManagerMixin:
 
         if isinstance(obj, dict):
             raise InvalidFieldException("AdHocDimensions are not currently supported")
-            # dim = AdHocDimension.create(obj)
-            # raiseif(
-            #     self.has_dimension(dim.name, adhoc_fms=adhoc_fms),
-            #     "AdHocDimension can not use name of an existing dimension: %s" % dim.name
-            # )
-            # return dim
 
         raise InvalidFieldException("Invalid dimension object: %s" % obj)
 
@@ -710,12 +718,6 @@ class FieldManagerMixin:
 
         if isinstance(obj, dict):
             raise InvalidFieldException("AdHocFields are not currently supported")
-            # field = AdHocField.create(obj)
-            # raiseif(
-            #     self.has_field(field.name, adhoc_fms=adhoc_fms),
-            #     "AdHocField can not use name of an existing field: %s" % field.name,
-            # )
-            # return field
 
         raise InvalidFieldException("Invalid field object: %s" % obj)
 

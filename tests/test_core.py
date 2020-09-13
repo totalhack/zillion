@@ -237,6 +237,12 @@ def test_field_description(config):
     print(sale_hour.display_name, sale_hour.description)
 
 
+def test_field_meta(config):
+    wh = Warehouse(config=config)
+    field = wh.get_field("rpl")
+    assert field.meta and field.meta["metafield"] == "metavalue"
+
+
 def test_reserved_field_name(config):
     config["datasources"]["testdb1"]["metrics"].append(
         {"name": "row_hash", "type": "integer", "aggregation": AggregationTypes.SUM}
