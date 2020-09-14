@@ -26,4 +26,13 @@ ReportSpecs = sa.Table(
     sa.Column("created_at", sa.DateTime, server_default=sa.func.NOW()),
 )
 
+DimensionValues = sa.Table(
+    "dimension_values",
+    zillion_metadata,
+    sa.Column("name", sa.String(100), primary_key=True),
+    sa.Column("warehouse_id", sa.Integer, primary_key=True),
+    sa.Column("values", sa.Text, nullable=False),
+    sa.Column("created_at", sa.DateTime, server_default=sa.func.NOW()),
+)
+
 zillion_metadata.create_all(zillion_engine)

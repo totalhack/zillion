@@ -18,7 +18,12 @@ from tlbx import is_int
 
 from zillion.configs import zillion_config, default_field_display_name
 from zillion.core import *
-from zillion.field import get_table_fields, get_table_field_column, FormulaField
+from zillion.field import (
+    get_table_fields,
+    get_table_field_column,
+    FormulaField,
+    FIELD_VALUE_CHECK_OPERATIONS,
+)
 from zillion.model import zillion_engine, ReportSpecs
 from zillion.sql_utils import (
     sqla_compile,
@@ -548,6 +553,14 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             # with column criteria conversions.
             field, op, value = row
             column = self._column_for_field(field.name)
+
+            if op in FIELD_VALUE_CHECK_OPERATIONS and not field.is_valid_value(
+                self.warehouse.id, value
+            ):
+                raise InvalidDimensionValueException(
+                    "Invalid criteria value '%s' for dimension '%s'"
+                    % (value, field.name)
+                )
 
             conv = column.zillion.get_criteria_conversion(field.name, op)
             if conv:

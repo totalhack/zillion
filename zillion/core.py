@@ -142,6 +142,10 @@ class InvalidFieldException(ZillionException):
     pass
 
 
+class InvalidDimensionValueException(ZillionException):
+    pass
+
+
 class DisallowedSQLException(ZillionException):
     pass
 

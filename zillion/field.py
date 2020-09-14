@@ -17,6 +17,7 @@ from zillion.configs import (
 )
 from zillion.core import *
 from zillion.dialects import *
+from zillion.model import zillion_engine, DimensionValues
 from zillion.sql_utils import (
     aggregation_to_sqla_func,
     contains_aggregation,
@@ -29,6 +30,10 @@ from zillion.sql_utils import (
 
 
 MAX_FORMULA_DEPTH = 3
+# This default warehouse ID is used if no ID has been populated
+# on the Warehouse when checking dimension values.
+FIELD_VALUE_DEFAULT_WAREHOUSE_ID = 0
+FIELD_VALUE_CHECK_OPERATIONS = set(["=", "!=", "in", "not in"])
 
 
 class Field(ConfigMixin, PrintMixin):
@@ -274,10 +279,89 @@ class Metric(Field):
 
 class Dimension(Field):
     """Fields that represent attributes of data that are used for grouping or
-    filtering"""
+    filtering
+    
+    **Parameters:**
+    
+    * **name** - (*str*) The name of the field
+    * **type** - (*str or SQLAlchemy type*) The column type for the field.
+    * **display_name** - (*str, optional*) The display name of the field
+    * **description** - (*str, optional*) The description of the field
+    * **values** - (*str or list, optional*) A list of allowed dimension
+    values or a name of a callable to provide a list of values
+    * **meta** - (*dict, optional*) A dict of additional custom attributes
+    * **kwargs** - Additional attributes stored on the field object
+    
+    """
 
     field_type = FieldTypes.DIMENSION
     schema = DimensionConfigSchema
+
+    @initializer
+    def __init__(
+        self,
+        name,
+        type,
+        display_name=None,
+        description=None,
+        values=None,
+        meta=None,
+        **kwargs
+    ):
+        if values and isinstance(values, list):
+            self.values = set(self.values)
+
+        super(Dimension, self).__init__(
+            name,
+            type,
+            display_name=display_name,
+            description=description,
+            values=values,
+            meta=meta,
+            **kwargs
+        )
+
+    def get_values(self, warehouse_id):
+        """Get allowed values for this Dimension
+        
+        **Parameters:**
+        
+        * **warehouse_id** - (*int*) A zillion warehouse ID
+        
+        **Returns:**
+        
+        (*list or None*) - A list of valid values or None if no value
+        restrictions have been set.
+        
+        """
+        if self.values is None:
+            return None
+        if isinstance(self.values, str):
+            func = import_object(self.values)
+            return func(warehouse_id, self)
+        return self.values
+
+    def is_valid_value(self, warehouse_id, value, ignore_none=True):
+        """Check if a value is allowed for this Dimension
+        
+        **Parameters:**
+        
+        * **warehouse_id** - (*int*) A zillion warehouse ID
+        * **value** - (*any*) Check if this value is valid
+        * **ignore_none** - (*bool*) If True, consider value=None
+        to always be valid.
+         
+        **Returns:**
+        
+        (*bool*) - True if the dimension value is valid
+        
+        """
+        if ignore_none and value is None:
+            return True
+        values = self.get_values(warehouse_id)
+        if not values:
+            return True
+        return value in values
 
 
 class FormulaField(Field):
@@ -1047,6 +1131,43 @@ def table_field_allows_grain(table, field, grain):
     if set(column.zillion.required_grain).issubset(grain):
         return True
     return False
+
+
+def values_from_db(warehouse_id, field):
+    """Get allowed field values from the dimension_values table. If
+    warehouse_id is `None` the warehouse_id is defaulted to the value
+    of `zillion.field.FIELD_VALUE_DEFAULT_WAREHOUSE_ID`. This allows
+    pulling dimension values even when a `Warehouse` has not been saved.
+    
+    **Parameters:**
+    
+    * **warehouse_id** - (*int*) A zillion warehouse ID
+    * **field** - (*Field*) A zillion Dimension object
+
+    **Returns:**
+    
+    (*list or None*) - A list of valid values or None if no row
+    is found for this dimension.
+    
+    """
+    if warehouse_id is None:
+        warehouse_id = FIELD_VALUE_DEFAULT_WAREHOUSE_ID
+
+    s = sa.select(DimensionValues.c).where(
+        sa.and_(
+            DimensionValues.c.warehouse_id == warehouse_id,
+            DimensionValues.c.name == field.name,
+        )
+    )
+    conn = zillion_engine.connect()
+    try:
+        result = conn.execute(s)
+        row = result.fetchone()
+        if not row:
+            return None
+        return json.loads(row["values"])
+    finally:
+        conn.close()
 
 
 def get_conversions_for_type(coltype):

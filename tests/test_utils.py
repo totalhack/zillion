@@ -25,6 +25,7 @@ from zillion.datasource import (
     get_adhoc_datasource_url,
 )
 from zillion.field import DATETIME_CONVERSION_FIELDS
+from zillion.model import *
 from zillion.report import Report
 from zillion.warehouse import Warehouse
 

@@ -328,6 +328,15 @@ def is_valid_technical(val):
     return True
 
 
+def is_valid_dimension_values(val):
+    """Validate dimension values"""
+    if isinstance(val, list):
+        return True
+    if isinstance(val, str):
+        return True
+    raise ValidationError("Invalid dimension values: %s" % val)
+
+
 def is_valid_datasource_criteria_conversions(val):
     """Validate datasource criteria conversions"""
     if val is None:
@@ -462,6 +471,14 @@ class DataSourceCriteriaConversionsField(mfields.Field):
 
     def _validate(self, value):
         is_valid_datasource_criteria_conversions(value)
+        super()._validate(value)
+
+
+class DimensionValuesField(mfields.Field):
+    """A field for defining dimension values"""
+
+    def _validate(self, value):
+        is_valid_dimension_values(value)
         super()._validate(value)
 
 
@@ -698,9 +715,21 @@ class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixi
 
 
 class DimensionConfigSchema(FieldConfigSchema):
-    """The schema of a dimension configuration"""
+    """The schema of a dimension configuration
+    
+    **Attributes:**
+    
+    * **values** - (*str or list, optional*) A list of allowed dimension
+    values or a name of a callable to provide a list of values. If a string
+    representing a callable is passed, it must be importable and the callable
+    must accept two arguments: (warehouse ID, dimension object). An example
+    callable would be `zillion.field.values_from_db` which reads allowed
+    dimension values from the dimension_values table in the Zillion
+    database.
+    
+    """
 
-    pass
+    values = DimensionValuesField(default=None, missing=None)
 
 
 class AdHocFieldSchema(FormulaFieldConfigSchema):

@@ -28,6 +28,49 @@ def test_report_none_criteria(wh):
     info(result.df)
 
 
+def test_report_invalid_criteria_value(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_name"]
+    criteria = [("partner_name", "=", "XYZ")]
+    with pytest.raises(InvalidDimensionValueException):
+        result = wh_execute(wh, locals())
+
+
+def test_report_criteria_values_from_callable(wh):
+    field = wh.get_field("partner_name")
+    field.values = "zillion.field.values_from_db"
+
+    conn = zillion_engine.connect()
+    try:
+        conn.execute(
+            DimensionValues.insert(),
+            name="partner_name",
+            warehouse_id=0,
+            values=json.dumps(["Partner A", "Partner B", "Partner C", "XYZ"]),
+        )
+    except sa.exc.IntegrityError:
+        pass
+    finally:
+        conn.close()
+
+    metrics = ["revenue"]
+    dimensions = ["partner_name"]
+    criteria = [("partner_name", "=", "ABC")]
+    with pytest.raises(InvalidDimensionValueException):
+        result = wh_execute(wh, locals())
+
+    # This is added as an acceptable value in the list returned
+    # by get_partner_name_values, but isn't an actual partner value
+    criteria = [("partner_name", "=", "XYZ")]
+    result = wh_execute(wh, locals())
+    assert len(result.df) == 0
+
+    # NULL comparisons should be allowed
+    criteria = [("partner_name", "=", None)]
+    result = wh_execute(wh, locals())
+    assert len(result.df) == 0
+
+
 def test_report_sequential_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
@@ -605,21 +648,6 @@ def test_report_nested_formula_metric(wh):
     info(result.df)
 
 
-# TODO: add support for FormulaDimensions
-#    {
-#        "name": "partner_name_query_dim",
-#        "type": "String(32)",
-#        "formula": "CASE WHEN ({partner_name} LIKE '%B%' OR {partner_name} LIKE '%C%') THEN 'Match' ELSE {partner_name} END"
-#    }
-#
-# def test_report_formula_dimension(wh):
-#     metrics = ["leads"]
-#     dimensions = ["campaign_name", "partner_name_query_dim"]
-#     result = wh_execute(wh, locals())
-#     assert result
-#     info(result.df)
-
-
 def test_report_ds_dimension_formula(wh):
     metrics = ["sales"]
     dimensions = ["revenue_decile"]
@@ -658,16 +686,6 @@ def test_report_metric_formula_with_dim(config):
     dimensions = ["partner_name"]
     with pytest.raises(ReportException):
         result = wh_execute(wh, locals())
-
-
-# def test_report_where_formula_dim(wh):
-#     metrics = ["sales"]
-#     criteria = [
-#         ("partner_name_query_dim", "=", "Match")
-#     ]
-#     dimensions = ["partner_name"]
-#     with pytest.raises(ReportException):
-#         result = wh_execute(wh, locals())
 
 
 def test_report_only_dimensions_ds_formula(wh):
@@ -805,30 +823,6 @@ def test_report_multi_rollup_pivot(wh):
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
-
-
-# TODO: add AdHocDimension support
-# def test_report_adhoc_dimension(wh):
-#     metrics = ["leads", "sales"]
-#     dimensions = [
-#         "partner_name",
-#         "lead_id",
-#         {"formula": "{lead_id} > 3", "name": "testdim"},
-#     ]
-#     result = wh_execute(wh, locals())
-#     assert result
-#     info(result.df)
-
-
-# def test_report_adhoc_dimension_rollup(wh):
-#     metrics = ["leads", "sales"]
-#     dimensions = [
-#         {"name": "testdim", "formula": "CASE WHEN ({partner_name} LIKE '%B%' OR {partner_name} LIKE '%C%') THEN 'Match' ELSE {partner_name} END"}
-#     ]
-#     rollup = RollupTypes.TOTALS
-#     result = wh_execute(wh, locals())
-#     assert result
-#     info(result.df)
 
 
 def test_report_adhoc_metric(wh):

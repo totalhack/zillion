@@ -126,7 +126,12 @@
     "dimensions": [
         {
             "name": "partner_name",
-            "type": "string(32)"
+            "type": "string(32)",
+            "values": [
+                "Partner A",
+                "Partner B",
+                "Partner C"
+            ]
         }
     ],
     "datasources": {
