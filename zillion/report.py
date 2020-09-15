@@ -858,6 +858,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         start = time.time()
         columns = []
         dimension_aliases = []
+        custom_sorts = []
 
         for dim in dimensions.values():
             columns.append(
@@ -870,6 +871,13 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 )
             )
             dimension_aliases.append(dim.name)
+            if dim.sorter:
+                custom_sorts.append((dim.name, OrderByTypes.ASC))
+
+        if custom_sorts and not order_by:
+            # We still need to do ordering even if no order_by was specified
+            # if some of the dimensions use custom sorting.
+            order_by = custom_sorts
 
         technicals = {}
         rounding = {}
@@ -911,7 +919,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 field, ob_type = row
                 ob_fields.append(field)
                 ascending.append(True if ob_type == OrderByTypes.ASC else False)
-            df = df.sort_values(by=ob_fields, ascending=ascending)
+            df = df.sort_values(by=ob_fields, ascending=ascending, key=self._sort)
 
         if not limit_first:
             df = self._apply_limits(df, row_filters, limit, metrics, dimensions)
@@ -929,6 +937,15 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         self.cursor.execute(drop_sql)
         self.conn.commit()
         self.conn.close()
+
+    def _sort(self, series):
+        """Apply custom sort logic to a pandas Series if possible"""
+        field = self.warehouse.get_field(series.name)
+        if not hasattr(field, "sorter"):
+            return series
+        if field.sorter:
+            return field.sort(self.warehouse.id, series)
+        return series
 
     def _select_all(self):
         """Helper to get all rows from the combined result table"""

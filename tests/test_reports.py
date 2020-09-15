@@ -296,20 +296,54 @@ def test_report_pivot(wh):
 
 
 def test_report_order_by(wh):
+    # Note: partner_name has custom sort setup in config
     metrics = ["revenue"]
     dimensions = ["partner_name", "lead_id"]
     order_by = [("partner_name", "desc"), ("lead_id", "asc")]
     result = wh_execute(wh, locals())
-    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
+    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner C"
     info(result.df)
 
 
 def test_report_order_by_only_dims(wh):
+    # Note: partner_name has custom sort setup in config
     dimensions = ["partner_name", "campaign_name"]
     order_by = [("partner_name", "desc"), ("campaign_name", "asc")]
     result = wh_execute(wh, locals())
-    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
+    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner C"
     info(result.df)
+
+
+def test_report_order_by_custom_sort(wh):
+    # Note: partner_name has custom sort setup in config
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "campaign_name"]
+    order_by = [("partner_name", "asc"), ("campaign_name", "asc")]
+    limit = 4
+    limit_first = False
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.index[0][0] == "Partner C"
+
+
+def test_report_custom_sort_no_order_by(wh):
+    # Note: partner_name has custom sort setup in config
+    metrics = ["revenue"]
+    dimensions = ["partner_name", "campaign_name"]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.index[0][0] == "Partner C"
+
+
+def test_report_custom_sort_conversion_field():
+    # TODO: put together a smaller dataset to test this
+    config = "https://raw.githubusercontent.com/totalhack/zillion-covid-19/master/zillion_covid_19/covid_warehouse.json"
+    wh = Warehouse(config=config)
+    metrics = ["cases"]
+    dimensions = ["month_name"]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.index[0] == "January"
 
 
 def test_report_limit(wh):
@@ -330,12 +364,13 @@ def test_report_limit_only_dims(wh):
 
 
 def test_report_order_by_and_limit(wh):
+    # Note: partner_name has custom sort setup in config
     metrics = ["revenue"]
     dimensions = ["partner_name", "lead_id"]
     order_by = [("partner_name", "desc"), ("lead_id", "asc")]
     limit = 1
     result = wh_execute(wh, locals())
-    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner C"
+    assert result and result.df.reset_index()["partner_name"].values[-1] == "Partner A"
     info(result.df)
 
 

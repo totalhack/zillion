@@ -1,3 +1,4 @@
+import pandas as pd
 import sqlalchemy as sa
 
 from zillion.configs import (
@@ -289,6 +290,10 @@ class Dimension(Field):
     * **description** - (*str, optional*) The description of the field
     * **values** - (*str or list, optional*) A list of allowed dimension
     values or a name of a callable to provide a list of values
+    * **sorter** - (*str, optional*) A reference to an importable callable
+    that accepts three arguments: (warehouse ID, dimension object, values).
+    Currently values is a pandas Series and the callable is expected to
+    return a Series. See `zillion.field.sort_by_value_order` for an example.
     * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **kwargs** - Additional attributes stored on the field object
     
@@ -305,6 +310,7 @@ class Dimension(Field):
         display_name=None,
         description=None,
         values=None,
+        sorter=None,
         meta=None,
         **kwargs
     ):
@@ -317,6 +323,7 @@ class Dimension(Field):
             display_name=display_name,
             description=description,
             values=values,
+            sorter=sorter,
             meta=meta,
             **kwargs
         )
@@ -362,6 +369,23 @@ class Dimension(Field):
         if not values:
             return True
         return value in values
+
+    def sort(self, warehouse_id, values):
+        """Sort the given dimension values according to the sorter
+        
+        **Parameters:**
+        
+        * **warehouse_id** - (*int*) A zillion warehouse ID
+        * **values** - (*Series*) A pandas Series of values to sort
+        
+        **Returns:**
+        
+        (*Series*) - A pandas Series representing the sort order
+        
+        """
+        raiseifnot(self.sorter, "No sorter defined on Dimension")
+        func = import_object(self.sorter)
+        return func(warehouse_id, self, values)
 
 
 class FormulaField(Field):
@@ -1170,6 +1194,28 @@ def values_from_db(warehouse_id, field):
         conn.close()
 
 
+def sort_by_value_order(warehouse_id, field, values):
+    """Sort values by the order of the value list defined on the field
+    
+    **Parameters:**
+    
+    * **warehouse_id** - (*int*) A zillion warehouse ID
+    * **field** - (*Field*) A zillion Field object
+    * **values** - (*Series*) A pandas Series to sort
+    
+    **Returns:**
+    
+    (*Series*) - A pandas Series representing the sort order. If no value
+    list is found for the field, the input values are returned as is.
+        
+    """
+    value_order = field.get_values(warehouse_id)
+    if not value_order:
+        return values
+    mapping = {value: order for order, value in enumerate(value_order)}
+    return values.map(mapping)
+
+
 def get_conversions_for_type(coltype):
     """Get all conversions for a particular column type
     
@@ -1263,10 +1309,43 @@ DATETIME_CONVERSION_FIELDS = [
         "quarter_of_year", "SmallInteger", description="Numeric quarter of the year"
     ),
     Dimension("month", "String(8)", description="Year and month (YYYY-MM)"),
-    Dimension("month_name", "String(8)", description="Full name of the month"),
+    Dimension(
+        "month_name",
+        "String(8)",
+        description="Full name of the month",
+        values=[
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ],
+        sorter="zillion.field.sort_by_value_order",
+    ),
     Dimension("month_of_year", "SmallInteger", description="Numeric month of the year"),
     Dimension("date", "String(10)", description="Date string formatted YYYY-MM-DD"),
-    Dimension("day_name", "String(10)", description="Full name of a day of the week"),
+    Dimension(
+        "day_name",
+        "String(10)",
+        description="Full name of a day of the week",
+        values=[
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ],
+        sorter="zillion.field.sort_by_value_order",
+    ),
     Dimension(
         "day_of_week",
         "SmallInteger",

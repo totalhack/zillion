@@ -128,10 +128,11 @@
             "name": "partner_name",
             "type": "string(32)",
             "values": [
-                "Partner A",
+                "Partner C",
                 "Partner B",
-                "Partner C"
-            ]
+                "Partner A"
+            ],
+            "sorter": "zillion.field.sort_by_value_order"
         }
     ],
     "datasources": {

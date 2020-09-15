@@ -726,10 +726,15 @@ class DimensionConfigSchema(FieldConfigSchema):
     callable would be `zillion.field.values_from_db` which reads allowed
     dimension values from the dimension_values table in the Zillion
     database.
+    * **sorter** - (*str, optional*) A reference to an importable callable
+    that accepts three arguments: (warehouse ID, dimension object, values).
+    Currently values is a pandas Series and the callable is expected to
+    return a Series. See `zillion.field.sort_by_value_order` for an example.
     
     """
 
     values = DimensionValuesField(default=None, missing=None)
+    sorter = mfields.Str(default=None, missing=None)
 
 
 class AdHocFieldSchema(FormulaFieldConfigSchema):
