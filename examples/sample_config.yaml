@@ -1,3 +1,5 @@
+# Note: env var substitution is supported via $FOO or ${FOO} syntax
+
 # Turn on debug logging
 DEBUG: false
 # Chunk size for loading datasource query results at the combined layer

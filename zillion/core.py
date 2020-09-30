@@ -12,6 +12,7 @@ from tlbx import (
     warn as _warn,
     error as _error,
     pf,
+    pp,
     format_msg,
     sqlformat,
     rmfile,
@@ -32,6 +33,8 @@ from tlbx import (
     get_class_vars,
     import_object,
 )
+import yaml
+
 
 ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
 RESERVED_FIELD_NAMES = set(["row_hash"])
@@ -329,3 +332,10 @@ def get_modified_time(fname):
 def get_time_since_modified(fname):
     """Utility to get the time since a file was last modified"""
     return time.time() - get_modified_time(fname)
+
+
+def load_yaml(fname):
+    """Wrapper to safe_load that also expands environment vars"""
+    with open(fname) as f:
+        val = yaml.safe_load(os.path.expandvars(f.read()))
+    return val
