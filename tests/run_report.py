@@ -15,6 +15,7 @@ from test_utils import *
     Arg("-r", "--rollup", help="Rollup setting"),
     Arg("-rf", "--row_filters", help="String to be eval'd as row filter param"),
     Arg("-ll", "--log_level", type=int, default=None, help="Set log level"),
+    Arg("-f", "--config", help="Path to warehouse config file"),
 )
 def main(
     metrics=None,
@@ -23,6 +24,7 @@ def main(
     row_filters=None,
     rollup=None,
     log_level=None,
+    config=None,
 ):
     if log_level:
         logger = logging.getLogger()
@@ -35,8 +37,11 @@ def main(
 
     pp(locals())
 
-    config = copy.deepcopy(TEST_WH_CONFIG)
+    if not config:
+        config = copy.deepcopy(TEST_WH_CONFIG)
+
     wh = Warehouse(config=config)
+
     result = wh.execute(
         metrics=metrics,
         dimensions=dimensions,

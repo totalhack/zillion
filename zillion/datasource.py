@@ -813,12 +813,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             schema, table_name = get_schema_and_table_name(table_name)
             dt = datatable_from_config(table_name, cfg, schema=schema)
-
-            params = {}
-            if_exists = cfg.get("if_exists", None)
-            if if_exists:
-                params["if_exists"] = if_exists
-            dt.to_sql(self.metadata.bind, **params)
+            dt.to_sql(self.metadata.bind)
 
         return adhoc_tables
 
@@ -1340,7 +1335,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             metadata.bind = engine
 
         for dt in datatables:
-            dt.to_sql(engine, if_exists=dt.table_config["if_exists"])
+            dt.to_sql(engine)
             config.setdefault("tables", {})[dt.fullname] = dt.table_config
 
         reflect_metadata(metadata)
@@ -1364,8 +1359,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
 
 class AdHocDataTable(PrintMixin):
-    """Create an adhoc (temporary) representation of a table for use in an adhoc
-    datasource
+    """Create an adhoc table from raw data that can be added to a DataSource
 
     **Parameters:**
 
@@ -1380,6 +1374,8 @@ class AdHocDataTable(PrintMixin):
     same datasource
     * **if_exists** - (*str, optional*) Control behavior when datatables
     already exist in the database
+    * **drop_dupes** - (*bool, optional*) Drop duplicate primary key rows when
+    loading the table
     * **fillna_value** - (*str or int, optional*) Fill null values in primary
     key columns with this value before writing to a SQL database.
     * **schema** - (*str, optional*) The schema in which the table resides
@@ -1401,6 +1397,7 @@ class AdHocDataTable(PrintMixin):
         primary_key=None,
         parent=None,
         if_exists=IfExistsModes.FAIL,
+        drop_dupes=False,
         fillna_value="",
         schema=None,
         **kwargs
@@ -1436,6 +1433,7 @@ class AdHocDataTable(PrintMixin):
                 create_fields=True,
                 parent=parent,
                 if_exists=if_exists,
+                drop_dupes=drop_dupes,
                 primary_key=primary_key,
             )
         )
@@ -1463,26 +1461,18 @@ class AdHocDataTable(PrintMixin):
         """Determine if this table exists"""
         return engine.has_table(self.name)
 
-    def to_sql(
-        self, engine, if_exists=IfExistsModes.FAIL, method="multi", chunksize=int(1e3)
-    ):
+    def to_sql(self, engine, method="multi", chunksize=int(1e3)):
         """Use pandas to push the adhoc table data to a SQL database.
         
         **Parameters:**
         
         * **engine** - (*SQLAlchemy connection engine*) The engine used to
         connect to the database
-        * **if_exists** - (*str, optional*) Passed through to pandas. An
-        additional option of "ignore" is supported which first checks if the
-        table exists and if so takes no action. The "append" option is not
-        currently supported.
         * **method** - (*str, optional*) Passed through to pandas
-        * **chunksize** - (*type, optional*) Passed through to pandas
+        * **chunksize** - (*int, optional*) Passed through to pandas
         
         """
-        raiseifnot(
-            if_exists in IfExistsModes, "Invalid if_exists value: %s" % if_exists
-        )
+        if_exists = self.if_exists
         if if_exists == IfExistsModes.IGNORE:
             if self.table_exists(engine):
                 return
@@ -1499,6 +1489,15 @@ class AdHocDataTable(PrintMixin):
                 )
             else:
                 df.index = df.index.fillna(self.fillna_value)
+
+        if (not df.empty) and self.drop_dupes:
+            orig_len = len(df)
+            df = df[~df.reset_index().duplicated(subset=self.primary_key).values]
+            if len(df) != orig_len:
+                warn(
+                    "DataFrame size dropped from %s to %s due to duplicates"
+                    % (orig_len, len(df))
+                )
 
         # Note: we are doing this instead of df.to_sql since to_sql doesn't
         # support creating primary keys on table creation via the keys= param.
@@ -1654,6 +1653,7 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         primary_key=config.get("primary_key", None),
         parent=config.get("parent", None),
         if_exists=config.get("if_exists", IfExistsModes.FAIL),
+        drop_dupes=config.get("drop_dupes", False),
         schema=schema,
         **kwargs
     )

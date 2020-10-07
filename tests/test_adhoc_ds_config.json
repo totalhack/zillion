@@ -7,14 +7,21 @@
                     "type": "dimension",
                     "data_url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
                     "if_exists": "replace",
+                    "drop_dupes": true,
                     "create_fields": true,
-                    "primary_key": ["Zip_Code"],
+                    "primary_key": [
+                        "Zip_Code"
+                    ],
                     "columns": {
                         "Zip_Code": {
-                            "fields": ["Zip_Code"]
+                            "fields": [
+                                "Zip_Code"
+                            ]
                         },
                         "DMA_Code": {
-                            "fields": ["DMA_Code"]
+                            "fields": [
+                                "DMA_Code"
+                            ]
                         }
                     }
                 }
