@@ -1376,6 +1376,9 @@ class AdHocDataTable(PrintMixin):
     already exist in the database
     * **drop_dupes** - (*bool, optional*) Drop duplicate primary key rows when
     loading the table
+    * **convert_types** - (*dict, optional*) A mapping of column names to types
+    to convert to when loading the table. The types must be accepted by pandas'
+    `DataFrame.astype` method.
     * **fillna_value** - (*str or int, optional*) Fill null values in primary
     key columns with this value before writing to a SQL database.
     * **schema** - (*str, optional*) The schema in which the table resides
@@ -1398,6 +1401,7 @@ class AdHocDataTable(PrintMixin):
         parent=None,
         if_exists=IfExistsModes.FAIL,
         drop_dupes=False,
+        convert_types=None,
         fillna_value="",
         schema=None,
         **kwargs
@@ -1434,6 +1438,7 @@ class AdHocDataTable(PrintMixin):
                 parent=parent,
                 if_exists=if_exists,
                 drop_dupes=drop_dupes,
+                convert_types=convert_types,
                 primary_key=primary_key,
             )
         )
@@ -1499,6 +1504,8 @@ class AdHocDataTable(PrintMixin):
                     % (orig_len, len(df))
                 )
 
+        convert_types = self.convert_types or {}
+
         # Note: we are doing this instead of df.to_sql since to_sql doesn't
         # support creating primary keys on table creation via the keys= param.
         # To prevent unnecessary indexes from being created we also reset_index
@@ -1506,7 +1513,7 @@ class AdHocDataTable(PrintMixin):
         table = SQLTable(
             self.name,
             pandasSQL_builder(engine, schema=self.schema),
-            frame=df.reset_index(),
+            frame=df.reset_index().astype(convert_types),
             index=False,
             keys=df.index.names,
             if_exists=if_exists,
@@ -1654,6 +1661,7 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         parent=config.get("parent", None),
         if_exists=config.get("if_exists", IfExistsModes.FAIL),
         drop_dupes=config.get("drop_dupes", False),
+        convert_types=config.get("convert_types", None),
         schema=schema,
         **kwargs
     )

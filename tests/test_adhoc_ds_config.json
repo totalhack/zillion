@@ -8,6 +8,9 @@
                     "data_url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
                     "if_exists": "replace",
                     "drop_dupes": true,
+                    "convert_types": {
+                        "DMA_Code": "str"
+                    },
                     "create_fields": true,
                     "primary_key": [
                         "Zip_Code"

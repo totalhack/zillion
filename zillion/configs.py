@@ -610,6 +610,9 @@ class TableConfigSchema(TableInfoSchema):
     ignore when the table data already exists.
     * **drop_dupes** - (*bool, optional*) Drop duplicate primary key rows when
     loading a table from a data_url
+    * **convert_types** - (*dict, optional*) A mapping of column names to types
+    to convert to when loading a table from a data url. The types must be
+    accepted by pandas' `DataFrame.astype` method.
     * **primary_key** - (*list of str, optional*) A list of fields representing
     the primary key of the table
     * **adhoc_table_options** - (*dict, optional*) A dict of additional params
@@ -626,6 +629,7 @@ class TableConfigSchema(TableInfoSchema):
     data_url = mfields.String()
     if_exists = mfields.String(validate=is_valid_if_exists)
     drop_dupes = mfields.Boolean(default=False, missing=False)
+    convert_types = mfields.Dict(keys=mfields.Str(), values=mfields.Str(), missing=None)
     primary_key = mfields.List(mfields.String())
     adhoc_table_options = mfields.Dict(keys=mfields.Str())
 
