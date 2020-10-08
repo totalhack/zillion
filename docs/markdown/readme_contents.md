@@ -590,11 +590,27 @@ help add more support!
 * SQLite: supported and tested
 * MySQL: supported and tested
 * PostgreSQL: supported and *lightly* tested
-* MSSQL: not tested
-* Oracle: not tested
-* BigQuery, Redshift, Snowflake, etc: not tested
+* MSSQL: not tested, but support is planned
+* Oracle: not tested, but support is planned
+* BigQuery, Redshift, Snowflake, etc: not tested, but support is planned
 
 Note that this is different than the database support for the Combined Layer
 database. Currently only SQLite is supported there, though it is planned to
 make this more generic such that any SQLAlchemy supported database could be
 used.
+
+<a name="multiprocess-considerations"></a>
+
+**Multiprocess Considerations**
+-------------------------------
+
+If you plan to run `Zillion` in a multiprocess scenario, whether on a single
+node or across multiple nodes, there are a couple of things to consider:
+
+* SQLite DataSources do not scale well and may run into locking issues with multiple processes trying to access them on the same node.
+* Any file-based database technology that isn't centrally accessible would be challenging when using multiple nodes.
+* Ad Hoc DataSource and Ad Hoc Table downloads should be avoided as they may conflict/repeat across each process. Offload this to an external
+ETL process that is better suited to manage those data flows in a scalable production scenario.
+
+Note that you can still use the default SQLite in-memory Combined Layer DB without issues, as that is made on the fly with each report request and
+requires no coordination/communication with other processes or nodes.

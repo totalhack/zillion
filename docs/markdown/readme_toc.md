@@ -20,5 +20,6 @@
     * [AdHocDataTables](#adhoc-data-tables)
     * [Technicals](#technicals)
 * [Supported DataSources](#supported-datasources)
+* [Multiprocess Considerations](#multiprocess-considerations)
 * [Docs](#documentation)
 * [How to Contribute](#how-to-contribute)
