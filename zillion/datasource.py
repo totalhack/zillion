@@ -46,6 +46,7 @@ from zillion.sql_utils import (
     get_schemas,
     filter_dialect_schemas,
     check_metadata_url,
+    type_string_to_sa_type,
 )
 
 
@@ -1377,8 +1378,8 @@ class AdHocDataTable(PrintMixin):
     * **drop_dupes** - (*bool, optional*) Drop duplicate primary key rows when
     loading the table
     * **convert_types** - (*dict, optional*) A mapping of column names to types
-    to convert to when loading the table. The types must be accepted by pandas'
-    `DataFrame.astype` method.
+    to convert to when loading the table. The types must be strings representing
+    valid sqlalchemy types. Ex: {"col1": "date", "col2": "integer"}
     * **fillna_value** - (*str or int, optional*) Fill null values in primary
     key columns with this value before writing to a SQL database.
     * **schema** - (*str, optional*) The schema in which the table resides
@@ -1504,7 +1505,11 @@ class AdHocDataTable(PrintMixin):
                     % (orig_len, len(df))
                 )
 
-        convert_types = self.convert_types or {}
+        dtype = None
+        if self.convert_types:
+            dtype = {
+                k: type_string_to_sa_type(v) for k, v in self.convert_types.items()
+            }
 
         # Note: we are doing this instead of df.to_sql since to_sql doesn't
         # support creating primary keys on table creation via the keys= param.
@@ -1513,11 +1518,12 @@ class AdHocDataTable(PrintMixin):
         table = SQLTable(
             self.name,
             pandasSQL_builder(engine, schema=self.schema),
-            frame=df.reset_index().astype(convert_types),
+            frame=df.reset_index(),
             index=False,
             keys=df.index.names,
             if_exists=if_exists,
             schema=self.schema,
+            dtype=dtype,
         )
         table.create()
         # Note: this hits limits in allowed sqlite params if chunks are too large

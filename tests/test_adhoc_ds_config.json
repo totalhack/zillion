@@ -9,7 +9,7 @@
                     "if_exists": "replace",
                     "drop_dupes": true,
                     "convert_types": {
-                        "DMA_Code": "str"
+                        "DMA_Code": "text"
                     },
                     "create_fields": true,
                     "primary_key": [

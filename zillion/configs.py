@@ -297,6 +297,16 @@ def is_valid_sqlalchemy_type(val):
     return True
 
 
+def has_valid_sqlalchemy_type_values(val):
+    """Validate a mapping that has sqlalchemy type strings as values"""
+    if not val:
+        return True
+    if not isinstance(val, dict):
+        raise ValidationError("Expected dict: %s" % val)
+    for v in val.values():
+        is_valid_sqlalchemy_type(v)
+
+
 def is_valid_aggregation(val):
     """Validate aggregation type"""
     if val in AggregationTypes:
@@ -612,7 +622,7 @@ class TableConfigSchema(TableInfoSchema):
     loading a table from a data_url
     * **convert_types** - (*dict, optional*) A mapping of column names to types
     to convert to when loading a table from a data url. The types must be
-    accepted by pandas' `DataFrame.astype` method.
+    strings representing valid sqlalchemy types. Ex: {"col1": "date", "col2": "integer"}
     * **primary_key** - (*list of str, optional*) A list of fields representing
     the primary key of the table
     * **adhoc_table_options** - (*dict, optional*) A dict of additional params
@@ -629,7 +639,12 @@ class TableConfigSchema(TableInfoSchema):
     data_url = mfields.String()
     if_exists = mfields.String(validate=is_valid_if_exists)
     drop_dupes = mfields.Boolean(default=False, missing=False)
-    convert_types = mfields.Dict(keys=mfields.Str(), values=mfields.Str(), missing=None)
+    convert_types = mfields.Dict(
+        keys=mfields.Str(),
+        values=mfields.Str(),
+        missing=None,
+        validate=has_valid_sqlalchemy_type_values,
+    )
     primary_key = mfields.List(mfields.String())
     adhoc_table_options = mfields.Dict(keys=mfields.Str())
 
