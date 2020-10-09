@@ -70,7 +70,7 @@ def connect_url_to_metadata(url, ds_name=None):
         url = populate_url_context(url, ds_name)
     check_metadata_url(url)
     metadata = sa.MetaData()
-    metadata.bind = sa.create_engine(url)
+    metadata.bind = sa.create_engine(url, pool_pre_ping=True)
     return metadata
 
 
@@ -128,7 +128,7 @@ def data_url_to_metadata(
         f = download_file(data_url, outfile=dbfile)
 
     connect_url = get_adhoc_datasource_url(ds_name)
-    engine = sa.create_engine(connect_url, echo=False)
+    engine = sa.create_engine(connect_url, echo=False, pool_pre_ping=True)
     metadata = sa.MetaData()
     metadata.bind = engine
     return metadata
@@ -1330,7 +1330,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         else:
             # No connection URL specified, let's create an adhoc SQLite DB
             conn_url = get_adhoc_datasource_url(ds_name)
-            engine = sa.create_engine(conn_url, echo=False)
+            engine = sa.create_engine(conn_url, echo=False, pool_pre_ping=True)
             metadata = sa.MetaData()
             metadata.bind = engine
 
