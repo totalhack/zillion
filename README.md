@@ -53,6 +53,7 @@ With `Zillion` you can:
     * [Technicals](#technicals)
 * [Supported DataSources](#supported-datasources)
 * [Multiprocess Considerations](#multiprocess-considerations)
+* [Related Projects](#related-projects)
 * [Docs](#documentation)
 * [How to Contribute](#how-to-contribute)
 
@@ -672,6 +673,14 @@ ETL process that is better suited to manage those data flows in a scalable produ
 
 Note that you can still use the default SQLite in-memory Combined Layer DB without issues, as that is made on the fly with each report request and
 requires no coordination/communication with other processes or nodes.
+
+<a name="related-projects"></a>
+
+**Related Projects**
+--------------------
+
+* [Awesome Zillion](https://github.com/totalhack/awesome-zillion) - A collection of `Zillion` projects and resources.
+* [Zillion Web UI](https://github.com/totalhack/zillion-web) - A demo UI and web API for Zillion
 
 ---
 
