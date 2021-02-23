@@ -7,6 +7,7 @@
 * [zillion.field](zillion.field.md)
 * [zillion.model](zillion.model.md)
 * [zillion.report](zillion.report.md)
+* [zillion.scripts](zillion.scripts.md)
 * [zillion.sql_utils](zillion.sql_utils.md)
 * [zillion.version](zillion.version.md)
 * [zillion.warehouse](zillion.warehouse.md)
