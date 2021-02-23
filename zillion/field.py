@@ -780,7 +780,7 @@ class FieldManagerMixin:
 
     def get_metric(self, obj, adhoc_fms=None):
         """Get a reference to a metric on this FieldManager. If the object
-        passed is a dict it is expected to defined an AdHocMetric."""
+        passed is a dict it is expected to define an AdHocMetric."""
         if isinstance(obj, str):
             if self.directly_has_metric(obj):
                 return getattr(self, self.metrics_attr)[obj]

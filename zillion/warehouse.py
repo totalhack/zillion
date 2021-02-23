@@ -1,5 +1,7 @@
 from collections import defaultdict, OrderedDict
 import logging
+import os
+import sys
 import time
 
 import sqlalchemy as sa
@@ -17,8 +19,14 @@ from zillion.model import zillion_engine, Warehouses
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
 
-if zillion_config["DEBUG"]:
+if zillion_config["DEBUG"] or str(os.getenv("DEBUG", "false")).lower() in ("true", "1"):
     default_logger.setLevel(logging.DEBUG)
+    # Make sure logs can show up in testing
+    handler = logging.StreamHandler(sys.stdout)
+    default_logger.handlers = []
+    default_logger.propagate = False
+    default_logger.addHandler(handler)
+    print("---- Debug logging enabled ----")
 
 
 class Warehouse(FieldManagerMixin):
@@ -26,12 +34,12 @@ class Warehouse(FieldManagerMixin):
     against and combine data in report results. The warehouse may contain global
     definitions for metrics and dimensions, and will also perform integrity
     checks of any added datasources.
-    
+
     Note that the id, name, and meta attributes will only be populated when
-    the Warehouse is persisted or loaded from a database. 
-    
+    the Warehouse is persisted or loaded from a database.
+
     **Parameters:**
-    
+
     * **config** - (*dict, str, or buffer, optional*) A dict adhering to the
     WarehouseConfigSchema or a file location to load the config from
     * **datasources** - (*list, optional*) A list of DataSources that will make
@@ -40,7 +48,7 @@ class Warehouse(FieldManagerMixin):
     establishing querying priority. This comes into play when part of a report
     may be satisfied by multiple datasources. Datasources earlier in this list
     will be higher priority.
-    
+
     """
 
     def __init__(self, config=None, datasources=None, ds_priority=None):
@@ -114,17 +122,17 @@ class Warehouse(FieldManagerMixin):
 
     def get_datasource(self, name, adhoc_datasources=None):
         """Get the datasource object corresponding to this datasource name
-        
+
         **Parameters:**
-        
+
         * **name** - (*str*) The name of the datasource
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*DataSource*) - The matching datasource object
-        
+
         """
         if name in self._datasources:
             return self._datasources[name]
@@ -141,13 +149,13 @@ class Warehouse(FieldManagerMixin):
 
     def add_datasource(self, ds, skip_integrity_checks=False):
         """Add a datasource to this warehouse
-        
+
         **Parameters:**
-        
+
         * **ds** - (*DataSource*) The datasource object to add
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
-        
+
         """
         dbg("Adding datasource %s" % ds.name)
         self._datasources[ds.name] = ds
@@ -157,13 +165,13 @@ class Warehouse(FieldManagerMixin):
 
     def remove_datasource(self, ds, skip_integrity_checks=False):
         """Remove a datasource from this config
-        
+
         **Parameters:**
-        
+
         * **ds** - (*DataSource*) The datasource object to remove
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
-        
+
         """
         dbg("Removing datasource %s" % ds.name)
         del self._datasources[ds.name]
@@ -173,13 +181,13 @@ class Warehouse(FieldManagerMixin):
 
     def apply_config(self, config, skip_integrity_checks=False):
         """Apply a warehouse config
-        
+
         **Parameters:**
-        
+
         * **config** - (*dict*) A dict adhering to the WarehouseConfigSchema
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
-        
+
         """
         self._create_or_update_datasources(
             config.get("datasources", {}), skip_integrity_checks=skip_integrity_checks
@@ -194,12 +202,12 @@ class Warehouse(FieldManagerMixin):
         """Run a series of integrity checks on the warehouse and its
         datasources. This will raise a WarehouseException with all failed
         checks.
-        
+
         **Parameters:**
-        
+
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers to
         include for this request
-        
+
         """
         errors = []
         if adhoc_datasources:
@@ -233,17 +241,17 @@ class Warehouse(FieldManagerMixin):
 
     def load_report(self, spec_id, adhoc_datasources=None):
         """Load a report from a spec ID
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) The ID of a report spec
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*Report*) - A report built from this report spec
-        
+
         """
         raiseifnot(
             self.id,
@@ -253,11 +261,11 @@ class Warehouse(FieldManagerMixin):
 
     def delete_report(self, spec_id):
         """Delete a report by spec ID
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) The ID of a report spec to delete
-        
+
         """
         raiseifnot(
             self.id,
@@ -268,17 +276,17 @@ class Warehouse(FieldManagerMixin):
     def save_report(self, meta=None, **kwargs):
         """Init a Report and save it as a ReportSpec. Note that the Warehouse
         must be saved before any ReportSpecs can be saved for the Warehouse.
-        
+
         **Parameters:**
-        
+
         * **meta** - (*object, optional*) A metadata object to be
         serialized as JSON and stored with the report
         * ****kwargs** - Passed through to Report
-        
+
         **Returns:**
-        
+
         (*Report*) - The built report with the spec ID populated
-        
+
         """
         raiseifnot(
             self.id,
@@ -290,7 +298,7 @@ class Warehouse(FieldManagerMixin):
 
     def save(self, name, config_url, meta=None):
         """Save the warehouse config and return the ID
-        
+
         **Parameters:**
 
         * **name** - (*str*) A name to give the Warehouse
@@ -298,11 +306,11 @@ class Warehouse(FieldManagerMixin):
         be used to recreate the warehouse
         * **meta** - (*object, optional*) A metadata object to be
         serialized as JSON and stored with the warehouse
-        
+
         **Returns:**
-        
+
         (*int*) - The ID of the saved Warehouse
-        
+
         """
         raiseifnot(name, "A unique name must be specified to save a Warehouse")
         raiseifnot(
@@ -344,11 +352,11 @@ class Warehouse(FieldManagerMixin):
         adhoc_datasources=None,
     ):
         """Build and execute a Report
-        
+
         **Returns:**
-        
+
         (*ReportResult*) - The result of the report
-        
+
         """
         start = time.time()
 
@@ -372,17 +380,17 @@ class Warehouse(FieldManagerMixin):
 
     def execute_id(self, spec_id, adhoc_datasources=None):
         """Build and execute a report from a spec ID
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) The ID of a report spec
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*ReportResult*) - The result of the report
-        
+
         """
         start = time.time()
         report = self.load_report(spec_id, adhoc_datasources=adhoc_datasources)
@@ -394,9 +402,9 @@ class Warehouse(FieldManagerMixin):
         self, metric, grain, dimension_grain, adhoc_datasources=None
     ):
         """Get a TableSet that can satisfy a metric at a given grain
-        
+
         **Parameters:**
-        
+
         * **metric** - (*str*) A metric name
         * **grain** - (*list*) A list of dimension names representing the full
         grain required including dimension and criteria grain
@@ -404,11 +412,11 @@ class Warehouse(FieldManagerMixin):
         representing the requested dimensions for report grouping
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
-        
+
         **Returns:**
-        
+
         (*TableSet*) - A TableSet that can satisfy this request
-        
+
         """
         dbg("metric:%s grain:%s" % (metric, grain))
         ds_metric_tables = self._get_ds_tables_with_metric(
@@ -432,20 +440,20 @@ class Warehouse(FieldManagerMixin):
     def get_dimension_table_set(self, grain, dimension_grain, adhoc_datasources=None):
         """Get a TableSet that can satisfy dimension table joins across this
         grain
-        
+
         **Parameters:**
-        
+
         * **grain** - (*list*) A list of dimension names representing the full
         grain required including dimension and criteria grain
         * **dimension_grain** - (*list of str*) A list of dimension names
         representing the requested dimensions for report grouping
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
-        
+
         **Returns:**
-        
+
         (*TableSet*) - A TableSet that can satisfy this request
-        
+
         """
         dbg("grain:%s" % grain)
 
@@ -477,14 +485,14 @@ class Warehouse(FieldManagerMixin):
         on this warehouse. If a datasource exists already it will be updated by
         applying the datasource config. Otherwise this attempts to create a
         datasource from the config.
-        
+
         **Parameters:**
-        
+
         * **ds_configs** - (*dict*) A dict mapping datasource names to
         datasource configs
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
-        
+
         """
         for ds_name in ds_configs:
             if ds_name in self.datasource_names:
@@ -690,19 +698,19 @@ class Warehouse(FieldManagerMixin):
         self, metric, use_cache=True, adhoc_datasources=None
     ):
         """Get a set of all supported dimensions for a metric
-        
+
         **Parameters:**
-        
+
         * **metric** - (*str or Metric*) A metric name or Metric object
         * **use_cache** - (*bool, optional*) If True, try to pull the result
         from the supported dimension cache
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*set*) - A set of dims supported by this metric
-        
+
         """
         dims = set()
         metric = self.get_metric(metric, adhoc_fms=adhoc_datasources)
@@ -734,17 +742,17 @@ class Warehouse(FieldManagerMixin):
 
     def _get_supported_dimensions(self, metrics, adhoc_datasources=None):
         """Get all of the supported dimensions shared among these metrics
-        
+
         **Parameters:**
-        
+
         * **metrics** - (*list*) A list of metric names or Metric objects
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*set*) - A set of dims supported by all of these metrics
-        
+
         """
         dims = set()
         for metric in metrics:
@@ -756,18 +764,18 @@ class Warehouse(FieldManagerMixin):
 
     def _get_ds_tables_with_metric(self, metric, adhoc_datasources=None):
         """Get a list of tables in each datasource that provide this metric
-        
+
         **Parameters:**
-        
+
         * **metric** - (*str*) The name of a metric
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*dict*) - A dict mapping datasource names to a list of tables
         supporting this metric
-        
+
         """
         ds_tables = defaultdict(list)
         count = 0
@@ -785,18 +793,18 @@ class Warehouse(FieldManagerMixin):
 
     def _get_ds_dim_tables_with_dim(self, dim, adhoc_datasources=None):
         """Get a list of tables in each datasource that provide this dimension
-        
+
         **Parameters:**
-        
+
         * **dim** - (*str*) The name of a dimension
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        
+
         **Returns:**
-        
+
         (*dict*) - A dict mapping datasource names to a list of tables
         supporting this dimension
-        
+
         """
         ds_tables = defaultdict(list)
         count = 0
@@ -815,9 +823,9 @@ class Warehouse(FieldManagerMixin):
         self, ds_tables, field, grain, dimension_grain, adhoc_datasources=None
     ):
         """Get a list of TableSets that can satisfy the grain in each datasource
-        
+
         **Parameters:**
-        
+
         * **ds_tables** - (*dict*) A mapping of datasource names to tables
         containing the field
         * **field** - (*str*) A field name that is contained in the datasource
@@ -828,12 +836,12 @@ class Warehouse(FieldManagerMixin):
         representing the requested dimensions for report grouping
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
-        
+
         **Returns:**
-        
+
         (*dict*) - A dict mapping datasource names to possible TableSets that
         satisfy the field/grain requirements
-        
+
         """
         ds_table_sets = {}
         for ds_name, ds_tables_with_field in ds_tables.items():
@@ -852,15 +860,15 @@ class Warehouse(FieldManagerMixin):
         ds_priority attribute to make the decision. If that is not defined it
         will just take the first datasource in the list. There is room for
         improvement by taking into account expected query performance.
-        
+
         **Parameters:**
-        
+
         * **ds_names** - (*list*) A list of datasource names
-        
+
         **Returns:**
-        
+
         (*str*) - The name of the best datasource to use
-        
+
         """
         if self.ds_priority:
             for ds_name in self.ds_priority:
@@ -876,16 +884,16 @@ class Warehouse(FieldManagerMixin):
         first choose the best datasource among the available options, and then
         the best TableSet within that. Currently the best TableSet is chosen
         simply as the one with the fewest number of tables in its join.
-        
+
         **Parameters:**
-        
+
         * **ds_table_sets** - (*dict*) A dict mapping datasource names to lists
         of possible TableSets
-        
+
         **Returns:**
-        
+
         (*TableSet*) - The best available TableSet
-        
+
         """
         ds_name = self._choose_best_datasource(list(ds_table_sets.keys()))
         if len(ds_table_sets[ds_name]) > 1:
@@ -899,18 +907,18 @@ class Warehouse(FieldManagerMixin):
     def _generate_unsupported_grain_msg(self, grain, metric, adhoc_datasources=None):
         """Generate a messaged that aims to help pinpoint why a metric can not
         meet a specific grain
-        
+
         **Parameters:**
-        
+
         * **grain** - (*list*) A list of dimensions
         * **metric** - (*str*) A metric name
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this report
-        
+
         **Returns:**
-        
+
         (*str*) - A message explaining the unsupported grain issue
-        
+
         """
         grain = grain or set()
         supported = self._get_supported_dimensions_for_metric(
@@ -932,15 +940,15 @@ class Warehouse(FieldManagerMixin):
     @classmethod
     def load(cls, id):
         """Load a Warehouse from a Warehouse ID
-        
+
         **Parameters:**
-        
+
         * **id** - (*int*) A Warehouse ID
-        
+
         **Returns:**
-        
+
         (*Warehouse*) - A Warehouse object
-        
+
         """
         wh = cls._load_warehouse(id)
         if not wh:
@@ -959,15 +967,15 @@ class Warehouse(FieldManagerMixin):
     @classmethod
     def load_warehouse_for_report(cls, spec_id):
         """Load the warehouse corresponding to the ReportSpec
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) A ReportSpec ID
-        
+
         **Returns:**
-        
+
         (*Warehouse*) - A Warehouse object
-        
+
         """
         wh_id = Report.load_warehouse_id_for_report(spec_id)
         raiseifnot(wh_id, "No warehouse ID found for spec ID %s" % spec_id)
@@ -977,15 +985,15 @@ class Warehouse(FieldManagerMixin):
     def load_report_and_warehouse(cls, spec_id):
         """Load a Report and Warehouse from a ReportSpec. The Warehouse
         will be populated on the returned Report object.
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) A ReportSpec ID
-        
+
         **Returns:**
-        
+
         (*Report*) - A Report built from this report spec
-        
+
         """
         wh = cls.load_warehouse_for_report(spec_id)
         return wh.load_report(spec_id)
@@ -994,11 +1002,11 @@ class Warehouse(FieldManagerMixin):
     def delete(cls, id):
         """Delete a saved warehouse. Note that this does not delete
         any report specs that reference this warehouse ID.
-        
+
         **Parameters:**
-        
+
         * **id** - (*int*) The ID of a Warehouse to delete
-        
+
         """
         s = Warehouses.delete().where(Warehouses.c.id == id)
         conn = zillion_engine.connect()
@@ -1010,15 +1018,15 @@ class Warehouse(FieldManagerMixin):
     @classmethod
     def _load_warehouse(cls, id):
         """Get a Warehouse row from a Warehouse ID
-        
+
         **Parameters:**
-        
+
         * **id** - (*int*) The ID of the Warehouse to load
-        
+
         **Returns:**
-        
+
         (*dict*) - A Warehouse row
-                
+
         """
         s = sa.select(Warehouses.c).where(Warehouses.c.id == id)
         conn = zillion_engine.connect()

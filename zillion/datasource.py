@@ -206,9 +206,9 @@ def url_connect(
     """A URL-based datasource connector. This is meant to be used as the "func"
     value of a DataSourceConnectSchema. Only one of connect_url or data_url may
     be specified.
-    
+
     **Parameters:**
-    
+
     * **ds_name** - (*str*) The name of the datasource to get a connection for
     * **connect_url** - (*str, optional*) If a connect_url is passed, it will
     create a bound MetaData object from that connection string.
@@ -229,7 +229,7 @@ def url_connect(
     minutes, hours, days, weeks. Note that this only occurs when `url_connect` is
     called, which is typically on datasource init; it does not replace itself
     periodically while the datasource is instantiated.
-    
+
     """
     raiseif(connect_url and data_url, "Only one of connect_url or data_url may be set")
     raiseifnot(connect_url or data_url, "One of connect_url or data_url must be set")
@@ -249,9 +249,9 @@ def url_connect(
 class TableSet(PrintMixin):
     """A set of tables in a datasource that can meet a grain and provide target
     fields.
-    
+
     **Parameters:**
-    
+
     * **datasource** - (*DataSource*) The DataSource containing all tables
     * **ds_table** - (*Table*) A table containing a desired metric or dimension
     * **join** - (*Join*) A join to related tables that satisfies the grain and
@@ -259,7 +259,7 @@ class TableSet(PrintMixin):
     * **grain** - (*list of str*) A list of dimensions that must be supported by
     the join
     * **target_fields** - (*list of str*) A list of fields being targeted
-    
+
     """
 
     repr_attrs = ["datasource", "join", "grain", "target_fields"]
@@ -270,16 +270,16 @@ class TableSet(PrintMixin):
 
     def get_covered_metrics(self, wh):
         """Get a list of metrics covered by this table set
-        
+
         **Parameters:**
-        
+
         * **wh** - (*Warehouse*) The warehouse to use as a reference for metric
         fields
-        
+
         **Returns:**
-        
+
         (*list of str*) - A list of metric names covered in this TableSet
-        
+
         """
         adhoc_dses = []
         if self.datasource.name not in wh.datasource_names:
@@ -328,18 +328,7 @@ class Join(PrintMixin):
         self.datasource = None
         self.table_names = OrderedSet()
         for join_part in self.join_parts:
-            if not self.datasource:
-                self.datasource = join_part.datasource
-            else:
-                raiseifnot(
-                    join_part.datasource.name == self.datasource.name,
-                    (
-                        "Can not form %s using join_parts from different datasources"
-                        % self.__class__
-                    ),
-                )
-            for table_name in join_part.table_names:
-                self.table_names.add(table_name)
+            self.add_join_part_tables(join_part)
 
     def __key(self):
         return tuple(self.table_names)
@@ -352,6 +341,21 @@ class Join(PrintMixin):
 
     def __len__(self):
         return len(self.table_names)
+
+    def add_join_part_tables(self, join_part):
+        """Add tables from join parts to the table list"""
+        if not self.datasource:
+            self.datasource = join_part.datasource
+        else:
+            raiseifnot(
+                join_part.datasource.name == self.datasource.name,
+                (
+                    "Can not form %s using join_parts from different datasources"
+                    % self.__class__
+                ),
+            )
+        for table_name in join_part.table_names:
+            self.table_names.add(table_name)
 
     def get_covered_fields(self):
         """Generate a list of all possible fields this can cover"""
@@ -394,20 +398,41 @@ class Join(PrintMixin):
                 result |= set(jp.join_fields)
         return result
 
+    @classmethod
+    def combine(cls, join1, join2):
+        """Create a new Join object that combines the parts and fields of the given joins"""
+        raiseifnot(
+            join1.datasource == join2.datasource,
+            "Can not combine joins from different datasources",
+        )
+        new_join = cls(
+            [x for x in join1.join_parts], {k: v for k, v in join1.field_map.items()}
+        )
+
+        for join_part in join2.join_parts:
+            new_join.add_join_part_tables(join_part)
+            new_join.join_parts.append(join_part)
+
+        for field in join2.field_map:
+            if field not in new_join.field_map:
+                new_join.add_field(field)
+
+        return new_join
+
 
 def join_from_path(ds, path, field_map=None):
     """Given a path in the datasource graph, get the corresponding Join
-    
+
     **Parameters:**
-    
+
     * **ds** - (*DataSource*) The datasource for the join
     * **path** - (*list of str*) A list of tables that form a join path
     * **field_map** - (*dict, optional*) Passed through to Join init
-    
+
     **Returns:**
-    
+
     (*Join*) - A Join between all tables in the path
-    
+
     """
     join_parts = []
     if len(path) == 1:
@@ -437,16 +462,16 @@ class NeighborTable(PrintMixin):
 
 class DataSource(FieldManagerMixin, PrintMixin):
     """A component of a warehouse that houses one or more related tables
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the datasource
     * **metadata** - (*SQLAlchemy metadata, optional*) A SQLAlchemy metadata
     object that may have zillion configuration information defined in the table
     and column `info.zillion` attribute
     * **config** - (*dict, str, or buffer, optional*) A dict adhering to the
     DataSourceConfigSchema or a file location to load the config from
-    
+
     """
 
     repr_attrs = ["name"]
@@ -507,15 +532,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def has_table(self, table):
         """Check whether the table is in this datasource's metadata
-        
+
         **Parameters:**
-        
+
         * **table** - (*SQLAlchemy Table*) A SQLAlchemy table
-        
+
         **Returns:**
-        
+
         (*bool*) - True if the table's fullname is in the metadata.tables map
-        
+
         """
         if isinstance(table, str):
             name = table
@@ -525,15 +550,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_table(self, fullname):
         """Get the table object from the datasource's metadata
-        
+
         **Parameters:**
-        
+
         * **fullname** - (*str*) The full name of the table
-        
+
         **Returns:**
-        
+
         (*Table*) - The SQLAlchemy table object from the metadata
-        
+
         """
         table = self.metadata.tables[fullname]
         if not is_active(table):
@@ -542,16 +567,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def get_tables_with_field(self, field_name, table_type=None):
         """Get a list of Tables that have a field
-        
+
         **Parameters:**
-        
+
         * **field_name** - (*str*) The name of the field to check for
         * **table_type** - (*str, optional*) Check only this TableType
-        
+
         **Returns:**
-        
+
         (*list*) - A list of Table objects
-        
+
         """
         tables = []
         for table in self.metadata.tables.values():
@@ -589,14 +614,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
         """Apply a datasource config to this datasource's metadata. This will
         also ensure zillion info is present on the metadata, populate global
         fields, and rebuild the datasource graph.
-        
+
         **Parameters:**
-        
+
         * **config** - (*dict*) The datasource config to apply
         * **reflect** - (*bool, optional*) If true, use SQLAlchemy to reflect
         the database. Table-level reflection will also occur if any tables are
         created from data URLs.
-        
+
         """
         raiseifnot(self.metadata, "apply_config called with no datasource metadata")
 
@@ -623,15 +648,15 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def find_neighbor_tables(self, table):
         """Find tables that can be joined to or are parents of the given table
-        
+
         **Parameters:**
-        
+
         * **table** - (*SQLAlchemy Table*) The table to find neighbors for
-        
+
         **Returns:**
-        
+
         (*list*) - A list of NeighborTables
-        
+
         """
         neighbor_tables = []
         fields = get_table_fields(table)
@@ -675,17 +700,17 @@ class DataSource(FieldManagerMixin, PrintMixin):
         these joins satisfy other parts of the grain too which leaves room for
         consolidation, but it's also possible to have it generate independent,
         non-overlapping joins to meet the grain.
-        
+
         **Parameters:**
-        
+
         * **table** - (*SQLAlchemy Table*) Table to analyze for joins to grain
         * **grain** - (*iterable*) An iterable of dimension names that the given
         table must join to
-        
+
         **Returns:**
-        
+
         (*dict*) - A mapping of dimension -> dimension joins
-        
+
         """
         raiseifnot(
             self.has_table(table),
@@ -717,20 +742,20 @@ class DataSource(FieldManagerMixin, PrintMixin):
         self, ds_tables_with_field, field, grain, dimension_grain
     ):
         """Find table sets that meet the grain
-        
+
         **Parameters:**
-        
+
         * **ds_tables_with_field** - (*list of tables*) A list of datasource
         tables that have the target field
         * **field** - (*str*) The target field we are trying to cover
         * **grain** - (*iterable*) The grain the table set must support
         * **dimension_grain** - The subset of the grain that are requested
         dimensions
-        
+
         **Returns:**
-        
+
         (*list*) - A list of TableSets
-        
+
         """
         table_sets = []
         for field_table in ds_tables_with_field:
@@ -1127,7 +1152,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 if is_superset and not has_unique_fields:
                     dbg(
                         "Removing redundant join %s / %s"
-                        % (other_join.table_names, other_covered_fields)
+                        % (other_join.table_names, other_covered_fields),
+                        indent=4,
                     )
                     joins_to_delete.add(other_join)
 
@@ -1144,6 +1170,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
         for join_combo in powerset(sorted_join_fields):
             if not join_combo:
                 continue
+
+            dbg("---- join combo candidate ----")
+            for row in join_combo:
+                dbg(row[0].table_names, indent=4)
 
             covered = set()
             has_subsets = False
@@ -1164,22 +1194,58 @@ class DataSource(FieldManagerMixin, PrintMixin):
             if has_subsets:
                 continue
 
-            if len(covered) == len(grain):
-                # This combination of joins covers the entire grain. Add it as
-                # a candidate if there isn't an existing candidate that is a a
-                # subset of these joins
-                skip = False
-                joins = {x[0] for x in join_combo}
-                for other_join_combo in candidates:
-                    other_joins = {x[0] for x in other_join_combo}
-                    if other_joins.issubset(joins):
-                        skip = True
-                if skip:
-                    dbg("Skipping subset join list combination")
-                    continue
-                candidates.append(join_combo)
+            if len(covered) != len(grain):
+                dbg(f"does not cover grain: {covered} / {grain}")
+                continue
+
+            # This combination of joins covers the entire grain. Add it as
+            # a candidate if there isn't an existing candidate that is a a
+            # subset of these joins
+            skip = False
+            joins = {x[0] for x in join_combo}
+            for other_join_combo in candidates:
+                other_joins = {x[0] for x in other_join_combo}
+                if other_joins.issubset(joins):
+                    skip = True
+            if skip:
+                dbg("Skipping subset join list combination")
+                continue
+
+            dbg("Adding join combo")
+            candidates.append(join_combo)
 
         return candidates
+
+    def _combine_orthogonal_joins(self, candidates):
+        """Combine any joins that orthogonally stem from a common table.
+        
+        NOTE: this needs more thorough review, and there may be a better way
+        to handle this or combine joins at a different step in the process.
+        """
+
+        result = []
+        for join_combo in candidates:
+            root_joins = {}
+
+            for join, covered_fields in join_combo:
+                root_table = join.table_names[0]
+                if not root_table in root_joins:
+                    root_joins[root_table] = (join, covered_fields)
+                else:
+                    existing_join, existing_fields = root_joins[root_table]
+                    dbg(
+                        f"Combining join {join.table_names} into {existing_join.table_names}"
+                    )
+                    new_join = Join.combine(existing_join, join)
+                    new_fields = existing_fields | covered_fields
+                    root_joins[root_table] = (new_join, new_fields)
+
+            final_combo = tuple([x for x in root_joins.values()])
+            for row in final_combo:
+                dbg(f"Final combo join: {row[0].table_names}")
+            result.append(final_combo)
+
+        return result
 
     def _choose_best_join_combination(self, candidates):
         """Choose the best join combination from the candidates. Currently
@@ -1191,6 +1257,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         join_fields = {}
         for join, covered_fields in chosen:
             join_fields[join] = covered_fields
+            dbg(f"join {join.table_names} covers {covered_fields}")
             join.add_fields(covered_fields)
         return join_fields
 
@@ -1216,6 +1283,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         sorted_join_fields = self._eliminate_redundant_joins(sorted_join_fields)
         candidates = self._find_join_combinations(sorted_join_fields, grain)
+        candidates = self._combine_orthogonal_joins(candidates)
         join_fields = self._choose_best_join_combination(candidates)
         return join_fields
 
@@ -1274,9 +1342,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
         replace_after=DEFAULT_REPLACE_AFTER,
     ):
         """Create a DataSource from a data url
-        
+
         **Parameters:**
-        
+
         * **name** - (*str*) The name to give the datasource
         * **data_url** - (*str*) A url pointing to a SQLite database to download
         * **config** - (*dict, optional*) A DataSourceConfigSchema dict config.
@@ -1287,11 +1355,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
         * **replace_after** - (*str, optional*) Replace the data file after this
         interval if `if_exists` is "replace_after". See `url_connect` docs for
         more information.
-        
+
         **Returns:**
-        
+
         (*DataSource*) - A DataSource created from the data_url and config
-        
+
         """
         config = (config or {}).copy()
         connect = config.get("connect", {})
@@ -1308,18 +1376,18 @@ class DataSource(FieldManagerMixin, PrintMixin):
     @classmethod
     def from_datatables(cls, name, datatables, config=None):
         """Create a DataSource from a list of datatables
-        
+
         **Parameters:**
-        
+
         * **name** - (*str*) The name to give the datasource
         * **datatables** - (*list of AdHocDataTables*) A list of AdHocDataTables
         to use to create the DataSource
         * **config** - (*dict, optional*) A DataSourceConfigSchema dict config
-        
+
         **Returns:**
-        
+
         (*DataSource*) - A DataSource created from the datatables and config
-        
+
         """
         config = config or dict(tables={})
         ds_name = cls._check_or_create_name(name)
@@ -1405,7 +1473,7 @@ class AdHocDataTable(PrintMixin):
         convert_types=None,
         fillna_value="",
         schema=None,
-        **kwargs
+        **kwargs,
     ):
         """Initializes the datatable by parsing its config, but does not
         actually add it to a particular DB yet. It is assumed the DataSource
@@ -1469,14 +1537,14 @@ class AdHocDataTable(PrintMixin):
 
     def to_sql(self, engine, method="multi", chunksize=int(1e3)):
         """Use pandas to push the adhoc table data to a SQL database.
-        
+
         **Parameters:**
-        
+
         * **engine** - (*SQLAlchemy connection engine*) The engine used to
         connect to the database
         * **method** - (*str, optional*) Passed through to pandas
         * **chunksize** - (*int, optional*) Passed through to pandas
-        
+
         """
         if_exists = self.if_exists
         if if_exists == IfExistsModes.IGNORE:
@@ -1532,11 +1600,11 @@ class AdHocDataTable(PrintMixin):
 
 class SQLiteDataTable(AdHocDataTable):
     """AdHocDataTable from an existing sqlite database on the local filesystem
-    
+
     Note: the "data" param to AdHocDataTable is ignored. This is simply a
     workaround to get an AdHocDataTable reference for an existing SQLite DB
     without having to recreate anything from data.
-    
+
     """
 
     def get_dataframe(self):
@@ -1555,7 +1623,7 @@ class CSVDataTable(AdHocDataTable):
             self.data,
             index_col=self.primary_key_columns,
             usecols=list(self.columns.keys()) if self.columns else None,
-            **self.df_kwargs
+            **self.df_kwargs,
         )
 
 
@@ -1567,7 +1635,7 @@ class ExcelDataTable(AdHocDataTable):
         df = pd.read_excel(
             self.data,
             usecols=list(self.columns.keys()) if self.columns else None,
-            **self.df_kwargs
+            **self.df_kwargs,
         )
         if self.primary_key_columns and df.index.names != self.primary_key_columns:
             df = df.set_index(self.primary_key_columns)
@@ -1622,25 +1690,25 @@ class GoogleSheetsDataTable(AdHocDataTable):
             url,
             index_col=self.primary_key_columns,
             usecols=list(self.columns.keys()) if self.columns else None,
-            **self.df_kwargs
+            **self.df_kwargs,
         )
 
 
 def datatable_from_config(name, config, schema=None, **kwargs):
     """Factory to create an AdHocDataTable from a given config. The type of the
     AdHocDataTable created will be inferred from the config["url"] param.
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the table
     * **config** - (*dict*) The configuration of the table
     * **schema** - (*str, optional*) The schema in which the table resides
     * **kwargs** - Passed to init of the particular AdHocDataTable class
-    
+
     **Returns:**
-    
+
     (*AdHocDataTable*) - Return the created AdHocDataTable (subclass)
-    
+
     """
     url = config["data_url"]
     if url.endswith("csv"):
@@ -1669,5 +1737,5 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         drop_dupes=config.get("drop_dupes", False),
         convert_types=config.get("convert_types", None),
         schema=schema,
-        **kwargs
+        **kwargs,
     )

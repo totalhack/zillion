@@ -1,0 +1,32 @@
+version: "3.8"
+services:
+
+  mysql:
+    image: mysql:5.7.12
+    ports:
+      - 3306:3306
+    command: ['--default-authentication-plugin=mysql_native_password', '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    environment:
+      - MYSQL_ROOT_PASSWORD=
+      - MYSQL_DATABASE=zillion_test
+      - MYSQL_ALLOW_EMPTY_PASSWORD=1
+      - TZ=America/New_York
+    volumes:
+      - test-db-data:/var/lib/mysql/      
+
+  postgres:
+    image: postgres:12
+    ports:
+      - 5432:5432
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata_test
+      - POSTGRES_SERVER=127.0.0.1
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=
+      - POSTGRES_HOST_AUTH_METHOD=trust      
+      - POSTGRES_DB=zillion_test
+    volumes:
+      - test-db-data:/var/lib/postgresql/data/pgdata_test
+      
+volumes:
+  test-db-data:

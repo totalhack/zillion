@@ -72,12 +72,12 @@ class ExecutionStateMixin:
     @contextmanager
     def _get_lock(self, timeout=None):
         """Acquire the lock for this object
-        
+
         **Parameters:**
-        
+
         * **timeout** - (*float, optional*) A timeout to wait trying to acquire
         the lock
-        
+
         """
         timeout = timeout or -1  # convert to `acquire` default if falsey
 
@@ -92,12 +92,12 @@ class ExecutionStateMixin:
 
     def _raise_if_killed(self, timeout=None):
         """Raise an exception if in the killed state
-        
+
         **Parameters:**
-        
+
         * **timeout** - (*float, optional*) A timeout to wait trying to acquire
         the lock
-        
+
         """
         with self._get_lock(timeout=timeout):
             if self._killed:
@@ -116,9 +116,9 @@ class ExecutionStateMixin:
         set_if_killed=False,
     ):
         """Set the current object state
-        
+
         **Parameters:**
-        
+
         * **state** - (*str*) A valid ExecutionState
         * **timeout** - (*float, optional*) A timeout to wait trying to acquire
         the lock
@@ -128,7 +128,7 @@ class ExecutionStateMixin:
         killed state
         * **set_if_killed** - (*bool, optional*) Set the execution state even if
         killed
-        
+
         """
         raiseifnot(
             state in get_class_var_values(ExecutionState),
@@ -161,9 +161,9 @@ class ExecutionStateMixin:
 
 class DataSourceQuery(ExecutionStateMixin, PrintMixin):
     """Build a query to run against a particular datasource
-    
+
     **Parameters:**
-    
+
     * **warehouse** - (*Warehouse*) A zillion warehouse
     * **metrics** - (*OrderedDict*) An OrderedDict mapping metric names to
     Metric objects
@@ -173,7 +173,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
     See the Report docs for more details.
     * **table_set** - (*TableSet*) Build the query against this set of tables
     that supports the requested metrics and grain
-    
+
     """
 
     repr_attrs = ["metrics", "dimensions", "criteria"]
@@ -202,15 +202,15 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def covers_metric(self, metric):
         """Check whether a metric is covered in this query
-        
+
         **Parameters:**
-        
+
         * **metric** - (*str*) A metric name
-        
+
         **Returns:**
-        
+
         (*bool*) - True if this metric is covered in this query
-        
+
         """
         if metric in self.table_set.get_covered_metrics(self.warehouse):
             return True
@@ -218,15 +218,15 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def covers_field(self, field):
         """Check whether a field is covered in this query
-        
+
         **Parameters:**
-        
+
         * **field** - (*str*) A field name
-        
+
         **Returns:**
-        
+
         (*bool*) - True if this field is covered in this query
-        
+
         """
         if field in self.table_set.get_covered_fields():
             return True
@@ -234,11 +234,11 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def add_metric(self, metric):
         """Add a metric to this query
-        
+
         **Parameters:**
-        
+
         * **metric** - (*str*) A metric name
-        
+
         """
         raiseifnot(
             self.covers_metric(metric), "Metric %s can not be covered by query" % metric
@@ -257,16 +257,16 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def execute(self, timeout=None, label=None):
         """Execute the datasource query
-        
+
         **Parameters:**
-        
+
         * **timeout** - (*float, optional*) A query timeout in seconds
         * **label** - (*str, optional*) A label to apply to the SQL query
-        
+
         **Returns:**
-        
+
         (*DataSourceQueryResult*) - The result of the SQL query
-        
+
         """
         start = time.time()
         is_timeout = False
@@ -329,15 +329,15 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def kill(self, main_thread=None):
         """Kill this datasource query
-        
+
         **Parameters:**
-        
+
         * **main_thread** - (*Thread, optional*) A reference to the thread that
         started the query. This is used as a backup for dialects that don't have
         a supported way to kill a query. An exception will be asynchronously
         raised in this thread. It is not guaranteed to actually interrupt the
         query.
-        
+
         """
         with self._get_lock():
             if self._ready:
@@ -409,15 +409,15 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def _get_field(self, name):
         """Get a reference to a field that is part of this query
-        
+
         **Parameters:**
-        
+
         * **name** - (*str*) A field name
-        
+
         **Returns:**
-        
+
         (*Field*) - A Field object
-        
+
         """
         if name in self.metrics:
             return self.metrics[name]
@@ -433,16 +433,16 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def _column_for_field(self, field, table=None):
         """Get the column that will be providing this field
-        
+
         **Parameters:**
-        
+
         * **field** - (*str*) A field name
         * **table** - (*Table, optional*) Limit the search to this table
-        
+
         **Returns:**
-        
+
         (*SQLALchemy column*) - The table column that provides this field
-        
+
         """
         ts = self.table_set
 
@@ -467,17 +467,17 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
     def _get_field_expression(self, field, label=True):
         """Get the expression for this field
-        
+
         **Parameters:**
-        
+
         * **field** - (*str*) A field name to get an expression for
         * **label** - (*bool, optional*) If True, label the expression with the
         field name
-        
+
         **Returns:**
-        
+
         (*str*) - A string representing the field SQL expression
-        
+
         """
         column = self._column_for_field(field)
         field_obj = self._get_field(field)
@@ -488,6 +488,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         ts = self.table_set
         sqla_join = None
         last_table = None
+        joined_tables = set()
 
         if not ts.join:
             return ts.ds_table
@@ -499,10 +500,23 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                 if sqla_join is None:
                     sqla_join = table
                     last_table = table
+                    joined_tables.add(table_name)
                     continue
 
                 if table == last_table:
                     continue
+
+                if table_name == ts.ds_table.fullname:
+                    # If we come across the main table again we assume it's an orthogonal
+                    # join find other dimensions and "restart" the join from there.
+                    raiseifnot(
+                        table_name in joined_tables,
+                        f"Main table_set table {table_name} was expected to be in joined_tables {joined_tables}",
+                    )
+                    last_table = table
+                    continue
+
+                joined_tables.add(table_name)
 
                 conditions = []
                 for field in join_part.join_fields:
@@ -596,13 +610,13 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
 class DataSourceQuerySummary(PrintMixin):
     """A summary of the execution results for a DataSourceQuery
-    
+
     **Parameters:**
-    
+
     * **query** - (*DataSourceQuery*) The DataSourceQuery that was executed
     * **data** - (*iterable*) The result rows
     * **duration** - (*float*) The duration of the query execution in seconds
-    
+
     """
 
     repr_attrs = ["datasource_name", "rowcount", "duration"]
@@ -634,13 +648,13 @@ class DataSourceQuerySummary(PrintMixin):
 
 class DataSourceQueryResult(PrintMixin):
     """The results for a DataSourceQuery
-    
+
     **Parameters:**
-    
+
     * **query** - (*DataSourceQuery*) The DataSourceQuery that was executed
     * **data** - (*iterable*) The result rows
     * **duration** - (*float*) The duration of the query execution in seconds
-    
+
     """
 
     repr_attrs = ["summary"]
@@ -653,16 +667,16 @@ class DataSourceQueryResult(PrintMixin):
 
 class BaseCombinedResult:
     """A combination of datasource query results
-    
+
     **Parameters:**
-    
+
     * **warehouse** - (*Warehouse*) A zillion warehouse
     * **ds_query_results** - (*list*) A list of DataSourceQueryResult objects
     * **primary_ds_dimensions** - (*list*) A list of dimensions that will be
     used to create the hash primary key of the combined result table
     * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
     specific to this combined result
-    
+
     """
 
     @initializer
@@ -722,17 +736,17 @@ class BaseCombinedResult:
         implementation simply uses the builtin `hash` function which will only
         provide consistent results in the same python process. This will also
         impact performance for very large results.
-        
+
         **Parameters:**
-        
+
         * **row** - (*iterable*) An iterable of query result rows. It is assumed
         the primary datasource dimensions are the first columns in each row, and
         that the column order is consistent between rows.
-        
+
         **Returns:**
-        
+
         (*int*) - A hash value representing a key for this row.
-        
+
         """
         return hash(row[: len(self.primary_ds_dimensions)])
 
@@ -823,9 +837,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         limit_first,
     ):
         """Get the final reseult from the combined result table
-        
+
         **Parameters:**
-        
+
         * **metrics** - (*OrderedDict*) An OrderedDict mapping metric names to
         Metric objects
         * **dimensions** - (*OrderedDict*) An OrderedDict mapping dimension
@@ -840,20 +854,20 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         * **limit** - (*int*) A limit on the number of rows returned
         * **limit_first** - (*bool, optional*) Whether to apply limits before
         rollups/ordering
-        
+
         **Returns:**
-        
+
         (*DataFrame*) - A DataFrame with the final report result
-        
+
         **Notes:**
-        
+
         The default ordering of operations is meant to roughly parallel that of
         MySQL's rollup, having, order by and limit behavior. The operations
         are applied in the following order: technicals, rollups, rounding,
         order_by, row_filters, limit, pivot. If you set `limit_first=True`
         the the row_filter and limit operations are moved ahead of the rollups:
         technicals, row_filters, limit, rollups, rounding, order_by, pivot.
-        
+
         """
         start = time.time()
         columns = []
@@ -954,16 +968,16 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def _get_final_select_sql(self, columns, dimension_aliases):
         """Create the final select SQL statement
-        
+
         **Parameters:**
-        
+
         * **columns** - (*list*) A list of column clauses
         * **dimension_aliases** - (*list*) A list of dimension column names
-        
+
         **Returns:**
-        
+
         (*str*) - A SQL statement
-        
+
         """
         columns_clause = ", ".join(columns)
         order_clause = "1"
@@ -981,16 +995,16 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         """Get a bulk SQL statement to insert the rows into the combined result
         table. This will will also create the hash primary key column for each
         row.
-        
+
         **Parameters:**
-        
+
         * **rows** - (*iterable*) An iterable of result rows
-        
+
         **Returns:**
-        
+
         (*str, list*) - A 2-item tuple containg the bulk SQL query the the
         values for parameter replacement
-        
+
         """
         columns = list(rows[0].keys())
         placeholder = "(%s)" % (", ".join(["?"] * (1 + len(columns))))
@@ -1030,9 +1044,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
     def _apply_row_filters(self, df, row_filters, metrics, dimensions):
         """Apply row level filters to the final result DataFrame. This uses
         pandas' `DataFrame.query` method.
-        
+
         **Parameters:**
-        
+
         * **df** - (*DataFrame*) The DataFrame to apply filters to
         * **row_filters** - (*list*) A list of row filter criteria. See the
         Report docs for more details.
@@ -1040,11 +1054,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         objects
         * **dimensions** - (*OrderedDict*) A ordered mapping of dimension names
         to objects
-        
+
         **Returns:**
-        
+
         (*DataFrame*) - The filtered DataFrame
-        
+
         """
         filter_parts = []
         fields = {}
@@ -1090,9 +1104,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         """Calculate and insert multi level rollup rows to a DataFrame. Note
         that this process will likely become a noticeable factor in performance
         as the size of the DataFrame and depth of rollups grow.
-        
+
         **Parameters:**
-        
+
         * **df** - (*DataFrame*) The DataFrame to add a multi-level rollup to
         * **rollup** - (*int or str*) Controls how metrics are rolled up /
         aggregated by dimension. See the Report docs for more details.
@@ -1102,13 +1116,13 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         column. This will get passed to the pandas `agg` method of each group.
         * **wavgs** - (*list*) A list of metric name, weighting metric tuples to
         denote which columns require a weighted average
-        
+
         **Returns:**
-        
+
         (*DataFrame*) - The DataFrame with rollup rows added in. The rollup
         rows are marked in the DataFrame index with a special index label so
         they can easily be found/filtered later.
-        
+
         """
         level_aggrs = [df]
         dim_names = list(dimensions.keys())
@@ -1145,9 +1159,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
     def _apply_rollup(self, df, rollup, metrics, dimensions):
         """Apply a rollup to a result DataFrame. This is only allowed if
         dimensions are present in the report.
-        
+
         **Parameters:**
-        
+
         * **df** - (*DataFrame*) The dataframe to apply the rollup to
         * **rollup** - (*str or int*) Controls how metrics are rolled up /
         aggregated by dimension. See the Report docs for more details.
@@ -1155,11 +1169,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         Metric objects
         * **dimensions** - (*OrderedDict*) An OrderedDict mapping dimension
         names to Dimension objects
-        
+
         **Returns:**
-        
+
         (*DataFrame*) - A DataFrame with the rollup rows added
-        
+
         """
         raiseifnot(dimensions, "Can not rollup without dimensions")
         aggrs = {}
@@ -1210,21 +1224,21 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def _apply_technicals(self, df, technicals, rounding):
         """Apply technical computations on the DataFrame
-        
+
         **Parameters:**
-        
+
         * **df** - (*DataFrame*) The DataFrame to apply the technicals to
         * **technicals** - (*dict*) A mapping of metric names to Technical
         definitions
         * **rounding** - (*int*) The number of decimal places to round to
-        
+
         **Returns:**
-        
+
         (*DataFrame*) - A DataFrame that has the target metrics replaced with
         their technical computed values. Additional columns related to the
         technicals may be added in some cases as well, such as in those that
         show lower and upper bounds.
-        
+
         """
         for metric, tech in technicals.items():
             tech.apply(df, metric, rounding=rounding)
@@ -1232,9 +1246,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
     def _apply_limits(self, df, row_filters, limit, metrics, dimensions):
         """Apply row filters and limits to the DataFrame
-        
+
         **Parameters:**
-        
+
         * **df** - (*DataFrame*) The DataFrame to apply filters/limits to
         * **row_filters** - (*list*) A list of criteria to filter which rows get
         returned
@@ -1243,11 +1257,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         Metric objects
         * **dimensions** - (*OrderedDict*) An OrderedDict mapping dimension
         names to Dimension objects
-        
+
         **Returns:**
-        
+
         (*DataFrame*) - A DataFrame that has the filters/limits applied
-        
+
         """
         if row_filters and not df.empty:
             df = self._apply_row_filters(df, row_filters, metrics, dimensions)
@@ -1261,9 +1275,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 class Report(ExecutionStateMixin):
     """Build a report against a warehouse. On init DataSource queries are built,
     but nothing is executed.
-    
+
     **Parameters:**
-    
+
     * **warehouse** - (*Warehouse*) A zillion warehouse object to run the report
     against
     * **metrics** - (*list, optional*) A list of metric names, or dicts in the
@@ -1281,7 +1295,7 @@ class Report(ExecutionStateMixin):
         * ["field_b", "=", "2020-04-01"]
         * ["field_c", "like", "%example%"]
         * ["field_d", "in", ["a", "b", "c"]]
-    
+
     * **row_filters** - (*list, optional*) A list of criteria to apply at the
     final step (combined query layer) to filter which rows get returned. The
     format here is the same as for the criteria arg, though the operations are
@@ -1301,7 +1315,7 @@ class Report(ExecutionStateMixin):
         * **rollup=2** - rolls up the first two dimensions
         * **rollup=3** - rolls up all three dimensions
         * Any other non-None value would raise an error
-    
+
     * **pivot** - (*list, optional*) A list of dimensions to pivot to columns
     * **order_by** - (*list, optional*) A list of (field, asc/desc) tuples that
     control the ordering of the returned result
@@ -1310,9 +1324,9 @@ class Report(ExecutionStateMixin):
     rollups/ordering
     * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
     specific to this report
-    
+
     **Notes:**
-    
+
     The order_by and limit functionality is only applied on the final/combined
     result, NOT in your DataSource queries. In most cases when you are dealing
     with DataSource tables that are of a decent size you will want to make sure
@@ -1320,7 +1334,7 @@ class Report(ExecutionStateMixin):
     of underlying table indexing. If you were to use order_by or limit without
     any criteria or dimensions, you would effectively select all rows from the
     underlying datasource table into memory (or at least try to).
-    
+
     """
 
     def __init__(
@@ -1449,16 +1463,16 @@ class Report(ExecutionStateMixin):
 
     def save(self, meta=None):
         """Save the report spec and return the saved spec ID
-        
+
         **Parameters:**
-        
+
         * **meta** - (*object, optional*) A metadata object to be
         serialized as JSON and stored with the report
-        
+
         **Returns:**
-        
+
         (*int*) - The ID of the saved ReportSpec
-        
+
         """
         raiseifnot(
             self.warehouse.id,
@@ -1520,15 +1534,15 @@ class Report(ExecutionStateMixin):
 
     def kill(self, soft=False, raise_if_failed=False):
         """Kill a running report
-        
+
         **Parameters:**
-        
+
         * **soft** - (*bool, optional*) If true, set the report state to killed
         without attempting to kill any running datasource queries.
         * **raise_if_failed** - (*bool, optional*) If true, raise
         FailedKillException if any exceptions occurred when trying to kill
         datasource queries. Otherwise a warning will be emitted.
-        
+
         """
         info("killing report %s" % self.uuid)
 
@@ -1585,17 +1599,17 @@ class Report(ExecutionStateMixin):
 
     def _get_fields_dict(self, names, field_type, adhoc_datasources=None):
         """Get a dict mapping of field names to Field objects
-        
+
         **Parameters:**
-        
+
         * **names** - (*list*) A list of field names
         * **field_type** - (*str*) The FieldType
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
-        
+
         **Returns:**
-        
+
         (*dict*) - A mapping of field names to Field objects
-        
+
         """
         d = OrderedDict()
         for name in names or []:
@@ -1650,11 +1664,11 @@ class Report(ExecutionStateMixin):
     def _add_ds_fields(self, field):
         """Add all datasource fields that are part of this field. This will add
         to either the ds_metrics or ds_dimensions attributes.
-        
+
         **Parameters:**
-        
+
         * **field** - (*Field*) A Field object to analyze
-        
+
         """
         formula_fields, _ = field.get_formula_fields(
             self.warehouse, adhoc_fms=self.adhoc_datasources
@@ -1709,15 +1723,15 @@ class Report(ExecutionStateMixin):
 
     def _execute_ds_queries_sequential(self, queries):
         """Execute all DataSource queries in sequential order
-        
+
         **Parameters:**
-        
+
         * **queries** - (*list*) A list of DataSourceQuery objects
-        
+
         **Returns:**
-        
+
         (*list*) - A list of query execution results
-        
+
         """
         results = []
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
@@ -1730,15 +1744,15 @@ class Report(ExecutionStateMixin):
 
     def _execute_ds_queries_multithread(self, queries):
         """Execute all DataSource queries in a ThreadPoolExecutor
-        
+
         **Parameters:**
-        
+
         * **queries** - (*list*) A list of DataSourceQuery objects
-        
+
         **Returns:**
-        
+
         (*list*) - A list of query execution results
-        
+
         """
         # TODO: If any query times out, the entire report fails. It might be
         # better if partial results could be returned.
@@ -1763,15 +1777,15 @@ class Report(ExecutionStateMixin):
     def _execute_ds_queries(self, queries):
         """Execute a set of DataSource queries. The DATASOURCE_QUERY_MODE config
         var will control the execution mode.
-        
+
         **Parameters:**
-        
+
         * **queries** - (*list*) A list of DataSourceQuery objects
-        
+
         **Returns:**
-        
+
         (*list*) - A list of query execution results
-        
+
         """
         mode = zillion_config["DATASOURCE_QUERY_MODE"]
         dbg("Executing %s datasource queries in %s mode" % (len(queries), mode))
@@ -1871,12 +1885,12 @@ class Report(ExecutionStateMixin):
 
     def _create_combined_result(self, ds_query_results):
         """Create a single combined result from the datasource query resultss
-        
+
         **Parameters:**
-        
+
         * **ds_query_results** - (*list*) A list of DataSourceQueryResult
         objects
-        
+
         """
         start = time.time()
         result = SQLiteMemoryCombinedResult(
@@ -1891,13 +1905,13 @@ class Report(ExecutionStateMixin):
     @classmethod
     def from_params(cls, warehouse, params, adhoc_datasources=None):
         """Build a report from a set of report params
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **params** - (*dict*) A dict of Report params
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
-        
+
         """
         used_dses = set(params.get("used_datasources", []))
         wh_dses = warehouse.datasource_names
@@ -1914,13 +1928,13 @@ class Report(ExecutionStateMixin):
     @classmethod
     def load(cls, warehouse, spec_id, adhoc_datasources=None):
         """Load a report from a spec ID
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **spec_id** - (*int*) A ReportSpec ID
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
-        
+
         """
         spec = cls._load_report_spec(warehouse, spec_id)
         if not spec:
@@ -1936,15 +1950,15 @@ class Report(ExecutionStateMixin):
     @classmethod
     def load_warehouse_id_for_report(cls, spec_id):
         """Get the Warehouse ID for a particular report spec
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) A ReportSpec ID
-        
+
         **Returns:**
-        
+
         (*dict*) - A Warehouse ID
-                
+
         """
         s = sa.select([ReportSpecs.c.warehouse_id]).where(ReportSpecs.c.id == spec_id)
         conn = zillion_engine.connect()
@@ -1960,11 +1974,11 @@ class Report(ExecutionStateMixin):
     @classmethod
     def delete(cls, warehouse, spec_id):
         """Delete a saved report spec
-        
+
         **Parameters:**
-        
+
         * **spec_id** - (*int*) The ID of a ReportSpec to delete
-        
+
         """
         s = ReportSpecs.delete().where(
             sa.and_(
@@ -1981,16 +1995,16 @@ class Report(ExecutionStateMixin):
     def _load_report_spec(cls, warehouse, spec_id):
         """Get a ReportSpec row from a ReportSpec ID. The report spec must
         exist within the context of the given warehouse.
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **spec_id** - (*int*) The ID of the ReportSpec to load
-        
+
         **Returns:**
-        
+
         (*dict*) - A ReportSpec row
-        
+
         """
         raiseifnot(
             warehouse.id, "trying to load ReportSpec for unspecified Warehouse ID"
@@ -2011,16 +2025,16 @@ class Report(ExecutionStateMixin):
     @classmethod
     def _load_params(cls, warehouse, spec_id):
         """Get Report params from a ReportSpec ID
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **spec_id** - (*int*) The ID of the ReportSpec to load params for
-        
+
         **Returns:**
-        
+
         (*dict*) - A dict of Report params
-        
+
         """
         spec = cls._load_report_spec(warehouse, spec_id)
         if not spec:
@@ -2033,9 +2047,9 @@ class Report(ExecutionStateMixin):
 class ReportResult(PrintMixin):
     """Encapsulates a report result as well as some additional helpers and
     summary statistics.
-    
+
     **Parameters:**
-    
+
     * **df** - (*DataFrame*) The DataFrame containing the final report result
     * **duration** - (*float*) The report execution duration in seconds
     * **query_summaries** - (*list of DataSourceQuerySummary*) Summaries of the
@@ -2043,7 +2057,7 @@ class ReportResult(PrintMixin):
     * **metrics** - (*OrderedDict*) A mapping of requested metrics to Metric objects
     * **dimensions** - (*OrderedDict*) A mapping of requested dimensions to Dimension
     objects
-    
+
     """
 
     repr_attrs = ["rowcount", "duration", "query_summaries"]

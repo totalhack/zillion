@@ -1,3 +1,11 @@
+"""
+To setup testing against local databases:
+
+mysql -u root -h 127.0.0.1 < zillion_test.mysql.sql
+psql -h 127.0.0.1 -U postgres zillion_test < zillion_test.postgres.sql
+
+rm /tmp/adhoc_large_db.db (if it exists)
+"""
 from collections import OrderedDict
 from contextlib import contextmanager
 import copy
