@@ -508,11 +508,18 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
                 if table_name == ts.ds_table.fullname:
                     # If we come across the main table again we assume it's an orthogonal
-                    # join find other dimensions and "restart" the join from there.
+                    # join to find other dimensions and "restart" the join from there.
+                    # XXX: there is likely a better way to handle this.
                     raiseifnot(
                         table_name in joined_tables,
                         f"Main table_set table {table_name} was expected to be in joined_tables {joined_tables}",
                     )
+                    last_table = table
+                    continue
+
+                if table_name in joined_tables:
+                    # This table is already included in the join, assume it is safe to reuse
+                    # XXX: could use more testing to confirm this is always safe
                     last_table = table
                     continue
 
