@@ -742,7 +742,8 @@ class BaseCombinedResult:
         """Get a hash representing a primary key for the row. The default
         implementation simply uses the builtin `hash` function which will only
         provide consistent results in the same python process. This will also
-        impact performance for very large results.
+        impact performance for very large results. Each non-null item within the
+        primary dimensions is converted to its string representation before hashing.
 
         **Parameters:**
 
@@ -755,7 +756,12 @@ class BaseCombinedResult:
         (*int*) - A hash value representing a key for this row.
 
         """
-        return hash(row[: len(self.primary_ds_dimensions)])
+        return hash(
+            tuple(
+                str(x) if x is not None else x
+                for x in row[: len(self.primary_ds_dimensions)]
+            )
+        )
 
     def _get_fields(self):
         """Returns a 2-item tuple of dimension and metric dicts"""
