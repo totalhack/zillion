@@ -1529,7 +1529,12 @@ class Report(ExecutionStateMixin):
                 )
                 diff = time.time() - start
                 self.result = ReportResult(
-                    final_result, diff, summaries, self.metrics, self.dimensions
+                    final_result,
+                    diff,
+                    summaries,
+                    self.metrics,
+                    self.dimensions,
+                    self.rollup,
                 )
                 return self.result
             finally:
@@ -2064,13 +2069,14 @@ class ReportResult(PrintMixin):
     * **metrics** - (*OrderedDict*) A mapping of requested metrics to Metric objects
     * **dimensions** - (*OrderedDict*) A mapping of requested dimensions to Dimension
     objects
+    * **rollup** - (*str or int*) See the Report docs for more details.
 
     """
 
     repr_attrs = ["rowcount", "duration", "query_summaries"]
 
     @initializer
-    def __init__(self, df, duration, query_summaries, metrics, dimensions):
+    def __init__(self, df, duration, query_summaries, metrics, dimensions, rollup):
         raiseif(metrics and (not isinstance(metrics, OrderedDict)))
         raiseif(dimensions and (not isinstance(dimensions, OrderedDict)))
         self.duration = round(duration, 4)
@@ -2115,8 +2121,9 @@ class ReportResult(PrintMixin):
     def df_display(self):
         """Get the rows of the dataframe with data in display format. This
         includes replacing rollup markers with display values"""
-        df = self.df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
+        df = self.df
+        if self.rollup:
+            df = df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
         if self.dimensions:
             df.index.names = [v.display_name for v in self.dimensions.values()]
-        df.rename(columns=self.display_name_map, inplace=True)
-        return df
+        return df.rename(columns=self.display_name_map)
