@@ -596,9 +596,10 @@ class TableInfoSchema(BaseSchema):
     * **incomplete_dimensions** - (*list of str, optional*) If specified, a list
     of dimensions that are not safe to use for joins.
     * **priority** - (*int, optional*) Set the priority of this table relative to
-    other tables. This currently only comes into play when the same metric may be
-    queried across multiple tables within the same DataSource. Lower numbers are
-    higher priority.
+    other tables. All tables default to priority=1. When choosing the best table,
+    lower numbers are considered higher priority. Tables at the same priority level
+    use the length of their TableSet for the given query as the tie-breaker.
+    See `Warehouse._choose_best_table_set`.
 
     """
 
