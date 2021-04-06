@@ -791,8 +791,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         """Get a simple dict representation of the datasource params. This is
         currently not sufficient to completely rebuild the datasource."""
         # TODO: does this need to store entire config?
-        # TODO: is the metadata URL exposing sensitive info?
-        return dict(name=self.name, connect=str(self.metadata.bind.url))
+        return dict(name=self.name)
 
     def print_info(self):
         """Print the structure of the datasource"""
@@ -1218,7 +1217,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
     def _combine_orthogonal_joins(self, candidates):
         """Combine any joins that orthogonally stem from a common table.
-        
+
         NOTE: this needs more thorough review, and there may be a better way
         to handle this or combine joins at a different step in the process.
         """
