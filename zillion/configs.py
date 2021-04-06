@@ -47,13 +47,13 @@ def load_zillion_config():
     """If the ZILLION_CONFIG environment variable is defined, read the YAML
     config from this file. Environment variable substitution is supported
     in the yaml file. Otherwise return a default config. Variables
-    in `CONFIG_ENV_OVERRIDE_VARS` also support being set/overriden via 
+    in `CONFIG_ENV_OVERRIDE_VARS` also support being set/overriden via
     environment vars, and these take precedence.
-    
+
     **Returns:**
 
     (*dict*) - The zillion config dict.
-    
+
     """
     zillion_config_fname = os.environ.get("ZILLION_CONFIG", None)
     if zillion_config_fname:
@@ -80,20 +80,20 @@ zillion_config = load_zillion_config()
 
 def parse_schema_file(f, schema, object_pairs_hook=None):
     """Parse a marshmallow schema file
-    
+
     **Parameters:**
-    
+
     * **f** - (*str or buffer*) A file path or buffer to read the raw schema
     contents from
     * **schema** - (*marshmallow schema*) The marshmallow schema to use to parse
     the data
     * **object_pairs_hook** - (*optional*) Passed through to json.loads. This
     has some issues and currently produces an error if specified.
-    
+
     **Returns:**
 
     (*dict*) - A JSON structure loaded from the schema file
-    
+
     """
     raw = read_filepath_or_buffer(f)
     try:
@@ -115,19 +115,19 @@ def parse_schema_file(f, schema, object_pairs_hook=None):
 
 def load_warehouse_config(cfg, preserve_order=False):
     """Parse a warehouse JSON config
-    
+
     **Parameters:**
-    
+
     * **cfg** - (*dict, str, or buffer*) A warehouse config dict or a file
     path/buffer to read the config contents from.
     * **preserve_order** - (*bool, optional*) If true and a str or buffer is
     passed for the cfg arg, use OrderedDict as the object_pairs_hook to preserve
     order.
-    
+
     **Returns:**
-    
+
     (*dict*) - The parsed warehouse config
-    
+
     """
     if isinstance(cfg, dict):
         return WarehouseConfigSchema().load(cfg)
@@ -148,19 +148,19 @@ def load_warehouse_config_from_env(var, preserve_order=False):
 
 def load_datasource_config(cfg, preserve_order=False):
     """Parse a datasource JSON config
-    
+
     **Parameters:**
-    
+
     * **cfg** - (*dict, str, or buffer*) A datasource config dict or a file
     path/buffer to read the config contents from.
     * **preserve_order** - (*bool, optional*) If true and a str or buffer is
     passed for the cfg arg, use OrderedDict as the object_pairs_hook to preserve
     order.
-    
+
     **Returns:**
-    
+
     (*dict*) - The parsed datasource config
-    
+
     """
     if isinstance(cfg, dict):
         return DataSourceConfigSchema().load(cfg)
@@ -182,15 +182,15 @@ def load_datasource_config_from_env(var, preserve_order=False):
 def field_safe_name(name):
     """Replace characters with underscores if they are not in
     FIELD_NAME_ALLOWED_CHARS
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The field name to process
-    
+
     **Returns:**
-    
+
     (*str*) - The "safe" field name
-    
+
     """
     for char in name:
         if char not in FIELD_NAME_ALLOWED_CHARS:
@@ -200,16 +200,16 @@ def field_safe_name(name):
 
 def default_field_name(column):
     """Get the default field name from a SQLAlchemy column
-    
+
     **Parameters:**
-    
+
     * **column** - (*SQLAlchemy column*) A column to get the default field name
     for
-    
+
     **Returns:**
-    
+
     (*str*) - The default field name for the column
-    
+
     """
     return field_safe_name(column_fullname(column))
 
@@ -451,12 +451,12 @@ class PolyNested(mfields.Nested):
 
 class BaseSchema(Schema):
     """Base Schema with custom JSON module
-    
+
     **Attributes:**
-    
+
     * **meta** - (*dict, optional) A dict of additional custom attributes for
     the config object
-    
+
     """
 
     meta = mfields.Dict(keys=mfields.Str(), missing=None, required=False)
@@ -486,7 +486,7 @@ class TechnicalField(mfields.Field):
 class DataSourceCriteriaConversionsField(mfields.Field):
     """A field for defining column-level criteria conversions. This allows
     for optimizing queries by converting values instead of applying a
-    function on the column to evaluate criteria, which can otherwise 
+    function on the column to evaluate criteria, which can otherwise
     prevent index usage."""
 
     def _validate(self, value):
@@ -504,13 +504,13 @@ class DimensionValuesField(mfields.Field):
 
 class ColumnFieldConfigSchema(BaseSchema):
     """The schema of a column's field attribute
-    
+
     **Attributes:**
-    
+
     * **name** - (*str*) The name of the field
     * **ds_formula** - (*str*) A formula used to calculate the field value at
     the datasource query level. It must use syntax specific to the datasource.
-    
+
     """
 
     name = mfields.Str(required=True, validate=is_valid_field_name)
@@ -530,9 +530,9 @@ class ColumnFieldConfigField(mfields.Field):
 
 class ColumnInfoSchema(BaseSchema):
     """The schema of column info that ends up in the zillion column metadata
-    
+
     **Attributes:**
-    
+
     * **fields** - (*list of ColumnFieldConfigField, optional*) A list of field
     names or definitions
     * **allow_type_conversions** - (*bool, optional*) A flag denoting whether
@@ -545,7 +545,7 @@ class ColumnInfoSchema(BaseSchema):
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report that
     aims to include this column.
-    
+
     """
 
     fields = mfields.List(ColumnFieldConfigField())
@@ -571,9 +571,9 @@ class TableTypeField(mfields.Field):
 
 class TableInfoSchema(BaseSchema):
     """The schema of table info that ends up in the zillion table metadata
-    
+
     **Attributes:**
-    
+
     * **type** - (*str*) Specifies the TableType
     * **active** - (*bool, optional*) A flag denoting whether this table is
     active or not.
@@ -595,7 +595,11 @@ class TableInfoSchema(BaseSchema):
     primary key of the table
     * **incomplete_dimensions** - (*list of str, optional*) If specified, a list
     of dimensions that are not safe to use for joins.
-    
+    * **priority** - (*int, optional*) Set the priority of this table relative to
+    other tables. This currently only comes into play when the same metric may be
+    queried across multiple tables within the same DataSource. Lower numbers are
+    higher priority.
+
     """
 
     type = TableTypeField(required=True)
@@ -605,13 +609,14 @@ class TableInfoSchema(BaseSchema):
     use_full_column_names = mfields.Boolean(default=True, missing=True)
     primary_key = mfields.List(mfields.Str, required=True)
     incomplete_dimensions = mfields.List(mfields.Str, default=None, missing=None)
+    priority = mfields.Integer(default=1, missing=1)
 
 
 class TableConfigSchema(TableInfoSchema):
     """The schema of a table configuration
-    
+
     **Attributes:**
-    
+
     * **columns** - (*dict, optional*) A dict mapping of column name to
     ColumnConfigSchema
     * **data_url** - (*str, optional*) A url used to download table data if this
@@ -627,7 +632,7 @@ class TableConfigSchema(TableInfoSchema):
     the primary key of the table
     * **adhoc_table_options** - (*dict, optional*) A dict of additional params
     to pass to the adhoc table class as kwargs
-    
+
     """
 
     columns = mfields.Dict(
@@ -651,14 +656,14 @@ class TableConfigSchema(TableInfoSchema):
 
 class FieldConfigSchema(BaseSchema):
     """The based schema of a field configuration
-    
+
     **Attributes:**
-    
+
     * **name** - (*str*) The name of the field
     * **type** - (*str*) A string representing the data type of the field. This
     will be converted to a SQLAlchemy type via `ast.literal_eval`.
     * **display_name** - (*str, optional*) The display name of the field
-    * **description** - (*str, optional*) The description of the field    
+    * **description** - (*str, optional*) The description of the field
 
     """
 
@@ -672,9 +677,9 @@ class FieldConfigSchema(BaseSchema):
 
 class FormulaFieldConfigSchema(BaseSchema):
     """The based schema of a formula field configuration
-    
+
     **Attributes:**
-    
+
     * **name** - (*str*) The name of the field
     * **formula** - (*str, optional*) A formula used to compute the field value.
     Formula fields are applied at the combined query layer, rather than in
@@ -682,7 +687,7 @@ class FormulaFieldConfigSchema(BaseSchema):
     layer database.
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
-    
+
     """
 
     name = mfields.String(required=True, validate=is_valid_field_name)
@@ -695,9 +700,9 @@ class FormulaFieldConfigSchema(BaseSchema):
 
 class MetricConfigSchemaMixin:
     """Common attributes and logic for metric configs
-    
+
     **Attributes:**
-    
+
     * **aggregation** - (*str, optional*) A string representing the aggregation
     type to apply to this metric. See `zillion.core.AggregationTypes`.
     * **rounding** - (*int, optional*) If specified, the number of decimal
@@ -710,7 +715,7 @@ class MetricConfigSchemaMixin:
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
-    
+
     """
 
     aggregation = mfields.String(
@@ -748,9 +753,9 @@ class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixi
 
 class DimensionConfigSchema(FieldConfigSchema):
     """The schema of a dimension configuration
-    
+
     **Attributes:**
-    
+
     * **values** - (*str or list, optional*) A list of allowed dimension
     values or a name of a callable to provide a list of values. If a string
     representing a callable is passed, it must be importable and the callable
@@ -762,7 +767,7 @@ class DimensionConfigSchema(FieldConfigSchema):
     that accepts three arguments: (warehouse ID, dimension object, values).
     Currently values is a pandas Series and the callable is expected to
     return a Series. See `zillion.field.sort_by_value_order` for an example.
-    
+
     """
 
     values = DimensionValuesField(default=None, missing=None)
@@ -777,9 +782,9 @@ class AdHocFieldSchema(FormulaFieldConfigSchema):
 
 class AdHocMetricSchema(AdHocFieldSchema):
     """The schema of an adhoc metric
-    
+
     **Attributes:**
-    
+
     * **technical** - (*str or dict, optional*) A string or dict that will be
     parsed as a TechnicalField to define a technical computation to be applied
     to the metric.
@@ -788,7 +793,7 @@ class AdHocMetricSchema(AdHocFieldSchema):
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
-    
+
     """
 
     technical = TechnicalField(default=None, missing=None)
@@ -825,9 +830,9 @@ class DataSourceConnectField(mfields.Field):
 
 class DataSourceConfigSchema(BaseSchema):
     """The schema of a datasource configuration
-    
+
     **Attributes:**
-    
+
     * **connect** - (*str or dict*) A connection string or dict for establishing
     the datasource connection. This may have placeholders that get filled in
     from the DATASOURCE_CONTEXTS of the zillion config. See
@@ -839,7 +844,7 @@ class DataSourceConfigSchema(BaseSchema):
     DimensionConfigSchema
     * **tables** - (*marshmallow field, optional*) A dict mapping of
     TableNameField -> TableConfigSchema
-    
+
     """
 
     connect = DataSourceConnectField(default=None, missing=None)
@@ -877,15 +882,15 @@ class DataSourceConfigField(mfields.Field):
 
 class WarehouseConfigSchema(BaseSchema):
     """The schema of a warehouse configuration.
-    
+
     **Attributes:**
-    
+
     * **metrics** - (*marshmallow field, optional*) A list of MetricConfigSchema
     * **dimensions** - (*marshmallow field, optional*) A list of
     DimensionConfigSchema
     * **datasources** - (*marshmallow field*) A dict mapping of datasource name
     -> DataSourceConfigField
-    
+
     """
 
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
@@ -936,17 +941,17 @@ class ZillionInfo(MappingMixin):
     object's `info.zillion` attribute. The JSON schema is parsed with a
     marshmallow schema object. See the particular schema used with each subclass
     for details on fields.
-    
+
     **Parameters:**
-    
+
     * **kwargs** - Parameters that will be parsed with the given marshmallow
     schema.
-    
+
     **Attributes:**
-    
+
     * **schema** - (*marshmallow schema*) A class attribute that specifies the
     marshmallow schema used to parse the input args on init.
-    
+
     """
 
     schema = None
@@ -959,30 +964,30 @@ class ZillionInfo(MappingMixin):
     @classmethod
     def schema_validate(cls, zillion_info, unknown=RAISE):
         """Validate an info dict against a schema.
-        
+
         **Parameters:**
-        
+
         * **zillion_info** - (*dict*) A dict to validate against the schema
         * **unknown** - (*optional*) A flag passed through to marshmallow's
         schema processing
-        
+
         """
         return cls.schema(unknown=unknown).validate(zillion_info)
 
     @classmethod
     def schema_load(cls, zillion_info, unknown=RAISE):
         """Load an info dict with a marshmallow schema
-        
+
         **Parameters:**
-        
+
         * **zillion_info** - (*dict*) A dict to load with the schema
         * **unknown** - (*optional*) A flag passed through to marshmallow's
         schema processing
-        
+
         **Returns:**
-        
+
         (*dict*) - The loaded schema result
-        
+
         """
         return cls.schema().load(zillion_info, unknown=unknown)
 
@@ -1002,7 +1007,7 @@ class TableInfo(ZillionInfo, PrintMixin):
     """ZillionInfo for a table. See TableInfoSchema for more details about
     fields."""
 
-    repr_attrs = ["type", "active", "create_fields", "parent"]
+    repr_attrs = ["type", "active", "create_fields", "parent", "priority"]
     schema = TableInfoSchema
 
 
@@ -1036,15 +1041,15 @@ class ColumnInfo(ZillionInfo, PrintMixin):
         """Get the reference to the field defined on this column. This may
         return a string or a dict depending on how the field was defined on the
         column.
-        
+
         **Parameters:**
-        
+
         * **name** - (*str*) The name of the field
-        
+
         **Returns:**
-        
+
         (*str or dict*) - The name of the field or the dict defining the field
-        
+
         """
         raiseifnot(self.has_field(name), "Field %s is not in column fields" % name)
         return self._field_map[name] or name
@@ -1092,19 +1097,19 @@ class ColumnInfo(ZillionInfo, PrintMixin):
 
 class Technical(MappingMixin, PrintMixin):
     """A technical computation on a DataFrame column
-    
+
     **Parameters:**
-    
+
     * **type** - (*str*) The TechnicalType
     * **params** - (*dict*) Params for the technical computation
     * **mode** - (*str*) The mode that controls how to apply the technical
     computation across the data's dimensions. See TechnicalModes for options. If
     None, the default mode will be set based on the technical type.
-    
+
     **Attributes:**
-    
+
     * **allowed_params** - (*set*) Define the allowed technical parameters
-    
+
     """
 
     repr_attrs = ["type", "params", "mode"]
@@ -1154,15 +1159,15 @@ class Technical(MappingMixin, PrintMixin):
         the data will be sliced along the second to last level and the technical
         applied to each subgroup. Otherwise the technical is applied across the
         entire dataframe. The technical is applied to the dataframe in place.
-        
+
         **Parameters:**
-        
+
         * **df** - (*DataFrame*) A DataFrame to apply a technical computation to
         * **column** - (*str*) The name of the target column for the technical
         computation
         * **rounding** - (*dict, optional*) The rounding settings for the
         report's columns
-        
+
         """
         if df.empty:
             return
@@ -1302,9 +1307,9 @@ TECHNICAL_CLASS_MAP[TechnicalTypes.BOLL] = BollingerTechnical
 
 def _extract_technical_string_parts(val):
     """Extract params for a technical from shorthand string
-    
+
     General format: TYPE(PARAM1, ...):MODE  Params and mode are optional.
-    
+
     """
     params = []
     mode = None
@@ -1327,9 +1332,9 @@ def _extract_technical_string_parts(val):
 
 def parse_technical_string(val):
     """Parse Technical args from a shorthand string
-    
+
     **Parameters:**
-    
+
     * **val** - (*str*) The technical string to parse. The general format is:
     `type(*args):mode`. The type must be a valid value in TechnicalTypes. The
     argument requirements vary by type, and are optional in some cases. The mode
@@ -1341,11 +1346,11 @@ def parse_technical_string(val):
         * "mean(5,2)" for moving average, window=5, min_period=2
         * "cumsum" for cumulative sum (no args)
         * "cumsum:all" for cumulative sum across all data, regardless of dimension
-    
+
     **Returns:**
-    
+
     (*dict*) - A dict of Technical args
-    
+
     """
     ttype, params, mode = _extract_technical_string_parts(val)
     if not ttype in TechnicalTypes:
@@ -1358,16 +1363,16 @@ def parse_technical_string(val):
 
 def create_technical(info):
     """Create a technical instance from the input object
-    
+
     **Parameters:**
-    
+
     * **info** - (*str or dict*) If str, parse as atechnical string. If a dict,
     parse as TechnicalInfoSchema.
-    
+
     **Returns:**
-    
+
     (*Technical*) - A Technical object based on the input.
-    
+
     """
     if isinstance(info, Technical):
         return info

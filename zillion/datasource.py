@@ -16,7 +16,6 @@ from zillion.configs import (
     DATASOURCE_NAME_ALLOWED_CHARS_STR,
     TableInfo,
     ColumnInfo,
-    DataSourceConfigSchema,
     DataSourceConnectSchema,
     TableConfigSchema,
     default_field_name,

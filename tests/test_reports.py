@@ -926,6 +926,21 @@ def test_report_datasource_priority(wh):
     assert report.queries[0].get_datasource_name() == "testdb1"
 
 
+def test_report_table_priority(config):
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    assert report.queries[0].get_datasource_name() == "testdb1"
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    wh = Warehouse(config=config)
+    report = Report(wh, metrics=metrics, dimensions=dimensions)
+    assert report.queries[0].get_datasource_name() == "testdb1"
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+
 def test_report_multi_datasource(wh):
     metrics = ["revenue", "leads", "sales", "revenue_mean"]
     dimensions = ["partner_name"]

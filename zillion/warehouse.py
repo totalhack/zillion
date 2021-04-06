@@ -896,13 +896,29 @@ class Warehouse(FieldManagerMixin):
 
         """
         ds_name = self._choose_best_datasource(list(ds_table_sets.keys()))
-        if len(ds_table_sets[ds_name]) > 1:
-            # TODO: table set priorities based on expected query performance
-            info(
-                "Picking smallest of %d available table sets"
-                % len(ds_table_sets[ds_name])
+        table_sets = ds_table_sets[ds_name]
+        best_priority = None
+        table_sets_by_priority = defaultdict(list)
+
+        for ts in table_sets:
+            priority = ts.ds_table.zillion.priority
+            raiseif(
+                priority is None, f"Expected priority on table {ts.ds_table.fullname}"
             )
-        return sorted(ds_table_sets[ds_name], key=len)[0]
+            table_sets_by_priority[priority].append(ts)
+            if best_priority is None:
+                best_priority = priority
+            else:
+                best_priority = min(priority, best_priority)
+
+        info(f"Best table set priority = {best_priority}")
+        top_table_sets = table_sets_by_priority[best_priority]
+
+        if len(top_table_sets) > 1:
+            # TODO: table set priorities based on expected query performance
+            info("Picking smallest of %d top table sets" % len(top_table_sets))
+
+        return sorted(top_table_sets, key=len)[0]
 
     def _generate_unsupported_grain_msg(self, grain, metric, adhoc_datasources=None):
         """Generate a messaged that aims to help pinpoint why a metric can not

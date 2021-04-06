@@ -121,6 +121,11 @@
             "name": "revenue_formula_required_grain",
             "aggregation": "mean",
             "formula": "1.0*{revenue_required_grain}"
+        },
+        {
+            "name": "repeated_metric",
+            "type": "integer",
+            "aggregation": "sum"
         }
     ],
     "dimensions": [
@@ -243,6 +248,7 @@
                 "main.leads": "test_table_config.json",
                 "main.sales": {
                     "type": "metric",
+                    "priority": 2,
                     "create_fields": true,
                     "parent": "main.leads",
                     "primary_key": [
@@ -258,6 +264,10 @@
                                 },
                                 {
                                     "name": "ds_sales",
+                                    "ds_formula": "COUNT(DISTINCT sales.id)"
+                                },
+                                {
+                                    "name": "repeated_metric",
                                     "ds_formula": "COUNT(DISTINCT sales.id)"
                                 }
                             ]

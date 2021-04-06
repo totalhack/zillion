@@ -1,21 +1,33 @@
 {
     "type": "metric",
+    "priority": 1,
     "create_fields": true,
-    "primary_key": ["lead_id"],
+    "primary_key": [
+        "lead_id"
+    ],
     "columns": {
         "id": {
             "fields": [
                 "lead_id",
                 "lead_count",
                 "lead_count_distinct",
-                {"name": "leads", "ds_formula": "COUNT(DISTINCT leads.id)"}
+                {
+                    "name": "leads",
+                    "ds_formula": "COUNT(DISTINCT leads.id)"
+                },
+                {
+                    "name": "repeated_metric",
+                    "ds_formula": "COUNT(DISTINCT leads.id)"
+                }
             ]
         },
         "created_at": {
             "allow_type_conversions": true
         },
         "campaign_id": {
-            "fields": ["campaign_id"]
+            "fields": [
+                "campaign_id"
+            ]
         }
     }
 }
