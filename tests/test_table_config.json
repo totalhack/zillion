@@ -21,6 +21,11 @@
                 }
             ]
         },
+        "name": {
+            "fields": [
+                "lead_name"
+            ]
+        },
         "created_at": {
             "allow_type_conversions": true
         },

@@ -1170,7 +1170,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             level_aggrs.append(level_aggr)
 
         df = pd.concat(level_aggrs, sort=False, copy=False)
-        df.sort_index(inplace=True)
+        df.sort_index(inplace=True, na_position="first")
         return df
 
     def _apply_rollup(self, df, rollup, metrics, dimensions):

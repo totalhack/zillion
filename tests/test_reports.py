@@ -858,6 +858,21 @@ def test_report_all_rollup(wh):
     assert revenue == revenue_sum
 
 
+def test_report_rollup_order_null(wh):
+    import numpy as np
+
+    metrics = ["revenue", "leads"]
+    dimensions = ["partner_name", "campaign_name", "lead_name"]
+    rollup = RollupTypes.ALL
+    result = wh_execute(wh, locals())
+    info(result.df)
+    revenue = result.rollup_rows.iloc[-1]["revenue"]
+    revenue_sum = result.non_rollup_rows.sum()["revenue"]
+    assert revenue == revenue_sum
+    sub_df = result.df.loc["Partner C", "Campaign 1C"]
+    assert np.isnan(sub_df.index[0])
+
+
 def test_report_multi_rollup_pivot(wh):
     metrics = ["revenue"]
     dimensions = ["partner_name", "campaign_name", "lead_id"]
