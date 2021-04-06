@@ -267,7 +267,6 @@ def test_row_filter_single_dimension(wh):
     rollup = "totals"
     row_filters = [["leads", ">", "10"]]
     result = wh_execute(wh, locals())
-    assert result
     info(result.df)
 
 
@@ -279,6 +278,16 @@ def test_row_filter_invalid_type(wh):
     row_filters = [["leads", ">", "x"]]
     with pytest.raises(ZillionException):
         result = wh_execute(wh, locals())
+
+
+def test_row_filter_formula_metric(wh):
+    metrics = ["leads", "sales", "rpl"]
+    dimensions = ["date"]
+    criteria = [["year", "=", "2020"]]
+    row_filters = [["rpl", ">", "500"]]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result and result.rowcount == 0
 
 
 def test_report_pivot(wh):

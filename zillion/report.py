@@ -1090,8 +1090,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             if op == "=":
                 op = "=="  # pandas expects this for comparison
 
-            sa_type = type_string_to_sa_type(fields[field].type)
-            py_type = sa_type.python_type
+            if fields[field].type:
+                sa_type = type_string_to_sa_type(fields[field].type)
+                py_type = sa_type.python_type
+            else:
+                # It's a formula field which doesn't have a type, so we default to float.
+                py_type = float
 
             if not isinstance(value, py_type):
                 try:
