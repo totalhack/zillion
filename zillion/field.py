@@ -42,18 +42,18 @@ class Field(ConfigMixin, PrintMixin):
     columns in other tables or datasources. For example, you may have a several
     columns in your databases/tables that represent the concept of "revenue". In
     other words, a column is like an instance of a Field.
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the field
     * **type** - (*str or SQLAlchemy type*) The column type for the field.
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
     * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **kwargs** - Additional attributes stored on the field object
-    
+
     **Attributes:**
-    
+
     * **name** - (*str*) The name of the field
     * **type** - (*str*) A string representing the generic SQLAlchemy type
     * **display_name** - (*str, optional*) The display name of the field
@@ -63,7 +63,7 @@ class Field(ConfigMixin, PrintMixin):
     is passed in on init it will be coerced to a generic type.
     * **field_type** - (*str*) A valid FieldType string
     * **schema** - (*Marshmallow schema*) A FieldConfigSchema class
-    
+
     """
 
     repr_attrs = ["name", "type"]
@@ -89,36 +89,36 @@ class Field(ConfigMixin, PrintMixin):
 
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         """Get the fields that are part of this field's formula
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse that will contain
         all relevant fields
         * **depth** - (*int, optional*) Track the depth of recursion into the
         formula
         * **adhoc_fms** - (*list, optional*) A list of FieldManagers
-        
+
         **Returns:**
-        
+
         (*set, str*) - The set of all base fields involved in the formula
         calculation, as well as an expanded version of the formula. All fields
         in the expanded formula should be raw fields (i.e. not formula
         fields).
-        
+
         """
         return None, None
 
     def get_ds_expression(self, column, label=True, ignore_formula=False):
         """Get the datasource-level sql expression for this field
-        
+
         **Parameters:**
-        
+
         * **column** - (*Column*) A SQLAlchemy column that supports this field
         * **label** - (*bool, optional*) If true, label the expression with the
         field name
         * **ignore_formula** - (*bool, optional*) If true, don't apply any available
         datasource formulas
-        
+
         """
         ds_formula = column.zillion.field_ds_formula(self.name)
         if ignore_formula or (not ds_formula):
@@ -157,9 +157,9 @@ class Field(ConfigMixin, PrintMixin):
 class Metric(Field):
     """Fields that represent values to be measured and possibly broken down
     along Dimensions
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the field
     * **type** - (*str or SQLAlchemy type*) The column type for the field
     * **display_name** - (*str, optional*) The display name of the field
@@ -177,7 +177,7 @@ class Metric(Field):
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
     * **kwargs** - kwargs passed to super class
-    
+
     """
 
     field_type = FieldTypes.METRIC
@@ -223,13 +223,13 @@ class Metric(Field):
 
     def get_ds_expression(self, column, label=True):
         """Get the datasource-level sql expression for this metric
-        
+
         **Parameters:**
-        
+
         * **column** - (*Column*) A SQLAlchemy column that supports this metric
         * **label** - (*bool, optional*) If true, label the expression with the
         field name
-        
+
         """
         expr = column
         aggr = aggregation_to_sqla_func(self.aggregation)
@@ -281,9 +281,9 @@ class Metric(Field):
 class Dimension(Field):
     """Fields that represent attributes of data that are used for grouping or
     filtering
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the field
     * **type** - (*str or SQLAlchemy type*) The column type for the field.
     * **display_name** - (*str, optional*) The display name of the field
@@ -296,7 +296,7 @@ class Dimension(Field):
     return a Series. See `zillion.field.sort_by_value_order` for an example.
     * **meta** - (*dict, optional*) A dict of additional custom attributes
     * **kwargs** - Additional attributes stored on the field object
-    
+
     """
 
     field_type = FieldTypes.DIMENSION
@@ -330,16 +330,16 @@ class Dimension(Field):
 
     def get_values(self, warehouse_id):
         """Get allowed values for this Dimension
-        
+
         **Parameters:**
-        
+
         * **warehouse_id** - (*int*) A zillion warehouse ID
-        
+
         **Returns:**
-        
+
         (*list or None*) - A list of valid values or None if no value
         restrictions have been set.
-        
+
         """
         if self.values is None:
             return None
@@ -350,18 +350,18 @@ class Dimension(Field):
 
     def is_valid_value(self, warehouse_id, value, ignore_none=True):
         """Check if a value is allowed for this Dimension
-        
+
         **Parameters:**
-        
+
         * **warehouse_id** - (*int*) A zillion warehouse ID
         * **value** - (*any*) Check if this value is valid
         * **ignore_none** - (*bool*) If True, consider value=None
         to always be valid.
-         
+
         **Returns:**
-        
+
         (*bool*) - True if the dimension value is valid
-        
+
         """
         if ignore_none and value is None:
             return True
@@ -372,16 +372,16 @@ class Dimension(Field):
 
     def sort(self, warehouse_id, values):
         """Sort the given dimension values according to the sorter
-        
+
         **Parameters:**
-        
+
         * **warehouse_id** - (*int*) A zillion warehouse ID
         * **values** - (*Series*) A pandas Series of values to sort
-        
+
         **Returns:**
-        
+
         (*Series*) - A pandas Series representing the sort order
-        
+
         """
         raiseifnot(self.sorter, "No sorter defined on Dimension")
         func = import_object(self.sorter)
@@ -390,13 +390,13 @@ class Dimension(Field):
 
 class FormulaField(Field):
     """A field defined by a formula
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the field
     * **formula** - (*str*) The formula used to calculate the field
     * **kwargs** - kwargs passed to the super class
-    
+
     """
 
     repr_attrs = ["name", "formula"]
@@ -407,22 +407,22 @@ class FormulaField(Field):
 
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         """Get the fields that are part of this field's formula
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse that will contain
         all relevant fields
         * **depth** - (*int, optional*) Track the depth of recursion into the
         formula
         * **adhoc_fms** - (*list, optional*) A list of FieldManagers
-        
+
         **Returns:**
-        
+
         (*set, str*) - The set of all base fields involved in the formula
         calculation, as well as an expanded version of the formula. All fields
         in the expanded formula should be raw fields (i.e. not formula
         fields).
-        
+
         """
         if depth > MAX_FORMULA_DEPTH:
             raise MaxFormulaDepthException
@@ -469,17 +469,17 @@ class FormulaField(Field):
 
     def get_final_select_clause(self, warehouse, adhoc_fms=None):
         """Get a SQL select clause for this formula
-        
+
         **Parameters:**
-        
+
         * **warehouse** - (*Warehouse*) A zillion warehouse that will contain
         all relevant fields
         * **adhoc_fms** - (*list, optional*) A list of FieldManagers
-        
+
         **Returns:**
-        
+
         (*SQLAlchemy clause*) - A compiled sqlalchemy clause for the formula
-        
+
         """
         formula_fields, raw_formula = self.get_formula_fields(
             warehouse, adhoc_fms=adhoc_fms
@@ -506,13 +506,13 @@ class FormulaField(Field):
 
 class FormulaDimension(FormulaField):
     """A dimension defined by a formula
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the dimension
     * **formula** - (*str*) The formula used to calculate the dimension
     * **kwargs** - kwargs passed to super class
-    
+
     """
 
     field_type = FieldTypes.DIMENSION
@@ -528,9 +528,9 @@ class FormulaDimension(FormulaField):
 
 class FormulaMetric(FormulaField):
     """A metric defined by a formula
-    
+
     **Parameters:**
-    
+
     * **name** - (*str*) The name of the metric
     * **formula** - (*str*) The formula used to calculate the metric
     * **display_name** - (*str, optional*) The display name of the field
@@ -548,7 +548,7 @@ class FormulaMetric(FormulaField):
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
     * **kwargs** - kwargs passed to super class
-    
+
     """
 
     repr_attrs = ["name", "formula", "aggregation", "technical"]
@@ -668,12 +668,12 @@ class AdHocDimension(AdHocField):
 
 def create_metric(metric_def):
     """Create a Metric object from a dict of params
-    
+
     **Parameters:**
-    
+
     * **metric_def** - (*dict*) A dict of params to init a metric. If a formula
     param is present a FormulaMetric will be created.
-    
+
     """
     if "formula" in metric_def:
         metric = FormulaMetric.from_config(metric_def)
@@ -684,11 +684,11 @@ def create_metric(metric_def):
 
 def create_dimension(dim_def):
     """Create a Dimension object from a dict of params
-    
+
     **Parameters:**
-    
+
     * **dim_def** - (*dict*) A dict of params to init a Dimension
-    
+
     """
     if "formula" in dim_def:
         raise InvalidFieldException("FormulaDimensions are not currently supported")
@@ -698,14 +698,14 @@ def create_dimension(dim_def):
 class FieldManagerMixin:
     """An interface for managing fields (metrics and dimensions) stored on an
     object.
-    
+
     **Attributes:**
-    
+
     * **metrics_attr** - (*str*) The name of the attribute where metrics are
     stored
     * **dimensions_attr** - (*str*) The name of the attribute where dimensions
     are stored
-    
+
     """
 
     metrics_attr = "_metrics"
@@ -962,14 +962,14 @@ class FieldManagerMixin:
 
     def _populate_global_fields(self, config, force=False):
         """Populate fields on this FieldManager from a config
-        
+
         **Parameters:**
-        
+
         * **config** - (*dict*) A config containing lists of metrics and/or
         dimensions to add to this FieldManager
         * **force** - (*bool, optional*) If true, overwrite fields that already
         exist
-        
+
         """
         formula_metrics = []
         formula_dims = []
@@ -1018,16 +1018,16 @@ class FieldManagerMixin:
     def _find_field_sources(self, field, adhoc_fms=None):
         """Get a list of FieldManagers supporting a field. This will search the
         current FieldManager and all child/adhoc FMs.
-        
+
         **Parameters:**
-        
+
         * **field** - (*str*) The name of a field
         * **adhoc_fms** - (*list, optional*) A list of FieldManagers
-        
+
         **Returns:**
-        
+
         (*list*) - A list of FieldManagers that support the field
-        
+
         """
         sources = []
         if self.directly_has_field(field):
@@ -1041,19 +1041,19 @@ class FieldManagerMixin:
 
 def get_table_metrics(fm, table, adhoc_fms=None):
     """Get a list of metrics supported by a table
-    
+
     **Parameters:**
-    
+
     * **fm** - (*FieldManager*) An object supporting the FieldManager interface
     * **table** - (*SQLAlchemy Table*) The table to get a list of supported
     dimensions for
     * **adhoc_fms** - (*list, optional*) AdHoc FieldManagers relevant to this
     request
-    
+
     **Returns:**
-    
+
     (*set*) - A set of metric names
-    
+
     """
     metrics = set()
     for col in table.c:
@@ -1067,19 +1067,19 @@ def get_table_metrics(fm, table, adhoc_fms=None):
 
 def get_table_dimensions(fm, table, adhoc_fms=None):
     """Get a list of dimensions supported by a table
-    
+
     **Parameters:**
-    
+
     * **fm** - (*FieldManager*) An object supporting the FieldManager interface
     * **table** - (*SQLAlchemy Table*) The table to get a list of supported
     dimensions for
     * **adhoc_fms** - (*list, optional*) AdHoc FieldManagers relevant to this
     request
-    
+
     **Returns:**
-    
+
     (*set*) - A set of dimension names
-    
+
     """
     dims = set()
     for col in table.c:
@@ -1093,16 +1093,16 @@ def get_table_dimensions(fm, table, adhoc_fms=None):
 
 def get_table_fields(table):
     """Get a list of field names supported by a table
-    
+
     **Parameters:**
-    
+
     * **table** - (*SQLAlchemy Table*) The table to get a list of supported
     fields for
-    
+
     **Returns:**
-    
+
     (*set*) - A set of field names
-    
+
     """
     fields = set()
     for col in table.c:
@@ -1115,16 +1115,16 @@ def get_table_fields(table):
 
 def get_table_field_column(table, field_name):
     """Return the column within a table that supports a given field
-    
+
     **Parameters:**
-    
+
     * **table** - (*Table*) SQLAlchemy table onject
     * **field_name** - (*str*) The name of a field supported by the table
-    
+
     **Returns:**
-    
+
     (*Column*) - A SQLAlchemy column object
-    
+
     """
     for col in table.c:
         if not is_active(col):
@@ -1139,14 +1139,14 @@ def get_table_field_column(table, field_name):
 
 def table_field_allows_grain(table, field, grain):
     """Check whether a field in a table is restricted by required_grain
-    
+
     **Parameters:**
-    
+
     * **table** - (*Table*) SQLAlchemy table object
     * **field** - (*str*) The name of a field in the table
     * **grain** - (*list of str*) A list of dimenssions that form the target
     grain
-    
+
     """
     grain = grain or set()
     column = get_table_field_column(table, field)
@@ -1162,17 +1162,17 @@ def values_from_db(warehouse_id, field):
     warehouse_id is `None` the warehouse_id is defaulted to the value
     of `zillion.field.FIELD_VALUE_DEFAULT_WAREHOUSE_ID`. This allows
     pulling dimension values even when a `Warehouse` has not been saved.
-    
+
     **Parameters:**
-    
+
     * **warehouse_id** - (*int*) A zillion warehouse ID
     * **field** - (*Field*) A zillion Dimension object
 
     **Returns:**
-    
+
     (*list or None*) - A list of valid values or None if no row
     is found for this dimension.
-    
+
     """
     if warehouse_id is None:
         warehouse_id = FIELD_VALUE_DEFAULT_WAREHOUSE_ID
@@ -1196,18 +1196,18 @@ def values_from_db(warehouse_id, field):
 
 def sort_by_value_order(warehouse_id, field, values):
     """Sort values by the order of the value list defined on the field
-    
+
     **Parameters:**
-    
+
     * **warehouse_id** - (*int*) A zillion warehouse ID
     * **field** - (*Field*) A zillion Field object
     * **values** - (*Series*) A pandas Series to sort
-    
+
     **Returns:**
-    
+
     (*Series*) - A pandas Series representing the sort order. If no value
     list is found for the field, the input values are returned as is.
-        
+
     """
     value_order = field.get_values(warehouse_id)
     if not value_order:
@@ -1218,16 +1218,16 @@ def sort_by_value_order(warehouse_id, field, values):
 
 def get_conversions_for_type(coltype):
     """Get all conversions for a particular column type
-    
+
     **Parameters:**
-    
+
     * **coltype** - A SQLAlchemy column type class
-    
+
     **Returns:**
-    
+
     (*dict*) - The conversion map for the given column type. Returns None if
     no conversions are found.
-    
+
     """
     for basetype, fields in TYPE_ALLOWED_CONVERSIONS.items():
         if issubclass(coltype, basetype):
@@ -1249,17 +1249,17 @@ def replace_non_named_formula_args(formula, column):
 
 def get_dialect_type_conversions(dialect, column):
     """Get all conversions supported by this column type for this dialect
-    
+
     **Parameters:**
-    
+
     * **dialect** - (*str*) SQLAlchemy dialect name
     * **column** - (*Column*) SQLAlchemy column object
-    
+
     **Returns:**
-    
+
     (*list*) - A list of dicts containing datasource formulas and criteria
     conversions for each field this column can be converted to
-    
+
     """
     coltype = type(column.type)
     conv_fields = get_conversions_for_type(coltype)

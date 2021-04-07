@@ -908,20 +908,42 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         technicals = {}
         rounding = {}
+        added_metrics = set()
+        only_weighted_metrics = set()
+
         for metric in metrics.values():
-            if metric.technical:
-                technicals[metric.name] = metric.technical
-            if metric.rounding is not None:
-                rounding[metric.name] = metric.rounding
-            columns.append(
-                "%s as %s"
-                % (
-                    metric.get_final_select_clause(
-                        self.warehouse, adhoc_fms=self.adhoc_datasources
-                    ),
-                    metric.name,
+            if metric.name not in added_metrics:
+                if metric.technical:
+                    technicals[metric.name] = metric.technical
+                if metric.rounding is not None:
+                    rounding[metric.name] = metric.rounding
+                columns.append(
+                    "%s as %s"
+                    % (
+                        metric.get_final_select_clause(
+                            self.warehouse, adhoc_fms=self.adhoc_datasources
+                        ),
+                        metric.name,
+                    )
                 )
-            )
+                added_metrics.add(metric.name)
+
+            if metric.weighting_metric:
+                weighting_metric = self.warehouse.get_metric(metric.weighting_metric)
+                wm_name = weighting_metric.name
+                if wm_name not in added_metrics:
+                    columns.append(
+                        "%s as %s"
+                        % (
+                            weighting_metric.get_final_select_clause(
+                                self.warehouse, adhoc_fms=self.adhoc_datasources
+                            ),
+                            wm_name,
+                        )
+                    )
+                    added_metrics.add(wm_name)
+                    if wm_name not in metrics:
+                        only_weighted_metrics.add(wm_name)
 
         sql = self._get_final_select_sql(columns, dimension_aliases)
 
@@ -935,6 +957,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         if rollup and not df.empty:
             df = self._apply_rollup(df, rollup, metrics, dimensions)
+
+        if only_weighted_metrics:
+            df.drop(columns=only_weighted_metrics, inplace=True)
 
         if rounding and not df.empty:
             df = df.round(rounding)
@@ -1211,7 +1236,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
             if metric.weighting_metric:
                 wavgs.append((metric.name, metric.weighting_metric))
-                continue
 
             aggr_func = PANDAS_ROLLUP_AGGR_TRANSLATION.get(
                 metric.aggregation.lower(), metric.aggregation.lower()
@@ -1696,13 +1720,18 @@ class Report(ExecutionStateMixin):
             self.warehouse, adhoc_fms=self.adhoc_datasources
         )
         if not formula_fields:
-            formula_fields = [field.name]
+            formula_fields = {field.name}
 
         if field.field_type == FieldTypes.METRIC and field.weighting_metric:
             weighting_field = self.warehouse.get_metric(
                 field.weighting_metric, adhoc_fms=self.adhoc_datasources
             )
-            self.ds_metrics[field.weighting_metric] = weighting_field
+            w_formula_fields, _ = weighting_field.get_formula_fields(
+                self.warehouse, adhoc_fms=self.adhoc_datasources
+            )
+            if not w_formula_fields:
+                w_formula_fields = {weighting_field.name}
+            formula_fields |= w_formula_fields
 
         for formula_field in formula_fields:
             if formula_field == field.name:

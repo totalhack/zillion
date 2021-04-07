@@ -793,6 +793,24 @@ def test_report_weighted_metric(wh):
     assert result.df.loc["Partner A"]["revenue_mean"] == 14.67
 
 
+def test_report_multiple_weighted_metrics(wh):
+    metrics = ["rpl_weighted", "rpl_lead_weighted", "rpl_lead_formula_weighted"]
+    dimensions = ["partner_name"]
+    rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_repeat_weighted_metrics(wh):
+    metrics = ["rpl_weighted", "revenue_mean"]
+    dimensions = ["partner_name"]
+    rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
 def test_report_weighted_rollup(wh):
     metrics = ["main_sales_quantity", "revenue_mean", "leads"]
     dimensions = ["partner_name"]

@@ -19,6 +19,20 @@
             "weighting_metric": "main_sales_quantity"
         },
         {
+            "name": "rpl_lead_weighted",
+            "aggregation": "mean",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}",
+            "weighting_metric": "leads"
+        },
+        {
+            "name": "rpl_lead_formula_weighted",
+            "aggregation": "mean",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}",
+            "weighting_metric": "leads_formula"
+        },
+        {
             "name": "rpl_squared",
             "aggregation": "mean",
             "rounding": 2,
@@ -94,6 +108,11 @@
         {
             "name": "leads",
             "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "leads_formula",
+            "formula": "{leads}",
             "aggregation": "sum"
         },
         {
