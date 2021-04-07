@@ -1365,6 +1365,8 @@ class Report(ExecutionStateMixin):
     rollups/ordering
     * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
     specific to this report
+    * **allow_partial** - (*boolean, optional*) Allow reports where only some
+    metrics can meet the requested grain.
 
     **Notes:**
 
@@ -1391,12 +1393,17 @@ class Report(ExecutionStateMixin):
         limit=None,
         limit_first=False,
         adhoc_datasources=None,
+        allow_partial=False,
     ):
         start = time.time()
         self.spec_id = None
         self.meta = None
         self.uuid = uuid.uuid1()
         self.warehouse = warehouse
+
+        self.allow_partial = allow_partial
+        self.is_partial = False
+        self.unsupported_grain_metrics = {}
 
         if adhoc_datasources:
             self.warehouse.run_integrity_checks(adhoc_datasources=adhoc_datasources)
@@ -1470,7 +1477,7 @@ class Report(ExecutionStateMixin):
             self._add_ds_fields(dim)
 
         self._check_required_grain()
-        self.queries = self._build_ds_queries()
+        self.queries = self._build_ds_queries(allow_partial=allow_partial)
         self.combined_query = None
         self.result = None
 
@@ -1493,6 +1500,7 @@ class Report(ExecutionStateMixin):
                 order_by=self.order_by,
                 limit=self.limit,
                 limit_first=self.limit_first,
+                allow_partial=self.allow_partial,
             ),
             datasources=datasources,
             used_datasources=used_datasources,
@@ -1549,10 +1557,27 @@ class Report(ExecutionStateMixin):
             self._raise_if_killed()
             cr = self._create_combined_result(query_results)
 
+            used_metrics = self.metrics
+            if self.is_partial:
+                used_metrics = OrderedDict()
+                for metric_name, metric in self.metrics.items():
+                    if metric_name in self.unsupported_grain_metrics:
+                        info(f"skipping {metric_name} due to unsupported grain")
+                        continue
+                    metric_raw_fields = metric.get_all_raw_fields(
+                        self.warehouse, adhoc_fms=self.adhoc_datasources
+                    )
+                    if metric_raw_fields & self.unsupported_grain_metrics.keys():
+                        info(
+                            f"skipping {metric_name} due to unsupported formula/weighting metric grain"
+                        )
+                        continue
+                    used_metrics[metric_name] = metric
+
             try:
                 self._raise_if_killed()
                 final_result = cr.get_final_result(
-                    self.metrics,
+                    used_metrics,
                     self.dimensions,
                     self.row_filters,
                     self.rollup,
@@ -1566,9 +1591,10 @@ class Report(ExecutionStateMixin):
                     final_result,
                     diff,
                     summaries,
-                    self.metrics,
+                    used_metrics,
                     self.dimensions,
                     self.rollup,
+                    unsupported_grain_metrics=self.unsupported_grain_metrics,
                 )
                 return self.result
             finally:
@@ -1716,56 +1742,41 @@ class Report(ExecutionStateMixin):
         * **field** - (*Field*) A Field object to analyze
 
         """
-        formula_fields, _ = field.get_formula_fields(
+        raw_fields = field.get_all_raw_fields(
             self.warehouse, adhoc_fms=self.adhoc_datasources
         )
-        if not formula_fields:
-            formula_fields = {field.name}
 
-        if field.field_type == FieldTypes.METRIC and field.weighting_metric:
-            weighting_field = self.warehouse.get_metric(
-                field.weighting_metric, adhoc_fms=self.adhoc_datasources
-            )
-            w_formula_fields, _ = weighting_field.get_formula_fields(
-                self.warehouse, adhoc_fms=self.adhoc_datasources
-            )
-            if not w_formula_fields:
-                w_formula_fields = {weighting_field.name}
-            formula_fields |= w_formula_fields
-
-        for formula_field in formula_fields:
-            if formula_field == field.name:
+        for raw_field in raw_fields:
+            if raw_field == field.name:
                 if field.field_type == FieldTypes.METRIC:
-                    self.ds_metrics[formula_field] = field
+                    self.ds_metrics[raw_field] = field
                 elif field.field_type == FieldTypes.DIMENSION:
-                    self.ds_dimensions[formula_field] = field
+                    self.ds_dimensions[raw_field] = field
                 else:
                     raise ZillionException("Invalid field_type: %s" % field.field_type)
                 continue
 
-            if self.warehouse.has_metric(
-                formula_field, adhoc_fms=self.adhoc_datasources
-            ):
-                self.ds_metrics[formula_field] = self.warehouse.get_metric(
-                    formula_field, adhoc_fms=self.adhoc_datasources
+            if self.warehouse.has_metric(raw_field, adhoc_fms=self.adhoc_datasources):
+                self.ds_metrics[raw_field] = self.warehouse.get_metric(
+                    raw_field, adhoc_fms=self.adhoc_datasources
                 )
             elif self.warehouse.has_dimension(
-                formula_field, adhoc_fms=self.adhoc_datasources
+                raw_field, adhoc_fms=self.adhoc_datasources
             ):
-                if formula_field not in self.dimensions:
+                if raw_field not in self.dimensions:
                     raise ReportException(
                         (
                             "Formula for field %s uses dimension %s that is not included in "
                             "requested report dimensions"
                         )
-                        % (field.name, formula_field)
+                        % (field.name, raw_field)
                     )
-                self.ds_dimensions[formula_field] = self.warehouse.get_dimension(
-                    formula_field, adhoc_fms=self.adhoc_datasources
+                self.ds_dimensions[raw_field] = self.warehouse.get_dimension(
+                    raw_field, adhoc_fms=self.adhoc_datasources
                 )
             else:
                 raise ZillionException(
-                    "Could not find field %s in warehouse" % formula_field
+                    "Could not find field %s in warehouse" % raw_field
                 )
 
     def _get_query_label(self, query_label):
@@ -1873,7 +1884,7 @@ class Report(ExecutionStateMixin):
         if grain_errors:
             raise UnsupportedGrainException(grain_errors)
 
-    def _build_ds_queries(self):
+    def _build_ds_queries(self, allow_partial=False):
         """Build all datasource-level queries needed for this report"""
         grain = self.get_grain()
         dim_grain = self.get_dimension_grain()
@@ -1903,6 +1914,7 @@ class Report(ExecutionStateMixin):
             except UnsupportedGrainException as e:
                 # Gather all grain errors to be raised in one exception
                 grain_errors.append(str(e))
+                self.unsupported_grain_metrics[metric_name] = str(e)
                 continue
 
             query = DataSourceQuery(
@@ -1915,7 +1927,13 @@ class Report(ExecutionStateMixin):
             queries.append(query)
 
         if grain_errors:
-            raise UnsupportedGrainException(grain_errors)
+            if allow_partial and queries:
+                warn(
+                    f"Running partial report for {len(queries)}/{len(self.ds_metrics)} metrics"
+                )
+                self.is_partial = True
+            else:
+                raise UnsupportedGrainException(grain_errors)
 
         if not self.ds_metrics:
             dbg("No metrics requested, getting dimension table sets")
@@ -2109,17 +2127,29 @@ class ReportResult(PrintMixin):
     * **dimensions** - (*OrderedDict*) A mapping of requested dimensions to Dimension
     objects
     * **rollup** - (*str or int*) See the Report docs for more details.
+    * **unsupported_grain_metrics** - (*dict*) A dictionary mapping metric names to
+    reasons why they could not meet the requested grain of the Report.
 
     """
 
-    repr_attrs = ["rowcount", "duration", "query_summaries"]
+    repr_attrs = ["rowcount", "duration", "is_partial", "query_summaries"]
 
     @initializer
-    def __init__(self, df, duration, query_summaries, metrics, dimensions, rollup):
+    def __init__(
+        self,
+        df,
+        duration,
+        query_summaries,
+        metrics,
+        dimensions,
+        rollup,
+        unsupported_grain_metrics=None,
+    ):
         raiseif(metrics and (not isinstance(metrics, OrderedDict)))
         raiseif(dimensions and (not isinstance(dimensions, OrderedDict)))
         self.duration = round(duration, 4)
         self.rowcount = len(df)
+        self.is_partial = True if unsupported_grain_metrics else False
 
     @property
     def rollup_mask(self):

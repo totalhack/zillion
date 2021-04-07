@@ -768,6 +768,30 @@ def test_report_metric_formula_field_required_grain(wh):
         result = wh_execute(wh, locals())
 
 
+def test_report_partial_grain(wh):
+    metrics = ["revenue", "leads"]
+    dimensions = ["sale_id"]
+    allow_partial = True
+    result = wh_execute(wh, locals())
+    assert result and result.is_partial
+
+    # Weighting fact can't meet grain
+    metrics = ["revenue", "rps_lead_weighted"]
+    result = wh_execute(wh, locals())
+    assert result and result.is_partial
+
+    # Part of formula can't meet grain
+    metrics = ["revenue", "rpl"]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result and result.is_partial
+
+    # Only metric available can't meet grain
+    metrics = ["leads"]
+    with pytest.raises(UnsupportedGrainException):
+        result = wh_execute(wh, locals())
+
+
 def test_report_weighted_formula_metric(wh):
     metrics = ["rpl_weighted", "rpl", "main_sales_quantity", "revenue", "leads"]
     dimensions = ["partner_name"]

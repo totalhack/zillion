@@ -33,6 +33,13 @@
             "weighting_metric": "leads_formula"
         },
         {
+            "name": "rps_lead_weighted",
+            "aggregation": "mean",
+            "rounding": 2,
+            "formula": "{revenue}/{sales}",
+            "weighting_metric": "leads"
+        },
+        {
             "name": "rpl_squared",
             "aggregation": "mean",
             "rounding": 2,

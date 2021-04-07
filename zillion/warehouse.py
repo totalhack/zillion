@@ -350,6 +350,7 @@ class Warehouse(FieldManagerMixin):
         limit=None,
         limit_first=False,
         adhoc_datasources=None,
+        allow_partial=False,
     ):
         """Build and execute a Report
 
@@ -372,6 +373,7 @@ class Warehouse(FieldManagerMixin):
             limit=limit,
             limit_first=limit_first,
             adhoc_datasources=adhoc_datasources,
+            allow_partial=allow_partial,
         )
         result = report.execute()
 

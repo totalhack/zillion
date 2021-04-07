@@ -339,6 +339,7 @@ def wh_execute_args(d):
             "limit",
             "limit_first",
             "adhoc_datasources",
+            "allow_partial",
         ]
     )
     return {k: v for k, v in d.items() if k in exec_params}

@@ -87,6 +87,25 @@ class Field(ConfigMixin, PrintMixin):
         """Copy this field"""
         return self.__class__.from_config(self.to_config())
 
+    def get_all_raw_fields(self, warehouse, adhoc_fms=None):
+        """Get all raw fields involved in calculating this field.
+
+        **Parameters:**
+
+        * **warehouse** - (*Warehouse*) A zillion warehouse that will contain
+        all relevant fields
+        * **adhoc_fms** - (*list, optional*) A list of FieldManagers
+
+        **Returns:**
+
+        (*set*) - The set of all raw fields that make up this field.
+
+        """
+        res, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
+        if not res:
+            res = {self.name}
+        return res
+
     def get_formula_fields(self, warehouse, depth=0, adhoc_fms=None):
         """Get the fields that are part of this field's formula
 
@@ -220,6 +239,28 @@ class Metric(Field):
             required_grain=required_grain,
             **kwargs
         )
+
+    def get_all_raw_fields(self, warehouse, adhoc_fms=None):
+        """Get all raw fields involved in calculating this field.
+
+        **Parameters:**
+
+        * **warehouse** - (*Warehouse*) A zillion warehouse that will contain
+        all relevant fields
+        * **adhoc_fms** - (*list, optional*) A list of FieldManagers
+
+        **Returns:**
+
+        (*set*) - The set of all raw fields that make up this field.
+
+        """
+        res, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
+        if not res:
+            res = {self.name}
+        if self.weighting_metric:
+            weighting_field = warehouse.get_field(self.weighting_metric)
+            res |= weighting_field.get_all_raw_fields(warehouse, adhoc_fms=adhoc_fms)
+        return res
 
     def get_ds_expression(self, column, label=True):
         """Get the datasource-level sql expression for this metric
@@ -585,6 +626,28 @@ class FormulaMetric(FormulaField):
             required_grain=required_grain,
             **kwargs
         )
+
+    def get_all_raw_fields(self, warehouse, adhoc_fms=None):
+        """Get all raw fields involved in calculating this field.
+
+        **Parameters:**
+
+        * **warehouse** - (*Warehouse*) A zillion warehouse that will contain
+        all relevant fields
+        * **adhoc_fms** - (*list, optional*) A list of FieldManagers
+
+        **Returns:**
+
+        (*set*) - The set of all raw fields that make up this field.
+
+        """
+        res, _ = self.get_formula_fields(warehouse, adhoc_fms=adhoc_fms)
+        if not res:
+            res = {self.name}
+        if self.weighting_metric:
+            weighting_field = warehouse.get_field(self.weighting_metric)
+            res |= weighting_field.get_all_raw_fields(warehouse, adhoc_fms=adhoc_fms)
+        return res
 
 
 class AdHocField(FormulaField):
