@@ -264,7 +264,7 @@ def test_row_filter_single_dimension(wh):
     metrics = ["leads", "sales"]
     dimensions = ["month"]
     criteria = [["year", "=", "2020"]]
-    rollup = "totals"
+    rollup = RollupTypes.TOTALS
     row_filters = [["leads", ">", "10"]]
     result = wh_execute(wh, locals())
     info(result.df)
@@ -274,7 +274,7 @@ def test_row_filter_invalid_type(wh):
     metrics = ["leads", "sales"]
     dimensions = ["month"]
     criteria = [["year", "=", "2020"]]
-    rollup = "totals"
+    rollup = RollupTypes.TOTALS
     row_filters = [["leads", ">", "x"]]
     with pytest.raises(ZillionException):
         result = wh_execute(wh, locals())
@@ -1020,7 +1020,8 @@ def test_report_multi_datasource(wh):
 def test_report_save_and_load(saved_wh):
     metrics = ["revenue", "leads", "sales"]
     dimensions = ["partner_name"]
-    report = Report(saved_wh, metrics=metrics, dimensions=dimensions)
+    rollup = RollupTypes.ALL
+    report = Report(saved_wh, metrics=metrics, dimensions=dimensions, rollup=rollup)
     spec_id = report.save()
 
     # Sneaking a test of these in here too

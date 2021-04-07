@@ -1246,6 +1246,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         for metric_name, weighting_metric in wavgs:
             totals[metric_name] = wavg(metric_name, weighting_metric)
 
+        if rollup == RollupTypes.ALL:
+            rollup = len(dimensions)
+
         apply_totals = True
         if rollup != RollupTypes.TOTALS:
             df = self._get_multi_rollup_df(df, rollup, dimensions, aggrs, wavgs)
@@ -1439,8 +1442,6 @@ class Report(ExecutionStateMixin):
                 )
                 self.rollup = int(rollup)
             else:
-                if rollup == RollupTypes.ALL:
-                    rollup = len(dimensions)
                 self.rollup = rollup
 
         self.pivot = pivot or []
