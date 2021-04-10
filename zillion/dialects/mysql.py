@@ -159,6 +159,7 @@ MYSQL_DIALECT_CONVERSIONS = {
     },
     "day_name": "DAYNAME({})",
     "day_of_week": "WEEKDAY({}) + 1",  # Monday = 1
+    "is_weekday": "IF((WEEKDAY({}) + 1) < 6, 1, 0)",  # Monday = 1
     "day_of_month": "EXTRACT(DAY FROM {})",
     "day_of_year": "DAYOFYEAR({})",
     "hour": {

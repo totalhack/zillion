@@ -141,6 +141,18 @@ SQLITE_DIALECT_CONVERSIONS = {
         "END"
     ),
     "day_of_week": "(cast(strftime('%w', {}) as integer) + 6) % 7 + 1",  # Convert to Monday = 1
+    "is_weekday": (
+        "CASE cast(strftime('%w', {}) as integer) "
+        "WHEN 0 THEN 0 "
+        "WHEN 1 THEN 1 "
+        "WHEN 2 THEN 1 "
+        "WHEN 3 THEN 1 "
+        "WHEN 4 THEN 1 "
+        "WHEN 5 THEN 1 "
+        "WHEN 6 THEN 0 "
+        "ELSE NULL "
+        "END"
+    ),
     "day_of_month": "cast(strftime('%d', {}) as integer)",
     "day_of_year": "cast(strftime('%j', {}) as integer)",
     "hour": {

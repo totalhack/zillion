@@ -1414,6 +1414,11 @@ DATETIME_CONVERSION_FIELDS = [
         "SmallInteger",
         description="Numeric day of the week (monday = 1)",
     ),
+    Dimension(
+        "is_weekday",
+        "SmallInteger",
+        description="Flag denoting whether the day is a weekday",
+    ),
     Dimension("day_of_month", "SmallInteger", description="Numeric day of the month"),
     Dimension("day_of_year", "SmallInteger", description="Numeric day of the year"),
     Dimension(

@@ -189,6 +189,18 @@ POSTGRESQL_DIALECT_CONVERSIONS = {
     },
     "day_name": "TO_CHAR({}, 'FMDay')",
     "day_of_week": "EXTRACT(ISODOW FROM {})",  # Monday = 1
+    "is_weekday": (
+        "CASE EXTRACT(ISODOW FROM {}) "
+        "WHEN 1 THEN 1 "
+        "WHEN 2 THEN 1 "
+        "WHEN 3 THEN 1 "
+        "WHEN 4 THEN 1 "
+        "WHEN 5 THEN 1 "
+        "WHEN 6 THEN 0 "
+        "WHEN 7 THEN 0 "
+        "ELSE NULL "
+        "END"
+    ),
     "day_of_month": "EXTRACT(DAY FROM {})",
     "day_of_year": "EXTRACT(DOY FROM {})",
     "hour": {

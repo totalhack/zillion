@@ -247,6 +247,7 @@ EXPECTED_DATE_CONVERSION_VALUES = [
     ("campaign_date", "2019-03-26"),
     ("campaign_day_name", "Tuesday"),
     ("campaign_day_of_week", 2),
+    ("campaign_is_weekday", 1),
     ("campaign_day_of_month", 26),
     ("campaign_day_of_year", 85),
     ("campaign_hour", "2019-03-26 21:00:00"),
