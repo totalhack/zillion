@@ -611,6 +611,24 @@ def test_report_null_criteria(wh):
     assert result
     info(result.df)
 
+    # Test a conversion field
+    criteria = [("month", "=", None)]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount == 0
+    info(result.df)
+
+    # Test a conversion field !=
+    criteria = [("month", "!=", None)]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount > 0
+    info(result.df)
+
+    # Test a conversion field "in"
+    criteria = [("month", "in", [None, "2020-04"])]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount > 0
+    info(result.df)
+
 
 def test_report_incomplete_dimensions(config):
     del config["datasources"]["testdb2"]

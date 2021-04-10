@@ -552,7 +552,6 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                     orig_values = value[:]
                 new_value = sa.text(new_value)
                 if new_value._bindparams:
-                    value_map = {str(i): v for i, v in enumerate(orig_values)}
                     new_value = new_value.bindparams(
                         **{
                             str(i): v
@@ -586,7 +585,12 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             conv = column.zillion.get_criteria_conversion(field.name, op)
             if conv:
                 expr = field.get_ds_expression(column, label=False, ignore_formula=True)
-                final_criteria = self._convert_criteria(field, conv, value)
+                if value is None:
+                    # HACK: workaround for when conversion fields are filtered against None.
+                    # SQLAlchemy v1.3 pukes instead of using NULL when compiling the query.
+                    final_criteria = [(field, op, None)]
+                else:
+                    final_criteria = self._convert_criteria(field, conv, value)
             else:
                 expr = self._get_field_expression(field.name, label=False)
                 final_criteria = [row]
