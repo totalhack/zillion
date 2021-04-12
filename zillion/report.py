@@ -37,6 +37,9 @@ logging.getLogger(name="stopit").setLevel(logging.ERROR)
 # Last unicode char - this helps get the rollup rows to sort last, but may
 # need to be replaced for presentation.
 ROLLUP_INDEX_LABEL = chr(1114111)
+# HACK: pandas can't group MultiIndex NaN values, so we replace them with a
+# value we *hope* to never see in the index as a workaround.
+NAN_DIMENSION_VALUE_LABEL = chr(1114110)
 # This is more friendly for front-end viewing, but has a better chance of
 # conflicting with actual report data.
 ROLLUP_INDEX_DISPLAY_LABEL = "::"
@@ -1173,6 +1176,14 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         level_aggrs = [df]
         dim_names = list(dimensions.keys())
 
+        # HACK: pandas has a bug when grouping MultiIndex with NaNs as values
+        if isinstance(df.index, pd.MultiIndex):
+            df.index = pd.MultiIndex.from_frame(
+                df.index.to_frame().fillna(NAN_DIMENSION_VALUE_LABEL)
+            )
+        else:
+            df.index = df.index.fillna(NAN_DIMENSION_VALUE_LABEL)
+
         for metric_name, weighting_metric in wavgs:
             # TODO: how does this behave if weights are missing?
             wavg = lambda x, wm=weighting_metric: np.average(
@@ -1199,6 +1210,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             level_aggrs.append(level_aggr)
 
         df = pd.concat(level_aggrs, sort=False, copy=False)
+
+        # HACK: undo NaN placeholders
+        df.rename(index={NAN_DIMENSION_VALUE_LABEL: np.NaN}, inplace=True)
         df.sort_index(inplace=True, na_position="first")
         return df
 
