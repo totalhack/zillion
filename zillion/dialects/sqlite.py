@@ -124,6 +124,7 @@ SQLITE_DIALECT_CONVERSIONS = {
         "END"
     ),
     "month_of_year": "cast(strftime('%m', {}) as integer)",
+    "week_of_year": "cast(strftime('%W', {}) as integer)",
     "date": {
         "ds_formula": "strftime('%Y-%m-%d', {})",
         "ds_criteria_conversions": SQLITE_DATE_CRITERIA_CONVERSIONS,

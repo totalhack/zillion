@@ -183,6 +183,7 @@ POSTGRESQL_DIALECT_CONVERSIONS = {
     },
     "month_name": "TO_CHAR({}, 'FMMonth')",
     "month_of_year": "EXTRACT(MONTH FROM {})",
+    "week_of_year": "EXTRACT(WEEK FROM {})-1",  # HACK: attempt to get tests compatible with mysql and sqlite
     "date": {
         "ds_formula": "TO_CHAR({}, 'FMYYYY-MM-DD')",
         "ds_criteria_conversions": POSTGRESQL_DATE_CRITERIA_CONVERSIONS,

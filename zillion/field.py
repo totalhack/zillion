@@ -30,7 +30,7 @@ from zillion.sql_utils import (
 )
 
 
-MAX_FORMULA_DEPTH = 3
+MAX_FORMULA_DEPTH = 5
 # This default warehouse ID is used if no ID has been populated
 # on the Warehouse when checking dimension values.
 FIELD_VALUE_DEFAULT_WAREHOUSE_ID = 0
@@ -1393,6 +1393,7 @@ DATETIME_CONVERSION_FIELDS = [
         sorter="zillion.field.sort_by_value_order",
     ),
     Dimension("month_of_year", "SmallInteger", description="Numeric month of the year"),
+    Dimension("week_of_year", "SmallInteger", description="Numeric week of the year"),
     Dimension("date", "String(10)", description="Date string formatted YYYY-MM-DD"),
     Dimension(
         "day_name",

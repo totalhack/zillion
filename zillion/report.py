@@ -699,6 +699,7 @@ class BaseCombinedResult:
     ):
         self.conn = self.get_conn()
         self.cursor = self.get_cursor(self.conn)
+        self.warnings = []
         self.adhoc_datasources = adhoc_datasources or []
         self.table_name = "zillion_%s_%s" % (
             str(time.time()).replace(".", "_"),
@@ -730,6 +731,11 @@ class BaseCombinedResult:
     def clean_up(self):
         """Clean up any resources that can/should be cleaned up"""
         raise NotImplementedError
+
+    def add_warning(self, msg, log=True):
+        if log:
+            warn(msg)
+        self.warnings.append(msg)
 
     def get_final_result(
         self,
@@ -1239,12 +1245,15 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         aggrs = {}
         wavgs = []
 
-        def wavg(avg_name, weight_name):
+        def wavg(self, avg_name, weight_name):
             d = df[avg_name]
             w = df[weight_name]
             try:
                 return (d * w).sum() / w.sum()
             except ZeroDivisionError:
+                self.add_warning(
+                    f"ZeroDivisionError during wavg for field '{avg_name}', using simple mean instead"
+                )
                 return d.mean()  # Return mean if there are no weights
 
         for metric in metrics.values():
@@ -1262,7 +1271,17 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         totals = df.agg(aggrs, skipna=True)
         for metric_name, weighting_metric in wavgs:
-            totals[metric_name] = wavg(metric_name, weighting_metric)
+            field = self.warehouse.get_fields()[metric_name]
+            if df[metric_name].isna().any() and isinstance(field, FormulaField):
+                # Weighted avg results can be thrown off if the target field has NaNs but
+                # is a formula field that might have non-NaN values in the same row for its
+                # component formula fields. Down the road it might be better to put all
+                # non-formula rollup values back into the DB and apply formulas on the rollup
+                # values to compute the rollup values of formula fields.
+                self.add_warning(
+                    f"NULL vals found during wavg for formula field '{metric_name}', ignoring NULL rows"
+                )
+            totals[metric_name] = wavg(self, metric_name, weighting_metric)
 
         if rollup == RollupTypes.ALL:
             rollup = len(dimensions)
@@ -1614,6 +1633,7 @@ class Report(ExecutionStateMixin):
                     self.dimensions,
                     self.rollup,
                     unsupported_grain_metrics=self.unsupported_grain_metrics,
+                    warnings=cr.warnings.copy(),
                 )
                 return self.result
             finally:
@@ -2163,6 +2183,7 @@ class ReportResult(PrintMixin):
         dimensions,
         rollup,
         unsupported_grain_metrics=None,
+        warnings=None,
     ):
         raiseif(metrics and (not isinstance(metrics, OrderedDict)))
         raiseif(dimensions and (not isinstance(dimensions, OrderedDict)))

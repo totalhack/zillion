@@ -19,14 +19,17 @@ from zillion.model import zillion_engine, Warehouses
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
 
-if zillion_config["DEBUG"] or str(os.getenv("DEBUG", "false")).lower() in ("true", "1"):
+if zillion_config["DEBUG"] or str(os.getenv("ZILLION_DEBUG", "false")).lower() in (
+    "true",
+    "1",
+):
     default_logger.setLevel(logging.DEBUG)
     # Make sure logs can show up in testing
     handler = logging.StreamHandler(sys.stdout)
     default_logger.handlers = []
     default_logger.propagate = False
     default_logger.addHandler(handler)
-    print("---- Debug logging enabled ----")
+    print("---- Zillion debug logging enabled ----")
 
 
 class Warehouse(FieldManagerMixin):

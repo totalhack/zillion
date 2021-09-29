@@ -153,6 +153,7 @@ MYSQL_DIALECT_CONVERSIONS = {
     },
     "month_name": "MONTHNAME({})",
     "month_of_year": "EXTRACT(MONTH FROM {})",
+    "week_of_year": "EXTRACT(WEEK FROM {})",
     "date": {
         "ds_formula": "DATE_FORMAT({}, '%Y-%m-%d')",
         "ds_criteria_conversions": MYSQL_DATE_CRITERIA_CONVERSIONS,
