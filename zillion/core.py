@@ -205,13 +205,13 @@ class TechnicalTypes(metaclass=ClassValueContainsMeta):
 
 class TechnicalModes(metaclass=ClassValueContainsMeta):
     """Allowed Technical modes
-    
+
     **Attributes:**
-    
+
     * **GROUP** - (*str*) Apply the technical to the last grouping of the data
     for a multi-dimensional report
     * **ALL** - (*str*) Apply the technical across all result data
-    
+
     """
 
     GROUP = "group"
@@ -339,3 +339,46 @@ def load_yaml(fname):
     with open(fname) as f:
         val = yaml.safe_load(os.path.expandvars(f.read()))
     return val
+
+
+def load_json_or_yaml_from_str(string, f=None, schema=None):
+    """Load the file as json or yaml depending on the extension (if f is a string)
+    or by trying both (if f is not a string). If you know ahead of time that your
+    data is one or the other, you should use yaml or json load directly.
+
+    **Parameters:**
+
+    * **string** - (*str*) The raw json or yaml string
+    * **f** - (*str or buffer*) A file path or buffer where contents were read from
+    * **schema** - (*optional*) Validate against this schema
+
+    **Returns:**
+
+    (*dict*) - A dict structure loaded from the json/yaml
+
+    """
+
+    load_result = None
+    if f and isinstance(f, str):  # f is assumed to be a filename
+        f = f.lower()
+        if f.endswith("yaml") or f.endswith("yml"):
+            # load as yaml
+            load_result = yaml.safe_load(string)
+        else:
+            load_result = json.loads(string)
+        if schema:
+            return schema.load(load_result)
+        return load_result
+
+    # f is not a filename, we try json and then fall back to yaml
+    try:
+        load_result = json.loads(string)
+    except Exception as ej:
+        try:
+            load_result = yaml.safe_load(string)
+        except Exception as ey:
+            raise Exception("Could not load string as json or yaml")
+
+    if schema:
+        return schema.load(load_result)
+    return load_result

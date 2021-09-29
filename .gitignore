@@ -6,4 +6,5 @@ docs/site
 dist
 .DS_Store
 .idea/
+tests/test_wh_config.yaml
 

@@ -3,15 +3,11 @@ import pytest
 import time
 
 from marshmallow import ValidationError
-import sqlalchemy as sa
+from tlbx import json
+import yaml
 
 from .test_utils import *
-from zillion.configs import (
-    TableInfo,
-    ColumnInfo,
-    load_warehouse_config,
-    load_warehouse_config_from_env,
-)
+from zillion.configs import load_warehouse_config, load_warehouse_config_from_env
 from zillion.core import *
 from zillion.datasource import *
 from zillion.sql_utils import contains_aggregation, contains_sql_keywords
@@ -36,6 +32,16 @@ def test_load_remote_wh_config():
 def test_wh_from_url_wh_config():
     f = "test_wh_config.json"
     wh = Warehouse(config=f)
+
+
+def test_wh_from_yaml_url_wh_config():
+    json_file = "test_wh_config.json"
+    with open(json_file, "r") as jf:
+        json_data = json.load(jf)
+    yaml_file = json_file.replace("json", "yaml")
+    with open(yaml_file, "w") as yf:
+        yaml.dump(json_data, yf, indent=2, sort_keys=False)
+    wh = Warehouse(config=yaml_file)
 
 
 def test_load_wh_config_from_env():

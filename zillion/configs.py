@@ -6,7 +6,6 @@ from marshmallow import (
     Schema,
     fields as mfields,
     ValidationError,
-    validates_schema,
     pre_load,
     EXCLUDE,
     INCLUDE,
@@ -78,34 +77,24 @@ def load_zillion_config():
 zillion_config = load_zillion_config()
 
 
-def parse_schema_file(f, schema, object_pairs_hook=None):
+def parse_schema_file(f, schema):
     """Parse a marshmallow schema file
 
     **Parameters:**
 
     * **f** - (*str or buffer*) A file path or buffer to read the raw schema
-    contents from
+    contents from. Both JSON and YAML are supported.
     * **schema** - (*marshmallow schema*) The marshmallow schema to use to parse
     the data
-    * **object_pairs_hook** - (*optional*) Passed through to json.loads. This
-    has some issues and currently produces an error if specified.
 
     **Returns:**
 
-    (*dict*) - A JSON structure loaded from the schema file
+    (*dict*) - A dict structure loaded from the schema file
 
     """
     raw = read_filepath_or_buffer(f)
     try:
-        # This does the schema check, but has a bug in object_pairs_hook so
-        # order is not preserved
-        if object_pairs_hook:
-            raise AssertionError(
-                "Needs to support marshmallow pre_load behavior somehow"
-            )
-            result = json.loads(raw, object_pairs_hook=object_pairs_hook)
-        else:
-            result = schema.loads(raw)
+        result = load_json_or_yaml_from_str(raw, f, schema=schema)
     except ValidationError as e:
         error("Schema Validation Error: %s" % schema)
         print(json.dumps(str(e), indent=2))
@@ -113,16 +102,13 @@ def parse_schema_file(f, schema, object_pairs_hook=None):
     return result
 
 
-def load_warehouse_config(cfg, preserve_order=False):
+def load_warehouse_config(cfg):
     """Parse a warehouse JSON config
 
     **Parameters:**
 
     * **cfg** - (*dict, str, or buffer*) A warehouse config dict or a file
     path/buffer to read the config contents from.
-    * **preserve_order** - (*bool, optional*) If true and a str or buffer is
-    passed for the cfg arg, use OrderedDict as the object_pairs_hook to preserve
-    order.
 
     **Returns:**
 
@@ -132,30 +118,23 @@ def load_warehouse_config(cfg, preserve_order=False):
     if isinstance(cfg, dict):
         return WarehouseConfigSchema().load(cfg)
 
-    return parse_schema_file(
-        cfg,
-        WarehouseConfigSchema(),
-        object_pairs_hook=OrderedDict if preserve_order else None,
-    )
+    return parse_schema_file(cfg, WarehouseConfigSchema())
 
 
-def load_warehouse_config_from_env(var, preserve_order=False):
+def load_warehouse_config_from_env(var):
     """Parse a warehouse JSON config from a location stored in an environment
     variable"""
     f = os.environ.get(var)
-    return load_warehouse_config(f, preserve_order=preserve_order)
+    return load_warehouse_config(f)
 
 
-def load_datasource_config(cfg, preserve_order=False):
+def load_datasource_config(cfg):
     """Parse a datasource JSON config
 
     **Parameters:**
 
     * **cfg** - (*dict, str, or buffer*) A datasource config dict or a file
     path/buffer to read the config contents from.
-    * **preserve_order** - (*bool, optional*) If true and a str or buffer is
-    passed for the cfg arg, use OrderedDict as the object_pairs_hook to preserve
-    order.
 
     **Returns:**
 
@@ -165,18 +144,14 @@ def load_datasource_config(cfg, preserve_order=False):
     if isinstance(cfg, dict):
         return DataSourceConfigSchema().load(cfg)
 
-    return parse_schema_file(
-        cfg,
-        DataSourceConfigSchema(),
-        object_pairs_hook=OrderedDict if preserve_order else None,
-    )
+    return parse_schema_file(cfg, DataSourceConfigSchema())
 
 
-def load_datasource_config_from_env(var, preserve_order=False):
+def load_datasource_config_from_env(var):
     """Parse a datasource JSON config from a location stored in an environment
     variable"""
     f = os.environ.get(var)
-    return load_datasource_config(f, preserve_order=preserve_order)
+    return load_datasource_config(f)
 
 
 def field_safe_name(name):
@@ -864,9 +839,9 @@ class DataSourceConfigSchema(BaseSchema):
                 continue
 
             raw = read_filepath_or_buffer(table_config)
-            json_config = json.loads(raw)
-            schema = TableConfigSchema()
-            config = schema.load(json_config)
+            config = load_json_or_yaml_from_str(
+                raw, f=table_config, schema=TableConfigSchema()
+            )
             data["tables"][table_name] = config
 
         return data
@@ -908,9 +883,9 @@ class WarehouseConfigSchema(BaseSchema):
                 continue
 
             raw = read_filepath_or_buffer(ds_config)
-            json_config = json.loads(raw)
-            schema = DataSourceConfigSchema()
-            config = schema.load(json_config)
+            config = load_json_or_yaml_from_str(
+                raw, f=ds_config, schema=DataSourceConfigSchema()
+            )
             data["datasources"][ds_name] = config
 
         return data
