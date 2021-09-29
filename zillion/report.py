@@ -1012,6 +1012,17 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             return field.sort(self.warehouse.id, series)
         return series
 
+    def _wavg(self, d, w, raise_on_zero_div_error=False):
+        try:
+            return (d * w).sum() / w.sum()
+        except ZeroDivisionError as e:
+            if raise_on_zero_div_error:
+                raise
+            self.add_warning(
+                f"ZeroDivisionError during wavg for field '{d.name}', using simple mean instead"
+            )
+            return d.mean()  # Return mean if there are no weights
+
     def _select_all(self):
         """Helper to get all rows from the combined result table"""
         qr = self.cursor.execute("SELECT * FROM %s" % self.table_name)
@@ -1118,9 +1129,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         for row_filter in row_filters:
             field, op, value = row_filter
-            raiseifnot(
-                field in fields, 'Row filter field "%s" is not in result table' % field
-            )
+            if field not in fields:
+                self.add_warning(
+                    'Row filter field "%s" is not in result table, ignoring filter'
+                    % field
+                )
+                continue
 
             raiseifnot(
                 op in ROW_FILTER_OPERATIONS, "Invalid row filter operation: %s" % op
@@ -1148,6 +1162,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 value = "'%s'" % value
 
             filter_parts.append("(%s %s %s)" % (field, op, value))
+
+        if not filter_parts:
+            return df
 
         result = df.query(" and ".join(filter_parts))
         # https://stackoverflow.com/questions/28772494/how-do-you-update-the-levels-of-a-pandas-multiindex-after-slicing-its-dataframe
@@ -1191,11 +1208,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             df.index = df.index.fillna(NAN_DIMENSION_VALUE_LABEL)
 
         for metric_name, weighting_metric in wavgs:
-            # TODO: how does this behave if weights are missing?
-            wavg = lambda x, wm=weighting_metric: np.average(
-                x, weights=df.loc[x.index, wm]
+            aggrs[metric_name] = lambda x, wm=weighting_metric: self._wavg(
+                x, df.loc[x.index, wm]
             )
-            aggrs[metric_name] = wavg
 
         for level in range(rollup):
             if (level + 1) == len(dimensions):
@@ -1245,17 +1260,6 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         aggrs = {}
         wavgs = []
 
-        def wavg(self, avg_name, weight_name):
-            d = df[avg_name]
-            w = df[weight_name]
-            try:
-                return (d * w).sum() / w.sum()
-            except ZeroDivisionError:
-                self.add_warning(
-                    f"ZeroDivisionError during wavg for field '{avg_name}', using simple mean instead"
-                )
-                return d.mean()  # Return mean if there are no weights
-
         for metric in metrics.values():
             if metric.technical:
                 # Skip rollups of technicals since they often dont make sense
@@ -1281,7 +1285,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 self.add_warning(
                     f"NULL vals found during wavg for formula field '{metric_name}', ignoring NULL rows"
                 )
-            totals[metric_name] = wavg(self, metric_name, weighting_metric)
+            totals[metric_name] = self._wavg(df[metric_name], df[weighting_metric])
 
         if rollup == RollupTypes.ALL:
             rollup = len(dimensions)
