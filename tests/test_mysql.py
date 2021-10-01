@@ -34,6 +34,15 @@ def test_mysql_ignore_table_data_url(mysql_ds_config, adhoc_config):
     assert ds.has_table("zillion_test.dma_zip")
 
 
+def test_mysql_report_repeat_criteria(wh):
+    metrics = ["rpl", "sales"]
+    dimensions = ["date"]
+    criteria = [("date", ">=", "2020-04-29"), ("date", "<", "2020-05-01")]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount > 0
+    info(result.df)
+
+
 def test_mysql_sequential_timeout(mysql_wh):
     with update_zillion_config(
         dict(

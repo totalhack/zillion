@@ -260,6 +260,24 @@ def test_report_criteria_in(wh):
     assert result.rowcount == 0
 
 
+def test_report_repeat_criteria(wh):
+    metrics = ["rpl", "sales"]
+    dimensions = ["date"]
+    criteria = [("date", ">", "2020-04-29"), ("date", "<", "2020-05-01")]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount > 0
+    info(result.df)
+
+
+def test_report_between_date_criteria(wh):
+    metrics = ["rpl", "sales"]
+    dimensions = ["date"]
+    criteria = [("date", "between", ["2020-04-29", "2020-05-01"])]
+    result = wh_execute(wh, locals())
+    assert result and result.rowcount > 0
+    info(result.df)
+
+
 def test_row_filter_single_dimension(wh):
     metrics = ["leads", "sales"]
     dimensions = ["month"]

@@ -362,22 +362,19 @@ def load_json_or_yaml_from_str(string, f=None, schema=None):
     if f and isinstance(f, str):  # f is assumed to be a filename
         f = f.lower()
         if f.endswith("yaml") or f.endswith("yml"):
-            # load as yaml
             load_result = yaml.safe_load(string)
-        else:
+        elif f.endswith("json"):
             load_result = json.loads(string)
-        if schema:
-            return schema.load(load_result)
-        return load_result
 
-    # f is not a filename, we try json and then fall back to yaml
-    try:
-        load_result = json.loads(string)
-    except Exception as ej:
+    if load_result is None:
+        # f is not a filename, we try json and then fall back to yaml
         try:
-            load_result = yaml.safe_load(string)
-        except Exception as ey:
-            raise Exception("Could not load string as json or yaml")
+            load_result = json.loads(string)
+        except Exception as ej:
+            try:
+                load_result = yaml.safe_load(string)
+            except Exception as ey:
+                raise Exception("Could not load string as json or yaml")
 
     if schema:
         return schema.load(load_result)

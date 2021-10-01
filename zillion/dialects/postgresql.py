@@ -1,192 +1,103 @@
-POSTGRESQL_YEAR_CRITERIA_CONVERSIONS = {
-    "=": [
-        [">=", "TO_DATE(:0 || '-01-01', 'YYYY-MM-DD')"],
-        ["<", "(TO_DATE(:0 || '-01-01', 'YYYY-MM-DD') + interval '1 year')"],
-    ],
-    # NOTE: all of the conditions in the criteria replacement lists get AND'd together
-    # so we can't simply do "x < 2020-01-01 or x >= 2021-01-01"
-    "!=": [
-        [
-            "not between",
-            [
-                "TO_DATE(:0 || '-01-01', 'YYYY-MM-DD')",
-                "(TO_DATE(:0 || '-01-01', 'YYYY-MM-DD') + interval '1 year' - interval '1 second')",
-            ],
-        ]
-    ],
-    ">": [[">=", "(TO_DATE(:0 || '-01-01', 'YYYY-MM-DD') + interval '1 year')"]],
-    ">=": [[">=", "TO_DATE(:0 || '-01-01', 'YYYY-MM-DD')"]],
-    "<": [["<", "TO_DATE(:0 || '-01-01', 'YYYY-MM-DD')"]],
-    "<=": [["<", "(TO_DATE(:0 || '-01-01', 'YYYY-MM-DD') + interval '1 year')"]],
-    "between": [
-        [">=", "TO_DATE(:0 || '-01-01', 'YYYY-MM-DD')"],
-        ["<", "(TO_DATE(:1 || '-01-01', 'YYYY-MM-DD') + interval '1 year')"],
-    ],
-    "not between": [
-        [
-            "not between",
-            [
-                "TO_DATE(:0 || '-01-01', 'YYYY-MM-DD')",
-                "(TO_DATE(:1 || '-01-01', 'YYYY-MM-DD') + interval '1 year' - interval '1 second')",
-            ],
-        ]
-    ],
-}
+from sqlalchemy import func, text
+from sqlalchemy.dialects.postgresql import INTERVAL
+from sqlalchemy.sql.functions import concat
 
-POSTGRESQL_MONTH_CRITERIA_CONVERSIONS = {
-    "=": [
-        [">=", "TO_DATE(:0 || '-01', 'YYYY-MM')"],
-        ["<", "(TO_DATE(:0 || '-01', 'YYYY-MM') + interval '1 month')"],
-    ],
-    "!=": [
-        [
-            "not between",
-            [
-                "TO_DATE(:0 || '-01', 'YYYY-MM')",
-                "(TO_DATE(:0 || '-01', 'YYYY-MM') + interval '1 month' - interval '1 second')",
-            ],
-        ]
-    ],
-    ">": [[">=", "(TO_DATE(:0 || '-01', 'YYYY-MM') + interval '1 month')"]],
-    ">=": [[">=", "TO_DATE(:0 || '-01', 'YYYY-MM')"]],
-    "<": [["<", "TO_DATE(:0 || '-01', 'YYYY-MM')"]],
-    "<=": [["<", "(TO_DATE(:0 || '-01', 'YYYY-MM') + interval '1 month')"]],
-    "between": [
-        [">=", "TO_DATE(:0 || '-01', 'YYYY-MM')"],
-        ["<", "(TO_DATE(:0 || '-01', 'YYYY-MM') + interval '1 month')"],
-    ],
-    "not between": [
-        [
-            "not between",
-            [
-                "TO_DATE(:0 || '-01', 'YYYY-MM')",
-                "(TO_DATE(:0 || '-01', 'YYYY-MM') + interval '1 month' - interval '1 second')",
-            ],
-        ]
-    ],
-}
+from zillion.dialects.conversions import DialectDateConversions
 
-POSTGRESQL_DATE_CRITERIA_CONVERSIONS = {
-    "=": [[">=", ":0"], ["<", "(TO_DATE(:0, 'YYYY-MM-DD') + interval '1 day')"]],
-    "!=": [
-        [
-            "not between",
-            [
-                ":0",
-                "(TO_DATE(:0, 'YYYY-MM-DD') + interval '1 day' - interval '1 second')",
-            ],
-        ]
-    ],
-    ">": [[">=", "(TO_DATE(:0, 'YYYY-MM-DD') + interval '1 day')"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<", "(TO_DATE(:0, 'YYYY-MM-DD') + interval '1 day')"]],
-    "between": [[">=", ":0"], ["<", "(TO_DATE(:1, 'YYYY-MM-DD') + interval '1 day')"]],
-    "not between": [
-        [
-            "not between",
-            [
-                ":0",
-                "(TO_DATE(:1, 'YYYY-MM-DD') + interval '1 day' - interval '1 second')",
-            ],
-        ]
-    ],
-}
 
-POSTGRESQL_HOUR_CRITERIA_CONVERSIONS = {
-    "=": [
-        [">=", ":0"],
-        ["<", "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 hour')"],
-    ],
-    "!=": [
-        [
-            "not between",
-            [
-                ":0",
-                "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 hour' - interval '1 second')",
-            ],
-        ]
-    ],
-    ">": [[">=", "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 hour')"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<", "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 hour')"]],
-    "between": [
-        [">=", ":0"],
-        ["<", "(TO_TIMESTAMP(:1, 'YYYY-MM-DD HH24:MI:SS') + interval '1 hour')"],
-    ],
-    "not between": [
-        [
-            "not between",
-            [
-                ":0",
-                "(TO_TIMESTAMP(:1, 'YYYY-MM-DD HH24:MI:SS') + interval '1 hour' - interval '1 second')",
-            ],
-        ]
-    ],
-}
+def get_interval(n, t):
+    return func.cast(concat(n, f" {t}"), INTERVAL)
 
-POSTGRESQL_MINUTE_CRITERIA_CONVERSIONS = {
-    "=": [
-        [">=", ":0"],
-        ["<", "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 minute')"],
-    ],
-    "!=": [
-        [
-            "not between",
-            [
-                ":0",
-                "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 minute' - interval '1 second')",
-            ],
-        ]
-    ],
-    ">": [[">=", "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 minute')"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<", "(TO_TIMESTAMP(:0, 'YYYY-MM-DD HH24:MI:SS') + interval '1 minute')"]],
-    "between": [
-        [">=", ":0"],
-        ["<", "(TO_TIMESTAMP(:1, 'YYYY-MM-DD HH24:MI:SS') + interval '1 minute')"],
-    ],
-    "not between": [
-        [
-            "not between",
-            [
-                ":0",
-                "(TO_TIMESTAMP(:1, 'YYYY-MM-DD HH24:MI:SS') + interval '1 minute' - interval '1 second')",
-            ],
-        ]
-    ],
-}
 
-POSTGRESQL_DATETIME_CRITERIA_CONVERSIONS = {
-    "=": [["=", ":0"]],
-    "!=": [["!=", ":0"]],
-    ">": [[">", ":0"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<=", ":0"]],
-    "between": [["between", [":0", ":1"]]],
-    "not between": [["not between", [":0", ":1"]]],
-}
+class PostgreSQLDialectDateConversions(DialectDateConversions):
+    @classmethod
+    def date_year_start(cls, x):
+        return func.TO_DATE(str(x) + "-01-01", "YYYY-MM-DD")
+
+    @classmethod
+    def date_year_plus_year(cls, x):
+        return func.TO_DATE(str(x) + "-01-01", "YYYY-MM-DD") + get_interval(1, "YEARS")
+
+    @classmethod
+    def datetime_year_end(cls, x):
+        return (
+            func.TO_DATE(str(x) + "-01-01", "YYYY-MM-DD")
+            + get_interval(1, "YEARS")
+            - get_interval(1, "SECONDS")
+        )
+
+    @classmethod
+    def date_month_start(cls, x):
+        return func.TO_DATE(str(x) + "-01", "YYYY-MM")
+
+    @classmethod
+    def date_month_plus_month(cls, x):
+        return func.TO_DATE(str(x) + "-01", "YYYY-MM") + get_interval(1, "MONTHS")
+
+    @classmethod
+    def datetime_month_end(cls, x):
+        return (
+            func.TO_DATE(str(x) + "-01", "YYYY-MM")
+            + get_interval(1, "MONTHS")
+            - get_interval(1, "SECONDS")
+        )
+
+    @classmethod
+    def date_plus_day(cls, x):
+        return func.TO_DATE(x, "YYYY-MM-DD") + get_interval(1, "DAYS")
+
+    @classmethod
+    def datetime_day_end(cls, x):
+        return (
+            func.TO_DATE(x, "YYYY-MM-DD")
+            + get_interval(1, "DAYS")
+            - get_interval(1, "SECONDS")
+        )
+
+    @classmethod
+    def datetime_hour_plus_hour(cls, x):
+        return func.TO_TIMESTAMP(x, "YYYY-MM-DD HH24:MI:SS") + get_interval(1, "HOURS")
+
+    @classmethod
+    def datetime_hour_end(cls, x):
+        return (
+            func.TO_TIMESTAMP(x, "YYYY-MM-DD HH24:MI:SS")
+            + get_interval(1, "HOURS")
+            - get_interval(1, "SECONDS")
+        )
+
+    @classmethod
+    def datetime_minute_plus_minute(cls, x):
+        return func.TO_TIMESTAMP(x, "YYYY-MM-DD HH24:MI:SS") + get_interval(
+            1, "MINUTES"
+        )
+
+    @classmethod
+    def datetime_minute_end(cls, x):
+        return (
+            func.TO_TIMESTAMP(x, "YYYY-MM-DD HH24:MI:SS")
+            + get_interval(1, "MINUTES")
+            - get_interval(1, "SECONDS")
+        )
+
 
 POSTGRESQL_DIALECT_CONVERSIONS = {
     "year": {
         "ds_formula": "EXTRACT(YEAR FROM {})",
-        "ds_criteria_conversions": POSTGRESQL_YEAR_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": PostgreSQLDialectDateConversions.get_year_criteria_conversions(),
     },
     "quarter": "TO_CHAR({}, 'FMYYYY-\"Q\"Q')",
     "quarter_of_year": "EXTRACT(QUARTER FROM {})",
     "month": {
         "ds_formula": "TO_CHAR({}, 'FMYYYY-MM')",
-        "ds_criteria_conversions": POSTGRESQL_MONTH_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": PostgreSQLDialectDateConversions.get_month_criteria_conversions(),
     },
     "month_name": "TO_CHAR({}, 'FMMonth')",
     "month_of_year": "EXTRACT(MONTH FROM {})",
     "week_of_year": "EXTRACT(WEEK FROM {})-1",  # HACK: attempt to get tests compatible with mysql and sqlite
     "date": {
         "ds_formula": "TO_CHAR({}, 'FMYYYY-MM-DD')",
-        "ds_criteria_conversions": POSTGRESQL_DATE_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": PostgreSQLDialectDateConversions.get_date_criteria_conversions(),
     },
     "day_name": "TO_CHAR({}, 'FMDay')",
     "day_of_week": "EXTRACT(ISODOW FROM {})",  # Monday = 1
@@ -206,17 +117,17 @@ POSTGRESQL_DIALECT_CONVERSIONS = {
     "day_of_year": "EXTRACT(DOY FROM {})",
     "hour": {
         "ds_formula": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:00:00')",
-        "ds_criteria_conversions": POSTGRESQL_HOUR_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": PostgreSQLDialectDateConversions.get_hour_criteria_conversions(),
     },
     "hour_of_day": "EXTRACT(HOUR FROM {})",
     "minute": {
         "ds_formula": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:00')",
-        "ds_criteria_conversions": POSTGRESQL_MINUTE_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": PostgreSQLDialectDateConversions.get_minute_criteria_conversions(),
     },
     "minute_of_hour": "EXTRACT(MINUTE FROM {})",
     "datetime": {
         "ds_formula": "TO_CHAR({}, 'FMYYYY-MM-DD HH24:MI:SS')",
-        "ds_criteria_conversions": POSTGRESQL_DATETIME_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": PostgreSQLDialectDateConversions.get_datetime_criteria_conversions(),
     },
     "unixtime": "EXTRACT(epoch from {})",
 }

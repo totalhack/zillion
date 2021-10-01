@@ -357,6 +357,10 @@ def is_valid_datasource_criteria_conversions(val):
             row_op, row_formula = row
             if not row_op in CRITERIA_OPERATIONS:
                 raise ValidationError("Invalid criteria operation: %s" % row)
+            if callable(row_formula):
+                # No way to check this further, assumes the callable is returning
+                # a properly formated value that would satistify the check below.
+                continue
             # We allow 2-item list/tuple for between/in criteria, otherwise
             # it must be a string.
             if not isinstance(row_formula, str):

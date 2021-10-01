@@ -553,15 +553,18 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                     orig_values = [value]
                 else:
                     orig_values = value[:]
-                new_value = sa.text(new_value)
-                if new_value._bindparams:
-                    new_value = new_value.bindparams(
-                        **{
-                            str(i): v
-                            for i, v in enumerate(orig_values)
-                            if str(i) in new_value._bindparams
-                        }
-                    )
+                if callable(new_value):
+                    new_value = new_value(orig_values)
+                else:
+                    new_value = sa.text(new_value)
+                    if new_value._bindparams:
+                        new_value = new_value.bindparams(
+                            **{
+                                str(i): v
+                                for i, v in enumerate(orig_values)
+                                if str(i) in new_value._bindparams
+                            }
+                        )
                 fmt_values.append(new_value)
             final_criteria.append((field.name, new_op, fmt_values))
         return final_criteria

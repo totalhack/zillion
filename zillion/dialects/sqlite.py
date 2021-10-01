@@ -1,110 +1,69 @@
-SQLITE_YEAR_CRITERIA_CONVERSIONS = {
-    "=": [[">=", "DATE(:0 || '-01-01')"], ["<", "DATE(:0 || '-01-01', '+1 year')"]],
-    # NOTE: all of the conditions in the criteria replacement lists get AND'd together
-    # so we can't simply do "x < 2020-01-01 or x >= 2021-01-01"
-    "!=": [
-        [
-            "not between",
-            [
-                "DATE(:0 || '-01-01')",
-                "DATETIME(:0 || '-01-01', '+1 year', '-1 second')",
-            ],
-        ]
-    ],
-    ">": [[">=", "DATE(:0 || '-01-01', '+1 year')"]],
-    ">=": [[">=", "DATE(:0 || '-01-01')"]],
-    "<": [["<", "DATE(:0 || '-01-01')"]],
-    "<=": [["<", "DATE(:0 || '-01-01', '+1 year')"]],
-    "between": [
-        [">=", "DATE(:0 || '-01-01')"],
-        ["<", "DATE(:1 || '-01-01', '+1 year')"],
-    ],
-    "not between": [
-        [
-            "not between",
-            [
-                "DATE(:0 || '-01-01')",
-                "DATETIME(:1 || '-01-01', '+1 year', '-1 second')",
-            ],
-        ]
-    ],
-}
+from sqlalchemy import func
+from tlbx import st
 
-SQLITE_MONTH_CRITERIA_CONVERSIONS = {
-    "=": [[">=", "DATE(:0 || '-01')"], ["<", "DATE(:0 || '-01', '+1 month')"]],
-    "!=": [
-        [
-            "not between",
-            ["DATE(:0 || '-01')", "DATETIME(:0 || '-01', '+1 month', '-1 second')"],
-        ]
-    ],
-    ">": [[">=", "DATE(:0 || '-01', '+1 month')"]],
-    ">=": [[">=", "DATE(:0 || '-01')"]],
-    "<": [["<", "DATE(:0 || '-01')"]],
-    "<=": [["<", "DATE(:0 || '-01', '+1 month')"]],
-    "between": [[">=", "DATE(:0 || '-01')"], ["<", "DATE(:1 || '-01', '+1 month')"]],
-    "not between": [
-        [
-            "not between",
-            ["DATE(:0 || '-01')", "DATETIME(:1 || '-01', '+1 month', '-1 second')"],
-        ]
-    ],
-}
+from zillion.dialects.conversions import DialectDateConversions
 
-SQLITE_DATE_CRITERIA_CONVERSIONS = {
-    "=": [[">=", ":0"], ["<", "DATE(:0, '+1 day')"]],
-    "!=": [["not between", [":0", "DATETIME(:0, '+1 day', '-1 second')"]]],
-    ">": [[">=", "DATE(:0, '+1 day')"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<", "DATE(:0, '+1 day')"]],
-    "between": [[">=", ":0"], ["<", "DATE(:1, '+1 day')"]],
-    "not between": [["not between", [":0", "DATETIME(:1, '+1 day', '-1 second')"]]],
-}
 
-SQLITE_HOUR_CRITERIA_CONVERSIONS = {
-    "=": [[">=", ":0"], ["<", "DATETIME(:0, '+1 hour')"]],
-    "!=": [["not between", [":0", "DATETIME(:0, '+1 hour', '-1 second')"]]],
-    ">": [[">=", "DATETIME(:0, '+1 hour')"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<", "DATETIME(:0, '+1 hour')"]],
-    "between": [[">=", ":0"], ["<", "DATETIME(:1, '+1 hour')"]],
-    "not between": [["not between", [":0", "DATETIME(:1, '+1 hour', '-1 second')"]]],
-}
+class SQLiteDialectDateConversions(DialectDateConversions):
+    @classmethod
+    def date_year_start(cls, x):
+        return func.DATE(str(x) + "-01-01")
 
-SQLITE_MINUTE_CRITERIA_CONVERSIONS = {
-    "=": [[">=", ":0"], ["<", "DATETIME(:0, '+1 minute')"]],
-    "!=": [["not between", [":0", "DATETIME(:0, '+1 minute', '-1 second')"]]],
-    ">": [[">=", "DATETIME(:0, '+1 minute')"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<", "DATETIME(:0, '+1 minute')"]],
-    "between": [[">=", ":0"], ["<", "DATETIME(:1, '+1 minute')"]],
-    "not between": [["not between", [":0", "DATETIME(:1, '+1 minute', '-1 second')"]]],
-}
+    @classmethod
+    def date_year_plus_year(cls, x):
+        return func.DATE(str(x) + "-01-01", "+1 year")
 
-SQLITE_DATETIME_CRITERIA_CONVERSIONS = {
-    "=": [["=", ":0"]],
-    "!=": [["!=", ":0"]],
-    ">": [[">", ":0"]],
-    ">=": [[">=", ":0"]],
-    "<": [["<", ":0"]],
-    "<=": [["<=", ":0"]],
-    "between": [["between", [":0", ":1"]]],
-    "not between": [["not between", [":0", ":1"]]],
-}
+    @classmethod
+    def datetime_year_end(cls, x):
+        return func.DATETIME(str(x) + "-01-01", "+1 year", "-1 second")
+
+    @classmethod
+    def date_month_start(cls, x):
+        return func.DATE(str(x) + "-01")
+
+    @classmethod
+    def date_month_plus_month(cls, x):
+        return func.DATE(str(x) + "-01", "+1 month")
+
+    @classmethod
+    def datetime_month_end(cls, x):
+        return func.DATETIME(str(x) + "-01", "+1 month", "-1 second")
+
+    @classmethod
+    def date_plus_day(cls, x):
+        return func.DATE(x, "+1 day")
+
+    @classmethod
+    def datetime_day_end(cls, x):
+        return func.DATETIME(x, "+1 day", "-1 second")
+
+    @classmethod
+    def datetime_hour_plus_hour(cls, x):
+        return func.DATETIME(x, "+1 hour")
+
+    @classmethod
+    def datetime_hour_end(cls, x):
+        return func.DATETIME(x, "+1 hour", "-1 second")
+
+    @classmethod
+    def datetime_minute_plus_minute(cls, x):
+        return func.DATETIME(x, "+1 minute")
+
+    @classmethod
+    def datetime_minute_end(cls, x):
+        return func.DATETIME(x, "+1 minute", "-1 second")
+
 
 SQLITE_DIALECT_CONVERSIONS = {
     "year": {
         "ds_formula": "cast(strftime('%Y', {}) as integer)",
-        "ds_criteria_conversions": SQLITE_YEAR_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": SQLiteDialectDateConversions.get_year_criteria_conversions(),
     },
     "quarter": "strftime('%Y', {}) || '-Q' || ((cast(strftime('%m', {}) as integer) + 2) / 3)",  # 2020-Q1
     "quarter_of_year": "(cast(strftime('%m', {}) as integer) + 2) / 3",
     "month": {
         "ds_formula": "strftime('%Y-%m', {})",
-        "ds_criteria_conversions": SQLITE_MONTH_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": SQLiteDialectDateConversions.get_month_criteria_conversions(),
     },
     "month_name": (
         "CASE strftime('%m', {}) "
@@ -127,7 +86,7 @@ SQLITE_DIALECT_CONVERSIONS = {
     "week_of_year": "cast(strftime('%W', {}) as integer)",
     "date": {
         "ds_formula": "strftime('%Y-%m-%d', {})",
-        "ds_criteria_conversions": SQLITE_DATE_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": SQLiteDialectDateConversions.get_date_criteria_conversions(),
     },
     "day_name": (
         "CASE cast(strftime('%w', {}) as integer) "
@@ -158,17 +117,17 @@ SQLITE_DIALECT_CONVERSIONS = {
     "day_of_year": "cast(strftime('%j', {}) as integer)",
     "hour": {
         "ds_formula": "strftime('%Y-%m-%d %H:00:00', {})",
-        "ds_criteria_conversions": SQLITE_HOUR_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": SQLiteDialectDateConversions.get_hour_criteria_conversions(),
     },
     "hour_of_day": "cast(strftime('%H', {}) as integer)",
     "minute": {
         "ds_formula": "strftime('%Y-%m-%d %H:%M:00', {})",
-        "ds_criteria_conversions": SQLITE_MINUTE_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": SQLiteDialectDateConversions.get_minute_criteria_conversions(),
     },
     "minute_of_hour": "cast(strftime('%M', {}) as integer)",
     "datetime": {
         "ds_formula": "strftime('%Y-%m-%d %H:%M:%S', {})",
-        "ds_criteria_conversions": SQLITE_DATETIME_CRITERIA_CONVERSIONS,
+        "ds_criteria_conversions": SQLiteDialectDateConversions.get_datetime_criteria_conversions(),
     },
     "unixtime": "cast(strftime('%s', {}) as integer)",
 }

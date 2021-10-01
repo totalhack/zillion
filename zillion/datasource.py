@@ -676,7 +676,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
         # Add parent table if present
         parent_name = table.zillion.parent
         if parent_name:
-            parent = self.metadata.tables[parent_name]
+            try:
+                parent = self.metadata.tables[parent_name]
+            except KeyError:
+                raise AssertionError(
+                    "Parent %s of %s not defined" % (parent_name, table.fullname)
+                )
             pk_fields = parent.zillion.primary_key
             for pk_field in pk_fields:
                 raiseifnot(

@@ -1340,6 +1340,7 @@ def get_dialect_type_conversions(dialect, column):
             ds_formula = dialect_field_convs
             ds_criteria_conversions = None
         else:
+            # Assumes dict
             ds_formula = dialect_field_convs.get("ds_formula", None)
             ds_criteria_conversions = dialect_field_convs.get(
                 "ds_criteria_conversions", None
