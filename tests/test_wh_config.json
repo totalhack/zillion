@@ -218,6 +218,9 @@
                 "main.partners": {
                     "type": "dimension",
                     "create_fields": true,
+                    "siblings": [
+                        "main.partner_sibling"
+                    ],
                     "primary_key": [
                         "partner_id"
                     ],
@@ -231,6 +234,25 @@
                             "fields": [
                                 "partner_name",
                                 "ds_partner_name"
+                            ]
+                        }
+                    }
+                },
+                "main.partner_sibling": {
+                    "type": "dimension",
+                    "create_fields": true,
+                    "primary_key": [
+                        "partner_id"
+                    ],
+                    "columns": {
+                        "partner_id": {
+                            "fields": [
+                                "partner_id"
+                            ]
+                        },
+                        "sibling_dim": {
+                            "fields": [
+                                "partner_sibling_dim"
                             ]
                         }
                     }

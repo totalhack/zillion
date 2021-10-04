@@ -704,6 +704,14 @@ def test_report_alias_dimension(wh):
     info(result.df)
 
 
+def test_report_sibling_dimension(wh):
+    metrics = ["revenue"]
+    dimensions = ["partner_sibling_dim"]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
 def test_report_multiple_queries(wh):
     metrics = ["revenue", "leads"]
     dimensions = ["partner_name"]

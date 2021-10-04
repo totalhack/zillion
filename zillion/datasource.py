@@ -660,6 +660,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
         neighbor_tables = []
         fields = get_table_fields(table)
 
+        def check_pk_fields(pk_fields, t, ttype):
+            for pk_field in pk_fields:
+                raiseifnot(
+                    pk_field in fields,
+                    (
+                        "Table %s is %s of %s but primary key %s is not in both"
+                        % (t.fullname, ttype, table.fullname, pk_fields)
+                    ),
+                )
+
         if table.zillion.type == TableTypes.METRIC:
             # Find dimension tables whose primary key is contained in the
             # metric table
@@ -682,16 +692,30 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 raise AssertionError(
                     "Parent %s of %s not defined" % (parent_name, table.fullname)
                 )
+
             pk_fields = parent.zillion.primary_key
-            for pk_field in pk_fields:
-                raiseifnot(
-                    pk_field in fields,
-                    (
-                        "Table %s is parent of %s but primary key %s is not in both"
-                        % (parent.fullname, table.fullname, pk_fields)
-                    ),
-                )
+            check_pk_fields(pk_fields, parent, "parent")
             neighbor_tables.append(NeighborTable(parent, pk_fields))
+
+            if parent.zillion.type == TableTypes.DIMENSION and parent.zillion.siblings:
+                # Add parent dimension sibling tables if present
+                for sibling_name in parent.zillion.siblings:
+                    try:
+                        sibling = self.metadata.tables[sibling_name]
+                    except KeyError:
+                        raise AssertionError(
+                            "Sibling %s of %s not defined"
+                            % (sibling_name, parent.fullname)
+                        )
+
+                    raiseifnot(
+                        sibling.zillion.type == TableTypes.DIMENSION,
+                        "Sibling tables can only be dimension tables",
+                    )
+                    pk_fields = sibling.zillion.primary_key
+                    check_pk_fields(pk_fields, sibling, "sibling")
+                    neighbor_tables.append(NeighborTable(sibling, pk_fields))
+
         return neighbor_tables
 
     def find_descendent_tables(self, table):

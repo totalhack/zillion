@@ -20,6 +20,9 @@ INSERT OR IGNORE INTO partners (name, created_at) VALUES ('Partner A', '2019-03-
 INSERT OR IGNORE INTO partners (name, created_at) VALUES ('Partner B', '2019-03-26 21:02:15');
 INSERT OR IGNORE INTO partners (name, created_at) VALUES ('Partner C', '2019-03-26 21:02:15');
 
+INSERT OR IGNORE INTO partner_sibling (partner_id, sibling_dim) VALUES (1, "Partner A Sibling Dim");
+INSERT OR IGNORE INTO partner_sibling (partner_id, sibling_dim) VALUES (2, "Partner B Sibling Dim");
+
 INSERT OR IGNORE INTO campaigns (name, category, partner_id, created_at) VALUES ('Campaign 1A', 'fruits', 1, '2019-03-26 21:02:15');
 INSERT OR IGNORE INTO campaigns (name, category, partner_id, created_at) VALUES ('Campaign 2A', 'vegetables', 1, '2019-03-26 21:02:15');
 INSERT OR IGNORE INTO campaigns (name, category, partner_id, created_at) VALUES ('Campaign 1B', 'fruits', 2, '2019-03-26 21:02:15');

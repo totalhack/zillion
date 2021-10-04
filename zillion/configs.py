@@ -560,6 +560,10 @@ class TableInfoSchema(BaseSchema):
     table. This impacts the possible join relationships of this table. It is
     assumed to be safe to join back to any parent or ancestor table via shared
     keys (the child table must have the primary key of the parent table).
+    * **siblings** - (*list, optional*) A list of references to the full names
+    of sibling tables. This impacts the possible join relationships of this table.
+    It is assumed to be safe to join back to any sibling table via shared
+    keys (the child table must have the primary key of the sibling table).
     * **create_fields** - (*bool, optional*) If true, try to create Field
     objects from all columns in the table. Specifying the fields in a column
     config will override this behavior. Metric vs Dimension fields are inferred
@@ -585,6 +589,7 @@ class TableInfoSchema(BaseSchema):
     type = TableTypeField(required=True)
     active = mfields.Boolean(default=True, missing=True)
     parent = mfields.Str(default=None, missing=None)
+    siblings = mfields.List(mfields.Str, default=None, missing=None)
     create_fields = mfields.Boolean(default=False, missing=False)
     use_full_column_names = mfields.Boolean(default=True, missing=True)
     primary_key = mfields.List(mfields.Str, required=True)
