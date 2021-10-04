@@ -365,6 +365,7 @@ class Dimension(Field):
     ):
         if values and isinstance(values, list):
             self.values = set(self.values)
+        self._values_func = None
 
         super(Dimension, self).__init__(
             name,
@@ -377,12 +378,13 @@ class Dimension(Field):
             **kwargs,
         )
 
-    def get_values(self, warehouse_id):
+    def get_values(self, warehouse_id, refresh=False):
         """Get allowed values for this Dimension
 
         **Parameters:**
 
         * **warehouse_id** - (*int*) A zillion warehouse ID
+        * **refresh** - (*bool, optional*) Refresh the values if applicable
 
         **Returns:**
 
@@ -392,9 +394,14 @@ class Dimension(Field):
         """
         if self.values is None:
             return None
+
         if isinstance(self.values, str):
             func = import_object(self.values)
-            return func(warehouse_id, self)
+            self._values_func = func
+            self.values = func(warehouse_id, self)
+        elif refresh and self._values_func:
+            self.values = func(warehouse_id, self)
+
         return self.values
 
     def is_valid_value(self, warehouse_id, value, ignore_none=True):
