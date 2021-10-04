@@ -1049,6 +1049,14 @@ class ColumnInfo(ZillionInfo, PrintMixin):
             return None
         return field.get("ds_formula", None)
 
+    def has_field_ds_formula(self, name):
+        """True if a datasource-level formula for a field exists"""
+        field = self.get_field(name)
+        if isinstance(field, str):
+            return False
+        formula = field.get("ds_formula", None)
+        return True if formula else False
+
     def get_criteria_conversion(self, field_name, operation):
         """Get the datasource-level criteria conversion for a field/operation"""
         field = self.get_field(field_name)

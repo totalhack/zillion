@@ -214,7 +214,7 @@ class Metric(Field):
         weighting_metric=None,
         technical=None,
         required_grain=None,
-        **kwargs
+        **kwargs,
     ):
         if weighting_metric:
             raiseifnot(
@@ -237,7 +237,7 @@ class Metric(Field):
             weighting_metric=weighting_metric,
             technical=technical,
             required_grain=required_grain,
-            **kwargs
+            **kwargs,
         )
 
     def get_all_raw_fields(self, warehouse, adhoc_fms=None):
@@ -301,12 +301,20 @@ class Metric(Field):
 
             if self.weighting_metric:
                 w_column = get_table_field_column(column.table, self.weighting_metric)
-                w_column_name = column_fullname(w_column)
-                # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
-                # to integer values improperly by some database dialects such as sqlite
-                expr = sa.func.SUM(
-                    sa.text("1.0") * expr * sa.text(w_column_name)
-                ) / sa.func.SUM(sa.text(w_column_name))
+                w_ds_formula = w_column.zillion.field_ds_formula(self.weighting_metric)
+                if w_ds_formula and contains_aggregation(w_ds_formula):
+                    info(
+                        f"Weighting field {self.weighting_metric} contains aggregation, skipping ds-level weighting"
+                    )
+                    expr = aggr(expr)
+                else:
+                    # Perform weighting in the datasource formula
+                    w_column_name = column_fullname(w_column)
+                    # NOTE: 1.0 multiplication is a hack to ensure results are not rounded
+                    # to integer values improperly by some database dialects such as sqlite
+                    expr = sa.func.SUM(
+                        sa.text("1.0") * expr * sa.text(w_column_name)
+                    ) / sa.func.SUM(sa.text(w_column_name))
             else:
                 expr = aggr(expr)
 
@@ -353,7 +361,7 @@ class Dimension(Field):
         values=None,
         sorter=None,
         meta=None,
-        **kwargs
+        **kwargs,
     ):
         if values and isinstance(values, list):
             self.values = set(self.values)
@@ -366,7 +374,7 @@ class Dimension(Field):
             values=values,
             sorter=sorter,
             meta=meta,
-            **kwargs
+            **kwargs,
         )
 
     def get_values(self, warehouse_id):
@@ -608,7 +616,7 @@ class FormulaMetric(FormulaField):
         weighting_metric=None,
         technical=None,
         required_grain=None,
-        **kwargs
+        **kwargs,
     ):
         if technical:
             technical = create_technical(technical)
@@ -624,7 +632,7 @@ class FormulaMetric(FormulaField):
             weighting_metric=weighting_metric,
             technical=technical,
             required_grain=required_grain,
-            **kwargs
+            **kwargs,
         )
 
     def get_all_raw_fields(self, warehouse, adhoc_fms=None):
