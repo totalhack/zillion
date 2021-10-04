@@ -679,10 +679,14 @@ class AdHocMetric(FormulaMetric):
     * **display_name** - (*str, optional*) The display name of the field
     * **description** - (*str, optional*) The description of the field
     * **meta** - (*dict, optional*) A dict of additional custom attributes
+    * **aggregation** - (*str, optional*) The AggregationType to apply to the
+    metric
     * **technical** - (*object, optional*) A Technical object or definition
     used to defined a technical computation to be applied to the metric
     * **rounding** - (*int, optional*) If specified, the number of decimal
     places to round to
+    * **weighting_metric** - (*str, optional*) A reference to a metric to use
+    for weighting when aggregating averages
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report
     that aims to include this metric.
@@ -698,8 +702,10 @@ class AdHocMetric(FormulaMetric):
         display_name=None,
         description=None,
         meta=None,
+        aggregation=AggregationTypes.SUM,
         technical=None,
         rounding=None,
+        weighting_metric=None,
         required_grain=None,
     ):
         """Init an AdHoc representation of a Metric"""
@@ -709,8 +715,10 @@ class AdHocMetric(FormulaMetric):
             display_name=display_name,
             description=description,
             meta=meta,
+            aggregation=aggregation,
             technical=technical,
             rounding=rounding,
+            weighting_metric=weighting_metric,
             required_grain=required_grain,
         )
 
@@ -725,8 +733,10 @@ class AdHocMetric(FormulaMetric):
             display_name=field_def["display_name"],
             description=field_def["description"],
             meta=field_def["meta"],
+            aggregation=field_def["aggregation"],
             technical=field_def["technical"],
             rounding=field_def["rounding"],
+            weighting_metric=field_def["weighting_metric"],
             required_grain=field_def["required_grain"],
         )
 

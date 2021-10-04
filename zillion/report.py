@@ -1278,8 +1278,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
 
         totals = df.agg(aggrs, skipna=True)
         for metric_name, weighting_metric in wavgs:
-            field = self.warehouse.get_fields()[metric_name]
-            if df[metric_name].isna().any() and isinstance(field, FormulaField):
+            if df[metric_name].isna().any() and isinstance(
+                metrics[metric_name], FormulaField
+            ):
                 # Weighted avg results can be thrown off if the target field has NaNs but
                 # is a formula field that might have non-NaN values in the same row for its
                 # component formula fields. Down the road it might be better to put all

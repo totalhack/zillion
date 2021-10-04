@@ -765,19 +765,29 @@ class AdHocMetricSchema(AdHocFieldSchema):
 
     **Attributes:**
 
+    * **aggregation** - (*str, optional*) A string representing the aggregation
+    type to apply to this metric. See `zillion.core.AggregationTypes`.
     * **technical** - (*str or dict, optional*) A string or dict that will be
     parsed as a TechnicalField to define a technical computation to be applied
     to the metric.
     * **rounding** - (*int, optional*) If specified, the number of decimal
     places to round to
+    * **weighting_metric** - (*str, optional*) A reference to a metric to use
+    for weighting when aggregating averages
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
 
     """
 
+    aggregation = mfields.String(
+        default=AggregationTypes.SUM,
+        missing=AggregationTypes.SUM,
+        validate=is_valid_aggregation,
+    )
     technical = TechnicalField(default=None, missing=None)
     rounding = mfields.Integer(default=None, missing=None)
+    weighting_metric = mfields.Str(default=None, missing=None)
     required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
 

@@ -1017,6 +1017,37 @@ def test_report_adhoc_nested_metric(wh):
     info(result.df)
 
 
+def test_report_adhoc_aggregation(wh):
+    metrics = [
+        "revenue",
+        "rpl_lead_weighted",
+        {"formula": "{rpl}", "name": "rpl_avg", "aggregation": "mean", "rounding": 2},
+    ]
+    dimensions = ["partner_name"]
+    rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_adhoc_weighting(wh):
+    metrics = [
+        "revenue",
+        "rpl_lead_weighted",
+        {
+            "formula": "{revenue}/{leads}",
+            "name": "rpl_w",
+            "weighting_metric": "leads",
+            "rounding": 2,
+        },
+    ]
+    dimensions = ["partner_name"]
+    rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
 def test_report_where_criteria_conversions(wh):
     metrics = ["leads"]
     dimensions = ["campaign_created_at"]
