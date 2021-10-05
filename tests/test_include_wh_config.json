@@ -1,0 +1,36 @@
+{
+    "metrics": [
+        {
+            "name": "rpl_include",
+            "aggregation": "mean",
+            "rounding": 2,
+            "formula": "{revenue}/{leads}"
+        }
+    ],
+    "datasources": {
+        "testdb1": {
+            "connect": "sqlite:///testdb1",
+            "tables": {
+                "main.partners": {
+                    "type": "dimension",
+                    "active": false,
+                    "primary_key": [
+                        "partner_id"
+                    ],
+                    "columns": {
+                        "id": {
+                            "fields": [
+                                "partner_id"
+                            ]
+                        },
+                        "name": {
+                            "fields": [
+                                "partner_name_include"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
