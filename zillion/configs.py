@@ -880,6 +880,9 @@ class WarehouseConfigSchema(BaseSchema):
 
     **Attributes:**
 
+    * **includes** - (*marshmallow field, optional*) A list of warehouse files to
+    import. Later items in the list will override earlier items for overlapping keys.
+    Any settings in the warehouse config will take precedence.
     * **metrics** - (*marshmallow field, optional*) A list of MetricConfigSchema
     * **dimensions** - (*marshmallow field, optional*) A list of
     DimensionConfigSchema
@@ -888,11 +891,25 @@ class WarehouseConfigSchema(BaseSchema):
 
     """
 
+    includes = mfields.List(mfields.Str(), default=None, missing=None)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     datasources = mfields.Dict(
         keys=mfields.Str(), values=DataSourceConfigField, required=True
     )
+
+    @pre_load
+    def _check_includes(self, data, **kwargs):
+        """Load included warehouse configs as baseline, merge in later includes
+        and settings in this config as overrides"""
+        includes = data.get("includes", [])
+        if not includes:
+            return data
+        for fname in includes.copy():
+            raw = read_filepath_or_buffer(fname)
+            config = load_json_or_yaml_from_str(raw, f=fname)
+            data = dictmerge(config, data, overwrite=True, extend=True)
+        return data
 
     @pre_load
     def _check_ds_refs(self, data, **kwargs):

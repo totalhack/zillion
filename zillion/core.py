@@ -1,4 +1,5 @@
 # pylint: disable=unused-import,missing-class-docstring
+from collections.abc import MutableMapping
 import logging
 import os
 import requests
@@ -379,3 +380,33 @@ def load_json_or_yaml_from_str(string, f=None, schema=None):
     if schema:
         return schema.load(load_result)
     return load_result
+
+
+def dictmerge(x, y, path=None, overwrite=False, extend=False):
+    """Adapted version of tlbx's dictmerge that supports extending lists"""
+    if path is None:
+        path = []
+    for key in y:
+        if key in x:
+            if isinstance(x[key], (dict, MutableMapping)) and isinstance(
+                y[key], (dict, MutableMapping)
+            ):
+                dictmerge(
+                    x[key],
+                    y[key],
+                    path + [str(key)],
+                    overwrite=overwrite,
+                    extend=extend,
+                )
+            elif x[key] == y[key]:
+                pass  # same leaf value
+            else:
+                if not overwrite:
+                    raise Exception("Conflict at %s" % ".".join(path + [str(key)]))
+                if isinstance(x[key], list) and isinstance(y[key], list) and extend:
+                    x[key].extend(y[key])
+                else:
+                    x[key] = y[key]
+        else:
+            x[key] = y[key]
+    return x

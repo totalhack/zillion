@@ -18,6 +18,14 @@ def test_wh_config_init(config):
     pass
 
 
+def test_wh_config_include(config):
+    config["includes"] = ["test_include_wh_config.json"]
+    wh = Warehouse(config=config)
+    wh.get_metric("rpl_include")
+    ds = wh.get_datasource("testdb1")
+    assert not ds.metadata.tables["main.partners"].zillion.active
+
+
 def test_datasource_config_init(ds_config):
     ds = DataSource("testdb1", config=ds_config)
     print()  # Format test output
