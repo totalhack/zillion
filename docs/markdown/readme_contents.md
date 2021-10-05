@@ -192,11 +192,11 @@ CREATE TABLE sales (
 ### **Warehouse Creation**
 
 A `Warehouse` may be created from an existing SQLAlchemy MetaData instance,
-purely from a JSON configuration, or a combination of the two. The code below
+purely from a JSON/YAML configuration, or a combination of the two. The code below
 shows how it can be done in as little as one line of code if you have a pointer
-to a JSON `Warehouse` config.
+to a JSON/YAML `Warehouse` config.
 
-> *Note*: Defining your config in JSON is recommended, so we'll save an example
+> *Note*: Defining your config in JSON or YAML is recommended, so we'll save an example
 of defining `Zillion` metadata directly on your SQLAlchemy objects for another
 time.
 
@@ -369,7 +369,8 @@ If you attempt an impossible report, you will get an
 `UnsupportedGrainException`. The report below is impossible because it
 attempts to break down the leads metric by a dimension that only exists
 in a child table. Generally speaking, child tables can join back up to
-parents to find dimensions, but not the other way around.
+parents (and "siblings" of parents) to find dimensions, but not the other
+way around.
 
 ```python
 # Fails with UnsupportedGrainException
