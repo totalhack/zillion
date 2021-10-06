@@ -10,9 +10,9 @@ from .core import (
     RollupTypes,
     DataSourceQueryModes,
     IfExistsModes,
+    load_zillion_config,
 )
 from .configs import (
-    load_zillion_config,
     load_warehouse_config,
     load_warehouse_config_from_env,
     load_datasource_config,

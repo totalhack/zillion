@@ -23,7 +23,6 @@ from zillion.configs import (
     is_valid_field_name,
     is_valid_datasource_criteria_conversions,
     is_active,
-    zillion_config,
     EXCLUDE,
 )
 from zillion.core import *

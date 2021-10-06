@@ -12,5 +12,5 @@ stopit~=1.1.2
 sqlalchemy~=1.3.16
 sqlparse~=0.3.1
 tabulate~=0.8.7
-tlbx==0.1.17
+tlbx~=0.1.17
 xlrd~=1.2.0

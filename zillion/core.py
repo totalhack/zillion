@@ -3,6 +3,7 @@ from collections.abc import MutableMapping
 import logging
 import os
 import requests
+import sys
 import time
 
 from tlbx import (
@@ -57,45 +58,6 @@ CRITERIA_OPERATIONS = set(
     ]
 )
 ROW_FILTER_OPERATIONS = set([">", ">=", "<", "<=", "=", "!="])
-
-
-default_logger = logging.getLogger("zillion")
-default_logger.setLevel(logging.INFO)
-
-
-def dbg(msg, **kwargs):
-    """Call tlbx dbg with zillion logger"""
-    kwargs["logger"] = kwargs.get("logger", default_logger)
-    kwargs["label"] = kwargs.get("label", get_caller())
-    _dbg(msg, **kwargs)
-
-
-def dbgsql(msg, **kwargs):
-    """Call tlbx dbgsql with zillion logger"""
-    kwargs["logger"] = kwargs.get("logger", default_logger)
-    kwargs["label"] = kwargs.get("label", get_caller())
-    _dbgsql(msg, **kwargs)
-
-
-def info(msg, **kwargs):
-    """Call tlbx info with zillion logger"""
-    kwargs["logger"] = kwargs.get("logger", default_logger)
-    kwargs["label"] = kwargs.get("label", get_caller())
-    _info(msg, **kwargs)
-
-
-def warn(msg, **kwargs):
-    """Call tlbx warn with zillion logger"""
-    kwargs["logger"] = kwargs.get("logger", default_logger)
-    kwargs["label"] = kwargs.get("label", get_caller())
-    _warn(msg, **kwargs)
-
-
-def error(msg, **kwargs):
-    """Call tlbx error with zillion logger"""
-    kwargs["logger"] = kwargs.get("logger", default_logger)
-    kwargs["label"] = kwargs.get("label", get_caller())
-    _error(msg, **kwargs)
 
 
 class ZillionException(Exception):
@@ -410,3 +372,107 @@ def dictmerge(x, y, path=None, overwrite=False, extend=False):
         else:
             x[key] = y[key]
     return x
+
+
+def load_zillion_config():
+    """If the ZILLION_CONFIG environment variable is defined, read the YAML
+    config from this file. Environment variable substitution is supported
+    in the yaml file. Otherwise return a default config. Environment variables
+    prefixed with "ZILLION_"  will also be read in (with the prefix stripped)
+    and take precedence.
+
+    **Returns:**
+
+    (*dict*) - The zillion config dict.
+
+    """
+    zillion_config_fname = os.environ.get("ZILLION_CONFIG", None)
+    if zillion_config_fname:
+        # Load with support for filling in env var values
+        config = load_yaml(zillion_config_fname)
+        for k, v in config.items():
+            # Hack: some older config items had ZILLION prefixed. As a workaround
+            # we now always remove that prefix and map to the key without the prefix.
+            if k.startswith("ZILLION_"):
+                config[k.replace("ZILLION_", "")] = v
+                del config[k]
+    else:
+        info("No ZILLION_CONFIG specified, using default settings")
+        config = dict(
+            DEBUG=False,
+            LOG_LEVEL="WARNING",
+            DB_URL="sqlite:////tmp/zillion.db",
+            ADHOC_DATASOURCE_DIRECTORY="/tmp",
+            LOAD_TABLE_CHUNK_SIZE=5000,
+            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
+            DATASOURCE_QUERY_TIMEOUT=None,
+            DATASOURCE_CONTEXTS={},
+        )
+
+    for k, v in os.environ.items():
+        if k.startswith("ZILLION_"):
+            config[k.replace("ZILLION_", "")] = v
+
+    return config
+
+
+zillion_config = load_zillion_config()
+
+
+def get_zillion_config_log_level():
+    return getattr(logging, zillion_config.get("LOG_LEVEL", "WARNING").upper())
+
+
+default_logger = logging.getLogger("zillion")
+
+
+def set_log_level_from_config(cfg):
+    global default_logger
+    if str(cfg.get("DEBUG", "false")).lower() in ("true", "1"):
+        default_logger.setLevel(logging.DEBUG)
+        # Make sure logs can show up in testing
+        handler = logging.StreamHandler(sys.stdout)
+        default_logger.handlers = []
+        default_logger.propagate = False
+        default_logger.addHandler(handler)
+        print("---- Zillion debug logging enabled ----")
+    else:
+        default_logger.setLevel(get_zillion_config_log_level())
+
+
+set_log_level_from_config(zillion_config)
+
+
+def dbg(msg, **kwargs):
+    """Call tlbx dbg with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _dbg(msg, **kwargs)
+
+
+def dbgsql(msg, **kwargs):
+    """Call tlbx dbgsql with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _dbgsql(msg, **kwargs)
+
+
+def info(msg, **kwargs):
+    """Call tlbx info with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _info(msg, **kwargs)
+
+
+def warn(msg, **kwargs):
+    """Call tlbx warn with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _warn(msg, **kwargs)
+
+
+def error(msg, **kwargs):
+    """Call tlbx error with zillion logger"""
+    kwargs["logger"] = kwargs.get("logger", default_logger)
+    kwargs["label"] = kwargs.get("label", get_caller())
+    _error(msg, **kwargs)

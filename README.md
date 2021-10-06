@@ -418,9 +418,11 @@ result = wh.execute_id(spec_id)
 
 > *Note:* The ZILLION_CONFIG environment var can point to a yaml config file.
 The database used to store Zillion report specs can be configured by setting
-the ZILLION_DB_URL value in your Zillion config to a valid database connection
+the DB_URL value in your Zillion config to a valid database connection
 string. By default a SQLite DB in /tmp is used. See this [sample
 config](https://github.com/totalhack/zillion/blob/master/examples/sample_config.yaml).
+Environment vars prefixed with ZILLION_ can override config settings (i.e. ZILLION_DB_URL
+will override DB_URL).
 
 **Example:** Unsupported Grain
 

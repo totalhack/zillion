@@ -2,6 +2,8 @@
 
 # Turn on debug logging
 DEBUG: false
+# Control the Zillion logger's log level. DEBUG flag overrides this.
+LOG_LEVEL: WARNING
 # Chunk size for loading datasource query results at the combined layer
 LOAD_TABLE_CHUNK_SIZE: 5000
 # Connection string for Zillion metadata DB

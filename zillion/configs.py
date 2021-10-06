@@ -8,7 +8,6 @@ from marshmallow import (
     ValidationError,
     pre_load,
     EXCLUDE,
-    INCLUDE,
     RAISE,
 )
 
@@ -38,43 +37,6 @@ DATASOURCE_NAME_ALLOWED_CHARS_STR = (
 )
 DATASOURCE_NAME_ALLOWED_CHARS = set(DATASOURCE_NAME_ALLOWED_CHARS_STR)
 DATASOURCE_CONNECT_FUNC_DEFAULT = "zillion.datasource.url_connect"
-
-CONFIG_ENV_OVERRIDE_VARS = ["ZILLION_DB_URL"]
-
-
-def load_zillion_config():
-    """If the ZILLION_CONFIG environment variable is defined, read the YAML
-    config from this file. Environment variable substitution is supported
-    in the yaml file. Otherwise return a default config. Variables
-    in `CONFIG_ENV_OVERRIDE_VARS` also support being set/overriden via
-    environment vars, and these take precedence.
-
-    **Returns:**
-
-    (*dict*) - The zillion config dict.
-
-    """
-    zillion_config_fname = os.environ.get("ZILLION_CONFIG", None)
-    if zillion_config_fname:
-        # Load with support for filling in env var values
-        config = load_yaml(zillion_config_fname)
-    else:
-        config = dict(
-            DEBUG=False,
-            ZILLION_DB_URL="sqlite:////tmp/zillion.db",
-            ADHOC_DATASOURCE_DIRECTORY="/tmp",
-            LOAD_TABLE_CHUNK_SIZE=5000,
-            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
-            DATASOURCE_QUERY_TIMEOUT=None,
-            DATASOURCE_CONTEXTS={},
-        )
-
-    for key in CONFIG_ENV_OVERRIDE_VARS:
-        config[key] = os.environ.get(key, config[key])
-    return config
-
-
-zillion_config = load_zillion_config()
 
 
 def parse_schema_file(f, schema):

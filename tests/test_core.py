@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import os
 import pytest
 import time
 
@@ -12,6 +13,30 @@ from zillion.core import *
 from zillion.datasource import *
 from zillion.sql_utils import contains_aggregation, contains_sql_keywords
 from zillion.warehouse import Warehouse
+
+
+def test_zillion_config():
+    del os.environ["ZILLION_CONFIG"]
+    cfg = load_zillion_config()
+    assert cfg["DATASOURCE_CONTEXTS"] == {}
+
+    os.environ["ZILLION_CONFIG"] = "/etc/skeleton/config/zillion/config.yaml"
+    cfg = load_zillion_config()
+    assert cfg["DATASOURCE_CONTEXTS"] != {}
+
+    os.environ["ZILLION_LOG_LEVEL"] = "INFO"
+    cfg = load_zillion_config()
+    assert cfg["LOG_LEVEL"] == "INFO"
+
+    os.environ["ZILLION_DEBUG"] = "true"
+    cfg = load_zillion_config()
+    set_log_level_from_config(cfg)
+    assert default_logger.level == logging.DEBUG
+
+    os.environ["ZILLION_DEBUG"] = "false"
+    cfg = load_zillion_config()
+    set_log_level_from_config(cfg)
+    assert default_logger.level == logging.WARNING
 
 
 def test_wh_config_init(config):

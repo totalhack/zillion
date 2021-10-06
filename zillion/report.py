@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from stopit import async_raise
 from tlbx import is_int
 
-from zillion.configs import zillion_config, default_field_display_name
+from zillion.configs import default_field_display_name
 from zillion.core import *
 from zillion.field import (
     get_table_fields,

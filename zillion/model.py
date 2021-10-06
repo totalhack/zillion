@@ -1,8 +1,8 @@
 import sqlalchemy as sa
 
-from zillion.configs import zillion_config
+from zillion.core import zillion_config
 
-zillion_engine = sa.create_engine(zillion_config["ZILLION_DB_URL"], pool_pre_ping=True)
+zillion_engine = sa.create_engine(zillion_config["DB_URL"], pool_pre_ping=True)
 zillion_metadata = sa.MetaData()
 zillion_metadata.bind = zillion_engine
 

@@ -1,35 +1,15 @@
 from collections import defaultdict, OrderedDict
-import logging
-import os
-import sys
 import time
 
 import sqlalchemy as sa
 
-from zillion.configs import (
-    WarehouseConfigSchema,
-    load_warehouse_config,
-    is_active,
-    zillion_config,
-)
+from zillion.configs import load_warehouse_config, is_active
 from zillion.core import *
 from zillion.datasource import DataSource
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.model import zillion_engine, Warehouses
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
-
-if zillion_config["DEBUG"] or str(os.getenv("ZILLION_DEBUG", "false")).lower() in (
-    "true",
-    "1",
-):
-    default_logger.setLevel(logging.DEBUG)
-    # Make sure logs can show up in testing
-    handler = logging.StreamHandler(sys.stdout)
-    default_logger.handlers = []
-    default_logger.propagate = False
-    default_logger.addHandler(handler)
-    print("---- Zillion debug logging enabled ----")
 
 
 class Warehouse(FieldManagerMixin):
