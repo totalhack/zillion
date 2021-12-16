@@ -390,14 +390,14 @@ def load_zillion_config():
     if zillion_config_fname:
         # Load with support for filling in env var values
         config = load_yaml(zillion_config_fname)
-        for k, v in config.items():
+        for k, v in config.copy().items():
             # Hack: some older config items had ZILLION prefixed. As a workaround
             # we now always remove that prefix and map to the key without the prefix.
             if k.startswith("ZILLION_"):
                 config[k.replace("ZILLION_", "")] = v
                 del config[k]
     else:
-        info("No ZILLION_CONFIG specified, using default settings")
+        print("No ZILLION_CONFIG specified, using default settings")
         config = dict(
             DEBUG=False,
             LOG_LEVEL="WARNING",

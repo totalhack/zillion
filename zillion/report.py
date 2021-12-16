@@ -1867,7 +1867,9 @@ class Report(ExecutionStateMixin):
         # better if partial results could be returned.
         finished = {}
         timeout = zillion_config["DATASOURCE_QUERY_TIMEOUT"]
-        workers = zillion_config.get("DATASOURCE_QUERY_WORKERS", len(queries))
+        workers = min(
+            zillion_config.get("DATASOURCE_QUERY_WORKERS", len(queries)), len(queries)
+        )
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures_map = {}
