@@ -1419,7 +1419,19 @@ DATETIME_CONVERSION_FIELDS = [
         sorter="zillion.field.sort_by_value_order",
     ),
     Dimension("month_of_year", "SmallInteger", description="Numeric month of the year"),
-    Dimension("week_of_year", "SmallInteger", description="Numeric week of the year"),
+    Dimension(
+        "week_of_month",
+        "SmallInteger",
+        description="Numeric calendar week of the month",
+    ),
+    Dimension(
+        "week_of_year", "SmallInteger", description="Numeric calendar week of the year"
+    ),
+    Dimension(
+        "period_of_month_7d",
+        "SmallInteger",
+        description="Numeric 7-day period of the month",
+    ),
     Dimension("date", "String(10)", description="Date string formatted YYYY-MM-DD"),
     Dimension(
         "day_name",

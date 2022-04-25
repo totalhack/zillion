@@ -1,0 +1,33 @@
+DEBUG: false
+LOG_LEVEL: WARNING
+LOAD_TABLE_CHUNK_SIZE: 5000
+ZILLION_DB_URL: sqlite:////tmp/zillion.db
+ADHOC_DATASOURCE_DIRECTORY: /tmp
+
+DATASOURCE_QUERY_MODE: 'sequential'
+DATASOURCE_QUERY_TIMEOUT: null
+DATASOURCE_QUERY_WORKERS: 4
+
+DATASOURCE_CONTEXTS:
+  testdb2:
+    schema: testdb2
+  test_adhoc_db:
+    user: totalhack
+  mysql:
+    user: root
+    host: 127.0.0.1
+    schema: zillion_test
+  postgresql:
+    user: postgres
+    host: 127.0.0.1
+    schema: zillion_test
+
+TEST:
+  MySQLHost: 127.0.0.1
+  MySQLPort: 3306
+  MySQLUser: root
+  MySQLTestSchema: zillion_test
+  PostgreSQLHost: 127.0.0.1  
+  PostgreSQLPort: 5432
+  PostgreSQLUser: postgres
+  PostgreSQLTestSchema: zillion_test

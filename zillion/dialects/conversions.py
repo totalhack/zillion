@@ -131,16 +131,6 @@ class DialectDateConversions:
                 ["not between", [cls.f("raw_value"), cls.f("datetime_day_end", i=1)]]
             ],
         }
-        # return {
-        #     "=": [[">=", ":0"], ["<", cls.f("date_plus_day")]],
-        #     "!=": [["not between", [":0", cls.f("datetime_day_end")]]],
-        #     ">": [[">=", cls.f("date_plus_day")]],
-        #     ">=": [[">=", ":0"]],
-        #     "<": [["<", ":0"]],
-        #     "<=": [["<", cls.f("date_plus_day")]],
-        #     "between": [[">=", ":0"], ["<", cls.f("date_plus_day", i=1)]],
-        #     "not between": [["not between", [":0", cls.f("datetime_day_end", i=1)]]],
-        # }
 
     @classmethod
     def get_hour_criteria_conversions(cls):

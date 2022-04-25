@@ -18,6 +18,27 @@ GitHub.
 4.  Send a [pull request](https://help.github.com/en/articles/creating-a-pull-request-from-a-fork). Add yourself to
     [AUTHORS](https://github.com/totalhack/zillion/blob/master/AUTHORS.md).
 
+## **Development Setup**
+
+```shell
+# Clone this repo
+git clone https://github.com/totalhack/zillion.git
+cd zillion
+
+# Install dependencies
+# Note: activate your venv first if desired!
+pip install ".[dev]"
+
+# Bring up test databases -- test data will init the first time
+# You can optionally run these DBs directly on your machine instead
+docker-compose up
+
+# Run tests
+export ZILLION_CONFIG=$(pwd)/tests/test_config.yaml
+cd tests
+pytest
+```
+
 ## **Good Bug Reports**
 
 Please be aware of the following things when filing bug reports:

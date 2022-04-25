@@ -15,7 +15,7 @@ import random
 from shutil import copyfile
 
 import pymysql
-from tlbx import random_string
+from tlbx import st, random_string, shell
 import sqlalchemy as sa
 
 from zillion.configs import (
@@ -58,6 +58,28 @@ def update_zillion_config(updates):
         zillion_config.update(old)
 
 
+def mysql_data_init():
+    host = test_config["MySQLHost"]
+    port = int(test_config["MySQLPort"])
+    user = test_config["MySQLUser"]
+    cmd = f"mysql -u {user} -h {host} -P {port}"
+    cmd += " < setup/zillion_test.mysql.sql"
+    res = shell(cmd)
+    assert res.returncode == 0, f"Error initializing MySQL: {res.stderr}"
+
+
+def postgresql_data_init():
+    host = test_config["PostgreSQLHost"]
+    port = int(test_config["PostgreSQLPort"])
+    user = test_config["PostgreSQLUser"]
+    schema = test_config["PostgreSQLTestSchema"]
+    cmd = (
+        f"psql -U {user} -h {host} -p {port} {schema} < setup/zillion_test.postgres.sql"
+    )
+    res = shell(cmd)
+    assert res.returncode == 0, f"Error initializing PostgreSQL: {res.stderr}"
+
+
 def get_pymysql_conn():
     host = test_config["MySQLHost"]
     port = int(test_config["MySQLPort"])
@@ -92,11 +114,27 @@ def get_sqlalchemy_mysql_engine():
     return engine
 
 
-def get_sqlalchemy_conn():
+def get_sqlalchemy_mysql_conn():
     engine = get_sqlalchemy_mysql_engine()
     return engine.connect()
 
 
+def get_sqlalchemy_postgresql_engine():
+    host = test_config["PostgreSQLHost"]
+    port = int(test_config["PostgreSQLPort"])
+    user = test_config["PostgreSQLUser"]
+    schema = test_config["PostgreSQLTestSchema"]
+    conn_str = "postgresql+psycopg2://%(user)s@%(host)s:%(port)s/%(schema)s" % locals()
+    engine = sa.create_engine(conn_str)
+    return engine
+
+
+def get_sqlalchemy_postgresql_conn():
+    engine = get_sqlalchemy_postgresql_engine()
+    return engine.connect()
+
+
+# NOTE: defaults to mysql, should be cleaned up
 def get_sql(sql):
     conn = get_pymysql_conn()
     try:
@@ -244,7 +282,9 @@ EXPECTED_DATE_CONVERSION_VALUES = [
     ("campaign_month", "2019-03"),
     ("campaign_month_name", "March"),
     ("campaign_month_of_year", 3),
-    ("campaign_week_of_year", 12),
+    ("campaign_week_of_year", 13),
+    ("campaign_week_of_month", 5),
+    ("campaign_period_of_month_7d", 4),
     ("campaign_date", "2019-03-26"),
     ("campaign_day_name", "Tuesday"),
     ("campaign_day_of_week", 2),

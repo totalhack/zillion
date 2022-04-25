@@ -1076,6 +1076,7 @@ def test_report_sqlite_date_conversions(wh):
     row = df.iloc[0]
     info(df)
     for field, value in EXPECTED_DATE_CONVERSION_VALUES:
+        print(f"Checking {field} = {value}")
         assert row[field] == value
 
 

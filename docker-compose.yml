@@ -12,7 +12,7 @@ services:
       - MYSQL_ALLOW_EMPTY_PASSWORD=1
       - TZ=America/New_York
     volumes:
-      - test-db-data:/var/lib/mysql/      
+      - test-mysql-data:/var/lib/mysql/
 
   postgres:
     image: postgres:12
@@ -26,7 +26,8 @@ services:
       - POSTGRES_HOST_AUTH_METHOD=trust      
       - POSTGRES_DB=zillion_test
     volumes:
-      - test-db-data:/var/lib/postgresql/data/pgdata_test
-      
+      - test-pg-data:/var/lib/postgresql/data/pgdata_test
+
 volumes:
-  test-db-data:
+  test-pg-data:
+  test-mysql-data:

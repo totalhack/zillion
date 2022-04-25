@@ -19,6 +19,38 @@ def pytest_configure(config):
         setattr(config.option, "markexpr", "not longrun")
 
 
+@pytest.fixture(scope="session")
+def mysql_setup():
+    conn = get_sqlalchemy_mysql_conn()
+    try:
+        conn.execute("select 1 from zillion_test.partners")
+    except Exception as e:
+        if not "doesn't exist" in str(e):
+            raise
+        print("Doing MySQL database setup...")
+        mysql_data_init()
+    finally:
+        conn.close()
+
+
+@pytest.fixture(scope="session")
+def postgresql_setup():
+    conn = get_sqlalchemy_postgresql_conn()
+    res = conn.execute(
+        "SELECT EXISTS ( "
+        "SELECT FROM "
+        " pg_tables "
+        "WHERE "
+        "schemaname = 'zillion_test' AND "
+        "tablename  = 'partners' "
+        ")"
+    )
+    res = res.fetchone()
+    if not res or res[0] == False:
+        print("Doing PostgreSQL database setup...")
+        postgresql_data_init()
+
+
 @pytest.fixture(scope="function")
 def config():
     return copy.deepcopy(TEST_WH_CONFIG)
@@ -59,7 +91,7 @@ def adhoc_ds(config):
 
 
 @pytest.fixture(scope="function")
-def mysql_ds_config():
+def mysql_ds_config(mysql_setup):
     return load_datasource_config("test_mysql_ds_config.json")
 
 
@@ -74,7 +106,7 @@ def mysql_wh(mysql_ds):
 
 
 @pytest.fixture(scope="function")
-def postgresql_ds_config():
+def postgresql_ds_config(postgresql_setup):
     return load_datasource_config("test_postgresql_ds_config.json")
 
 
@@ -99,8 +131,8 @@ def pymysql_conn():
 
 
 @pytest.fixture
-def sqlalchemy_conn():
-    conn = get_sqlalchemy_conn()
+def sqlalchemy_mysql_conn():
+    conn = get_sqlalchemy_mysql_conn()
     yield conn
     try:
         conn.close()
