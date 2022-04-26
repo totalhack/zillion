@@ -1,5 +1,6 @@
 {
     "connect": "mysql+pymysql://{user}@{host}/{schema}",
+    "prefix_with": "STRAIGHT_JOIN",
     "metrics": [
         {
             "name": "clicks",
@@ -17,76 +18,105 @@
         "zillion_test.partners": {
             "type": "dimension",
             "create_fields": true,
-            "primary_key": ["partner_id"],
+            "primary_key": [
+                "partner_id"
+            ],
             "columns": {
                 "id": {
-                    "fields": ["partner_id"]
+                    "fields": [
+                        "partner_id"
+                    ]
                 },
                 "name": {
-                    "fields": ["partner_name"]
+                    "fields": [
+                        "partner_name"
+                    ]
                 }
             }
         },
-        
         "zillion_test.campaigns": {
             "type": "dimension",
             "create_fields": true,
             "parent": "zillion_test.partners",
-            "primary_key": ["campaign_id"],
+            "primary_key": [
+                "campaign_id"
+            ],
             "columns": {
                 "id": {
-                    "fields": ["campaign_id"]
+                    "fields": [
+                        "campaign_id"
+                    ]
                 },
                 "name": {
-                    "fields": ["campaign_name"]
+                    "fields": [
+                        "campaign_name"
+                    ]
                 },
                 "partner_id": {
-                    "fields": ["partner_id"]
+                    "fields": [
+                        "partner_id"
+                    ]
                 },
                 "created_at": {
-                    "fields": ["campaign_created_at"],
+                    "fields": [
+                        "campaign_created_at"
+                    ],
                     "allow_type_conversions": true,
                     "type_conversion_prefix": "campaign_"
                 }
             }
         },
-
         "zillion_test.campaign_cost": {
             "type": "metric",
             "create_fields": true,
-            "primary_key": ["campaign_id"],
+            "prefix_with": "STRAIGHT_JOIN",
+            "primary_key": [
+                "campaign_id"
+            ],
             "columns": {
                 "campaign_id": {
-                    "fields": ["campaign_id"]
+                    "fields": [
+                        "campaign_id"
+                    ]
                 },
                 "cost": {
                     "fields": [
                         "cost",
-                        {"name":"benchmark", "ds_formula": "benchmark(2000000, md5('when will it end?'))"}
+                        {
+                            "name": "benchmark",
+                            "ds_formula": "benchmark(2000000, md5('when will it end?'))"
+                        }
                     ]
                 },
                 "clicks": {
-                    "fields": ["clicks"]
+                    "fields": [
+                        "clicks"
+                    ]
                 }
             }
         },
-
         "zillion_test2.campaign_transactions": {
             "type": "metric",
             "create_fields": true,
-            "primary_key": ["transaction_id"],
+            "primary_key": [
+                "transaction_id"
+            ],
             "columns": {
                 "id": {
                     "fields": [
                         "transaction_id",
-                        {"name":"transactions", "ds_formula": "COUNT(DISTINCT campaign_transactions.id)"}
+                        {
+                            "name": "transactions",
+                            "ds_formula": "COUNT(DISTINCT campaign_transactions.id)"
+                        }
                     ]
                 },
                 "campaign_id": {
-                    "fields": ["campaign_id"]
+                    "fields": [
+                        "campaign_id"
+                    ]
                 }
             }
         }
-
     }
 }

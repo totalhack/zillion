@@ -2,23 +2,23 @@
 # Module zillion.report
 
 
-## [BaseCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L685-L803)
+## [BaseCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L709-L827)
 
 ::: zillion.report.BaseCombinedResult
     :docstring:
     :members: add_warning clean_up create_table get_conn get_cursor get_final_result load_table
 
 
-## [DataSourceQuery](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L165-L625)
+## [DataSourceQuery](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L165-L649)
 
 *Bases*: zillion.report.ExecutionStateMixin, tlbx.logging_utils.PrintMixin
 
 ::: zillion.report.DataSourceQuery
     :docstring:
-    :members: add_metric covers_field covers_metric execute get_conn get_datasource get_datasource_name get_dialect_name kill
+    :members: add_metric covers_field covers_metric execute get_conn get_datasource get_datasource_name get_dialect_name get_tables kill
 
 
-## [DataSourceQueryResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L666-L682)
+## [DataSourceQueryResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L690-L706)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -27,7 +27,7 @@
     
 
 
-## [DataSourceQuerySummary](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L628-L663)
+## [DataSourceQuerySummary](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L652-L687)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -43,7 +43,7 @@
     
 
 
-## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1364-L2162)
+## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1388-L2186)
 
 *Bases*: zillion.report.ExecutionStateMixin
 
@@ -52,7 +52,7 @@
     :members: delete execute from_params get_dimension_grain get_grain get_json get_params kill load load_warehouse_id_for_report save
 
 
-## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L2165-L2248)
+## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L2189-L2272)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -61,7 +61,7 @@
     
 
 
-## [SQLiteMemoryCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L806-L1361)
+## [SQLiteMemoryCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L830-L1385)
 
 *Bases*: zillion.report.BaseCombinedResult
 

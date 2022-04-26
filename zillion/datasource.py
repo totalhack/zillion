@@ -479,6 +479,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         self._metrics = {}
         self._dimensions = {}
         self._graph = None
+        self.prefix_with = None
         reflect = False
 
         if config:
@@ -639,6 +640,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         if not config.get("skip_conversion_fields", False):
             self._add_conversion_fields()
+
+        self.prefix_with = config.get("prefix_with", None)
 
         self._populate_fields(config)
 

@@ -545,6 +545,9 @@ class TableInfoSchema(BaseSchema):
     lower numbers are considered higher priority. Tables at the same priority level
     use the length of their TableSet for the given query as the tie-breaker.
     See `Warehouse._choose_best_table_set`.
+    * **prefix_with** - (*str, optional*) prefix all queries against this
+    Table using SQLAlchemy's prefix_with function. If a query contains multiple tables
+    with prefix_with set, the first in the join takes precedence.
 
     """
 
@@ -557,6 +560,7 @@ class TableInfoSchema(BaseSchema):
     primary_key = mfields.List(mfields.Str, required=True)
     incomplete_dimensions = mfields.List(mfields.Str, default=None, missing=None)
     priority = mfields.Integer(default=1, missing=1)
+    prefix_with = mfields.Str(default=None, missing=None)
 
 
 class TableConfigSchema(TableInfoSchema):
@@ -796,6 +800,9 @@ class DataSourceConfigSchema(BaseSchema):
     DataSourceConnectField for more details on passing a dict.
     * **skip_conversion_fields** - (*bool, optional*) Don't add any conversion
     fields when applying a config
+    * **prefix_with** - (*str, optional*) prefix all queries against this
+    DataSource using SQLAlchemy's prefix_with function. The table-level prefix_with
+    setting overrides this setting.
     * **metrics** - (*marshmallow field, optional*) A list of MetricConfigSchema
     * **dimensions** - (*marshmallow field, optional*) A list of
     DimensionConfigSchema
@@ -806,6 +813,7 @@ class DataSourceConfigSchema(BaseSchema):
 
     connect = DataSourceConnectField(default=None, missing=None)
     skip_conversion_fields = mfields.Boolean(default=False, missing=False)
+    prefix_with = mfields.Str(default=None, missing=None)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
     tables = mfields.Dict(

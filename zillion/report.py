@@ -14,7 +14,7 @@ from pymysql import escape_string
 import pandas as pd
 import sqlalchemy as sa
 from stopit import async_raise
-from tlbx import is_int
+from tlbx import is_int, st
 
 from zillion.configs import default_field_display_name
 from zillion.core import *
@@ -198,6 +198,13 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
     def get_datasource_name(self):
         """Get the name of the datasource used in this query"""
         return self.get_datasource().name
+
+    def get_tables(self):
+        """Get a reference to the tables used in this query"""
+        ds = self.get_datasource()
+        if not self.table_set.join:
+            return [self.table_set.ds_table]
+        return [ds.get_table(name) for name in self.table_set.join.table_names]
 
     def get_dialect_name(self):
         """Get the name of the datasource dialect"""
@@ -392,6 +399,22 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         )
         return ds.metadata.bind
 
+    def _add_prefix_with(self, select):
+        """Prefix the query if any tables or the datasource says so"""
+        prefix_with = None
+        for table in self.get_tables():
+            if table.zillion.prefix_with:
+                # First table takes precedence
+                prefix_with = table.zillion.prefix_with
+                dbg(f"Found prefix {prefix_with} from table {table.name}")
+                break
+
+        prefix_with = prefix_with or self.get_datasource().prefix_with
+        if prefix_with:
+            dbg(f"Prefixing query with: {prefix_with}")
+            select = select.prefix_with(prefix_with)
+        return select
+
     def _build_select(self):
         """Build the select for this datasource query"""
         # https://docs.sqlalchemy.org/en/latest/core/selectable.html
@@ -408,6 +431,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
         select = self._add_where(select)
         select = self._add_group_by(select)
+        select = self._add_prefix_with(select)
         return select
 
     def _get_field(self, name):
