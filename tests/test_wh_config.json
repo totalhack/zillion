@@ -136,6 +136,12 @@
             ]
         },
         {
+            "name": "revenue_ifnull",
+            "type": "numeric(10,2)",
+            "aggregation": "sum",
+            "ifnull": 0
+        },
+        {
             "name": "revenue_per_lead_required_grain",
             "aggregation": "mean",
             "formula": "1.0*{revenue}/{leads}",
@@ -351,6 +357,7 @@
                                 "revenue_pct_diff",
                                 "revenue_mean",
                                 "revenue_required_grain",
+                                "revenue_ifnull",
                                 {
                                     "name": "revenue_ds",
                                     "ds_formula": "IFNULL(sales.revenue, 0)"

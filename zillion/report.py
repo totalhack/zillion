@@ -764,6 +764,10 @@ class BaseCombinedResult:
             warn(msg)
         self.warnings.append(msg)
 
+    def ifnull_clause(self, column_clause, ifnull_value):
+        """Produce an ifnull clause specific to this database dialect"""
+        raise NotImplementedError
+
     def get_final_result(
         self,
         metrics,
@@ -878,6 +882,10 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 self.cursor.executemany(insert_sql, values)
             self.conn.commit()
 
+    def ifnull_clause(self, column_clause, ifnull_value):
+        """Produce an ifnull clause specific to this database dialect"""
+        return f"IFNULL({column_clause}, {ifnull_value})"
+
     def get_final_result(
         self,
         metrics,
@@ -961,7 +969,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                     "%s as %s"
                     % (
                         metric.get_final_select_clause(
-                            self.warehouse, adhoc_fms=self.adhoc_datasources
+                            self.warehouse,
+                            adhoc_fms=self.adhoc_datasources,
+                            ifnull_clause=self.ifnull_clause,
                         ),
                         metric.name,
                     )
@@ -976,7 +986,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                         "%s as %s"
                         % (
                             weighting_metric.get_final_select_clause(
-                                self.warehouse, adhoc_fms=self.adhoc_datasources
+                                self.warehouse,
+                                adhoc_fms=self.adhoc_datasources,
+                                ifnull_clause=self.ifnull_clause,
                             ),
                             wm_name,
                         )

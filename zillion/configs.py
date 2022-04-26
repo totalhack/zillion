@@ -666,6 +666,8 @@ class MetricConfigSchemaMixin:
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
+    * **ifnull** - (*float, optional*) A numeric value to use in place of NULLs
+    in the Combined Layer query.
 
     """
 
@@ -691,9 +693,16 @@ class MetricConfigSchemaMixin:
 
 
 class MetricConfigSchema(FieldConfigSchema, MetricConfigSchemaMixin):
-    """The schema of a metric configuration"""
+    """The schema of a metric configuration
 
-    pass
+    **Attributes:**
+
+    * **ifnull** - (*float, optional*) A numeric value to use in place of NULLs
+    in the Combined Layer query.
+
+    """
+
+    ifnull = mfields.Float(default=None, missing=None)
 
 
 class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixin):

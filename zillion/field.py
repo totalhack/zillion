@@ -195,6 +195,8 @@ class Metric(Field):
     * **required_grain** - (*list of str, optional*) If specified, a list of
     dimensions that must be present in the dimension grain of any report that
     aims to include this metric.
+    * **ifnull** - (*float, optional*) A numeric value to use in place of NULLs
+    in the Combined Layer query.
     * **kwargs** - kwargs passed to super class
 
     """
@@ -214,6 +216,7 @@ class Metric(Field):
         weighting_metric=None,
         technical=None,
         required_grain=None,
+        ifnull=None,
         **kwargs,
     ):
         if weighting_metric:
@@ -237,6 +240,7 @@ class Metric(Field):
             weighting_metric=weighting_metric,
             technical=technical,
             required_grain=required_grain,
+            ifnull=ifnull,
             **kwargs,
         )
 
@@ -322,8 +326,10 @@ class Metric(Field):
             return expr.label(self.name)
         return expr
 
-    def get_final_select_clause(self, *args, **kwargs):
+    def get_final_select_clause(self, *args, ifnull_clause=None, **kwargs):
         """The sql clause used when selecting at the combined query layer"""
+        if self.ifnull is not None:
+            return ifnull_clause(self.name, self.ifnull)
         return self.name
 
 
@@ -523,7 +529,7 @@ class FormulaField(Field):
         """Raise an error if called on FormulaFields"""
         raise ZillionException("Formula-based Fields do not support get_ds_expression")
 
-    def get_final_select_clause(self, warehouse, adhoc_fms=None):
+    def get_final_select_clause(self, warehouse, adhoc_fms=None, **kwargs):
         """Get a SQL select clause for this formula
 
         **Parameters:**

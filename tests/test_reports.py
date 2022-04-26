@@ -836,6 +836,12 @@ def test_report_partial_grain(wh):
         result = wh_execute(wh, locals())
 
 
+def test_report_metric_ifnull(wh):
+    metrics = ["revenue", "revenue_ifnull"]
+    dimensions = ["partner_name"]
+    result = wh_execute(wh, locals())
+
+
 def test_report_weighted_formula_metric(wh):
     metrics = ["rpl_weighted", "rpl", "main_sales_quantity", "revenue", "leads"]
     dimensions = ["partner_name"]
