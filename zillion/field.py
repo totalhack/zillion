@@ -1,8 +1,6 @@
-import pandas as pd
 import sqlalchemy as sa
 
 from zillion.configs import (
-    EXCLUDE,
     ConfigMixin,
     FieldConfigSchema,
     FormulaFieldConfigSchema,
@@ -12,7 +10,6 @@ from zillion.configs import (
     AdHocMetricSchema,
     AdHocFieldSchema,
     create_technical,
-    is_valid_field_name,
     is_active,
     default_field_display_name,
 )
@@ -564,28 +561,26 @@ class FormulaField(Field):
             )
         for field in fields:
             warehouse.get_field(field, adhoc_fms=adhoc_fms)
+        return fields
 
 
 class FormulaDimension(FormulaField):
-    """A dimension defined by a formula
-
-    **Parameters:**
-
-    * **name** - (*str*) The name of the dimension
-    * **formula** - (*str*) The formula used to calculate the dimension
-    * **kwargs** - kwargs passed to super class
-
-    """
+    """A dimension defined by a formula"""
 
     field_type = FieldTypes.DIMENSION
 
-    def __init__(self, name, formula, **kwargs):
-        # super(FormulaDimension, self).__init__(
-        #     name,
-        #     formula,
-        #     **kwargs
-        # )
-        raise InvalidFieldException("FormulaDimensions are not currently supported")
+    def _check_formula_fields(self, warehouse, adhoc_fms=None):
+        """Confirm a valid dimension formula"""
+        fields = super(FormulaDimension, self)._check_formula_fields(
+            warehouse, adhoc_fms=adhoc_fms
+        )
+        for field in fields:
+            if warehouse.has_metric(field, adhoc_fms=adhoc_fms):
+                raise InvalidFieldException(
+                    "FormulaDimension can not contain metrics: field:%s formula:%s"
+                    % (self.name, self.formula)
+                )
+        return fields
 
 
 class FormulaMetric(FormulaField):
@@ -672,7 +667,7 @@ class FormulaMetric(FormulaField):
 
 
 class AdHocField(FormulaField):
-    """An AdHoc representation of a field"""
+    """An ad hoc representation of a field"""
 
     @classmethod
     def create(cls, obj):
@@ -683,7 +678,7 @@ class AdHocField(FormulaField):
 
 
 class AdHocMetric(FormulaMetric):
-    """An AdHoc representation of a Metric
+    """An ad hoc representation of a Metric
 
     **Parameters:**
 
@@ -754,10 +749,17 @@ class AdHocMetric(FormulaMetric):
         )
 
 
-class AdHocDimension(AdHocField):
-    """An AdHoc representation of a Dimension"""
+class AdHocDimension(FormulaDimension):
+    """An ad hoc representation of a Dimension"""
 
     field_type = FieldTypes.DIMENSION
+
+    @classmethod
+    def create(cls, obj):
+        """Copy this AdHocDimension"""
+        schema = AdHocFieldSchema()
+        field_def = schema.load(obj)
+        return cls(field_def["name"], field_def["formula"])
 
 
 def create_metric(metric_def):
@@ -765,7 +767,7 @@ def create_metric(metric_def):
 
     **Parameters:**
 
-    * **metric_def** - (*dict*) A dict of params to init a metric. If a formula
+    * **metric_def** - (*dict*) A dict of params to init a Metric. If a formula
     param is present a FormulaMetric will be created.
 
     """
@@ -781,12 +783,15 @@ def create_dimension(dim_def):
 
     **Parameters:**
 
-    * **dim_def** - (*dict*) A dict of params to init a Dimension
+    * **dim_def** - (*dict*) A dict of params to init a Dimension. If a formula
+    param is present a FormulaDimension will be created.
 
     """
     if "formula" in dim_def:
-        raise InvalidFieldException("FormulaDimensions are not currently supported")
-    return Dimension.from_config(dim_def)
+        dimension = FormulaDimension.from_config(dim_def)
+    else:
+        dimension = Dimension.from_config(dim_def)
+    return dimension
 
 
 class FieldManagerMixin:
@@ -905,12 +910,19 @@ class FieldManagerMixin:
             raise InvalidFieldException("Invalid dimension name: %s" % obj)
 
         if isinstance(obj, dict):
-            raise InvalidFieldException("AdHocDimensions are not currently supported")
+            dim = AdHocDimension.create(obj)
+            raiseif(
+                self.has_dimension(dim.name, adhoc_fms=adhoc_fms),
+                "AdHocDimension can not use name of an existing dimension: %s"
+                % dim.name,
+            )
+            dim._check_formula_fields(self, adhoc_fms=adhoc_fms)
+            return dim
 
         raise InvalidFieldException("Invalid dimension object: %s" % obj)
 
     def get_field(self, obj, adhoc_fms=None):
-        """Get a refence to a field on this FieldManager"""
+        """Get a reference to a field on this FieldManager"""
         if isinstance(obj, str):
             if self.has_metric(obj, adhoc_fms=adhoc_fms):
                 return self.get_metric(obj, adhoc_fms=adhoc_fms)
@@ -919,7 +931,13 @@ class FieldManagerMixin:
             raise InvalidFieldException("Invalid field name: %s" % obj)
 
         if isinstance(obj, dict):
-            raise InvalidFieldException("AdHocFields are not currently supported")
+            field = AdHocField.create(obj)
+            raiseif(
+                self.has_field(field.name, adhoc_fms=adhoc_fms),
+                "AdHocField can not use name of an existing field: %s" % field.name,
+            )
+            field._check_formula_fields(self, adhoc_fms=adhoc_fms)
+            return field
 
         raise InvalidFieldException("Invalid field object: %s" % obj)
 
@@ -1088,17 +1106,15 @@ class FieldManagerMixin:
                 dim = create_dimension(dim_def)
             else:
                 raiseifnot(
-                    isinstance(dim_def, Dimension),
+                    isinstance(dim_def, (Dimension, FormulaDimension)),
                     "Dimension definition must be a dict-like object or a Dimension object",
                 )
                 dim = dim_def
 
             if isinstance(dim, FormulaDimension):
-                # formula_dims.append(dim) # These get added later
-                raise InvalidFieldException(
-                    "FormulaDimensions are not currently supported"
-                )
-            self.add_dimension(dim, force=force)
+                formula_dims.append(dim)  # These get added later
+            else:
+                self.add_dimension(dim, force=force)
 
         # Defer formulas so params can be checked against existing fields
         for metric in formula_metrics:
@@ -1238,7 +1254,7 @@ def table_field_allows_grain(table, field, grain):
 
     * **table** - (*Table*) SQLAlchemy table object
     * **field** - (*str*) The name of a field in the table
-    * **grain** - (*list of str*) A list of dimenssions that form the target
+    * **grain** - (*list of str*) A list of dimensions that form the target
     grain
 
     """

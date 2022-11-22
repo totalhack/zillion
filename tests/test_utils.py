@@ -45,6 +45,7 @@ REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/totalhack/zillion/master/
 test_config = zillion_config["TEST"]
 
 logging.getLogger().setLevel(logging.INFO)
+default_logger.setLevel(logging.INFO)
 
 
 @contextmanager

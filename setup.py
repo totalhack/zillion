@@ -42,7 +42,8 @@ for repo in git_requires:
 
 
 extras_require = {
-    "postgres": ["psycopg2==2.8.5"],
+    "mysql": ["pymysql~=0.9.3"],
+    "postgres": ["psycopg2-binary==2.9.5"],
     "dev": [
         "black",
         "pre-commit",
@@ -55,7 +56,8 @@ extras_require = {
         "mkdocs-material-extensions==1.0",
         "mkdocs-minify-plugin==0.3.0",
         "mkautodoc==0.1.0",
-        "psycopg2==2.8.5",
+        "pymysql~=0.9.3",
+        "psycopg2-binary==2.9.5",
     ],
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))

@@ -19,6 +19,7 @@ from tlbx import is_int, st
 from zillion.configs import default_field_display_name
 from zillion.core import *
 from zillion.field import (
+    FormulaDimension,
     get_table_fields,
     get_table_field_column,
     FormulaField,
@@ -768,6 +769,10 @@ class BaseCombinedResult:
         """Produce an ifnull clause specific to this database dialect"""
         raise NotImplementedError
 
+    def get_metric_clause(self, metric, has_formula_dims):
+        """Get a select clause for a metric including aggregation"""
+        raise NotImplementedError
+
     def get_final_result(
         self,
         metrics,
@@ -886,6 +891,47 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         """Produce an ifnull clause specific to this database dialect"""
         return f"IFNULL({column_clause}, {ifnull_value})"
 
+    def get_metric_clause(self, metric, has_formula_dims):
+        """Get a select clause for a metric including aggregation"""
+        aggr = metric.aggregation.lower()
+
+        clause = metric.get_final_select_clause(
+            self.warehouse,
+            adhoc_fms=self.adhoc_datasources,
+            ifnull_clause=self.ifnull_clause,
+        )
+
+        if aggr == AggregationTypes.SUM:
+            return f"SUM(%s) as %s" % (clause, metric.name)
+        if aggr == AggregationTypes.MEAN:
+            if metric.weighting_metric:
+                w_metrics = self.warehouse.get_metric(metric.weighting_metric)
+                w_clause = w_metrics.get_final_select_clause(
+                    self.warehouse,
+                    adhoc_fms=self.adhoc_datasources,
+                    ifnull_clause=self.ifnull_clause,
+                )
+                return f"SUM(1.0* %s * %s)/SUM(%s) as %s" % (
+                    clause,
+                    w_clause,
+                    w_clause,
+                    metric.name,
+                )
+            else:
+                return f"AVG(%s) as %s" % (clause, metric.name)
+        if aggr == AggregationTypes.MIN:
+            return f"MIN(%s) as %s" % (clause, metric.name)
+        if aggr == AggregationTypes.MAX:
+            return f"MAX(%s) as %s" % (clause, metric.name)
+        if aggr in (AggregationTypes.COUNT, AggregationTypes.COUNT_DISTINCT):
+            if has_formula_dims and aggr == AggregationTypes.COUNT_DISTINCT:
+                self.add_warning(
+                    f"COUNT DISTINCT metric {metric.name} may not aggregate correctly due to formula dimensions"
+                )
+            return f"SUM(%s) as %s" % (clause, metric.name)
+
+        raise AssertionError(f"Can not translate aggregation type: {aggr}")
+
     def get_final_result(
         self,
         metrics,
@@ -934,8 +980,11 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         columns = []
         dimension_aliases = []
         custom_sorts = []
+        formula_dims = []
 
         for dim in dimensions.values():
+            if isinstance(dim, FormulaDimension):
+                formula_dims.append(dim)
             columns.append(
                 "%s as %s"
                 % (
@@ -946,7 +995,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 )
             )
             dimension_aliases.append(dim.name)
-            if dim.sorter:
+            if getattr(dim, "sorter", None):
                 custom_sorts.append((dim.name, OrderByTypes.ASC))
 
         if custom_sorts and not order_by:
@@ -965,17 +1014,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                     technicals[metric.name] = metric.technical
                 if metric.rounding is not None:
                     rounding[metric.name] = metric.rounding
-                columns.append(
-                    "%s as %s"
-                    % (
-                        metric.get_final_select_clause(
-                            self.warehouse,
-                            adhoc_fms=self.adhoc_datasources,
-                            ifnull_clause=self.ifnull_clause,
-                        ),
-                        metric.name,
-                    )
-                )
+                columns.append(self.get_metric_clause(metric, formula_dims))
                 added_metrics.add(metric.name)
 
             if metric.weighting_metric:
@@ -983,21 +1022,13 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 wm_name = weighting_metric.name
                 if wm_name not in added_metrics:
                     columns.append(
-                        "%s as %s"
-                        % (
-                            weighting_metric.get_final_select_clause(
-                                self.warehouse,
-                                adhoc_fms=self.adhoc_datasources,
-                                ifnull_clause=self.ifnull_clause,
-                            ),
-                            wm_name,
-                        )
+                        self.get_metric_clause(weighting_metric, formula_dims)
                     )
                     added_metrics.add(wm_name)
                     if wm_name not in metrics:
                         only_weighted_metrics.add(wm_name)
 
-        sql = self._get_final_select_sql(columns, dimension_aliases)
+        sql = self._get_final_select_sql(columns, dimension_aliases, formula_dims)
 
         df = pd.read_sql(sql, self.conn, index_col=dimension_aliases or None)
 
@@ -1067,7 +1098,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         qr = self.cursor.execute("SELECT * FROM %s" % self.table_name)
         return [OrderedDict(row) for row in qr.fetchall()]
 
-    def _get_final_select_sql(self, columns, dimension_aliases):
+    def _get_final_select_sql(self, columns, dimension_aliases, formula_dims):
         """Create the final select SQL statement
 
         **Parameters:**
@@ -1082,11 +1113,21 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         """
         columns_clause = ", ".join(columns)
         order_clause = "1"
+        group_by_clause = "row_hash"
+
         if dimension_aliases:
+            has_extra_dims = len(self.ds_dimensions) != len(dimension_aliases)
             order_clause = ", ".join(["%s ASC" % d for d in dimension_aliases])
-        sql = "SELECT %s FROM %s GROUP BY row_hash ORDER BY %s" % (
+            if formula_dims or has_extra_dims:
+                # Formula dims can change the grouping at the combined query
+                # level so we need to explicitly group by requested dimensions
+                # instead of the row hash which could be more granular.
+                group_by_clause = ", ".join(dimension_aliases)
+
+        sql = "SELECT %s FROM %s GROUP BY %s ORDER BY %s" % (
             columns_clause,
             self.table_name,
+            group_by_clause,
             order_clause,
         )
         info("\n" + sqlformat(sql))
@@ -1846,14 +1887,6 @@ class Report(ExecutionStateMixin):
             elif self.warehouse.has_dimension(
                 raw_field, adhoc_fms=self.adhoc_datasources
             ):
-                if raw_field not in self.dimensions:
-                    raise ReportException(
-                        (
-                            "Formula for field %s uses dimension %s that is not included in "
-                            "requested report dimensions"
-                        )
-                        % (field.name, raw_field)
-                    )
                 self.ds_dimensions[raw_field] = self.warehouse.get_dimension(
                     raw_field, adhoc_fms=self.adhoc_datasources
                 )

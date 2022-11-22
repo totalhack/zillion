@@ -711,8 +711,8 @@ class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixi
     pass
 
 
-class DimensionConfigSchema(FieldConfigSchema):
-    """The schema of a dimension configuration
+class DimensionConfigSchemaMixin:
+    """Common attributes and logic for dimension configs
 
     **Attributes:**
 
@@ -732,6 +732,20 @@ class DimensionConfigSchema(FieldConfigSchema):
 
     values = DimensionValuesField(default=None, missing=None)
     sorter = mfields.Str(default=None, missing=None)
+
+
+class DimensionConfigSchema(FieldConfigSchema, DimensionConfigSchemaMixin):
+    """The schema of a dimension configuration"""
+
+    pass
+
+
+class FormulaDimensionConfigSchema(
+    FormulaFieldConfigSchema, DimensionConfigSchemaMixin
+):
+    """The schema of a formula dimension configuration"""
+
+    pass
 
 
 class AdHocFieldSchema(FormulaFieldConfigSchema):
@@ -824,7 +838,9 @@ class DataSourceConfigSchema(BaseSchema):
     skip_conversion_fields = mfields.Boolean(default=False, missing=False)
     prefix_with = mfields.Str(default=None, missing=None)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
-    dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
+    dimensions = mfields.List(
+        PolyNested([DimensionConfigSchema, FormulaDimensionConfigSchema])
+    )
     tables = mfields.Dict(
         keys=TableNameField(), values=mfields.Nested(TableConfigSchema)
     )
@@ -872,7 +888,9 @@ class WarehouseConfigSchema(BaseSchema):
 
     includes = mfields.List(mfields.Str(), default=None, missing=None)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
-    dimensions = mfields.List(mfields.Nested(DimensionConfigSchema))
+    dimensions = mfields.List(
+        PolyNested([DimensionConfigSchema, FormulaDimensionConfigSchema])
+    )
     datasources = mfields.Dict(
         keys=mfields.Str(), values=DataSourceConfigField, required=True
     )

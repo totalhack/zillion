@@ -170,6 +170,14 @@
                 "Partner A"
             ],
             "sorter": "zillion.field.sort_by_value_order"
+        },
+        {
+            "name": "partner_name_formula",
+            "formula": "IFNULL({partner_name}, 'test')"
+        },
+        {
+            "name": "partner_name_formula_nested",
+            "formula": "{partner_name_formula}"
         }
     ],
     "datasources": {

@@ -765,15 +765,16 @@ def test_report_metric_formula_with_dim(config):
     config["metrics"].append(
         {
             "name": "revenue_formula_with_dim",
-            "aggregation": AggregationTypes.MEAN,
+            "aggregation": AggregationTypes.SUM,
             "formula": "1.0*{revenue}*IFNULL({campaign_name}, 0)",
         }
     )
     wh = Warehouse(config=config)
     metrics = ["revenue", "revenue_formula_with_dim"]
     dimensions = ["partner_name"]
-    with pytest.raises(ReportException):
-        result = wh_execute(wh, locals())
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
 
 
 def test_report_only_dimensions_ds_formula(wh):
@@ -796,6 +797,10 @@ def test_report_metric_required_grain(wh):
     dimensions = ["campaign_id"]
     with pytest.raises(UnsupportedGrainException):
         result = wh_execute(wh, locals())
+
+    dimensions = ["campaign_name"]
+    result = wh_execute(wh, locals())
+    assert result
 
 
 def test_report_metric_formula_required_grain(wh):
@@ -1057,6 +1062,87 @@ def test_report_adhoc_weighting(wh):
     ]
     dimensions = ["partner_name"]
     rollup = RollupTypes.TOTALS
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_adhoc_dimension(wh):
+    # Basic Ad Hoc
+    metrics = ["revenue", "leads", "rpl_lead_weighted"]
+
+    dimensions = [
+        {"name": "partner_is_a", "formula": "({partner_name} = 'Partner A')"},
+    ]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+    # Ad Hoc with metrics - not allowed
+    dimensions = [
+        {"name": "adhoc_dim1_with_metric", "formula": "({leads} > 10)"},
+    ]
+    with pytest.raises(InvalidFieldException):
+        result = wh_execute(wh, locals())
+
+    # Metric validation vs baseline
+
+    dimensions = ["partner_name", "campaign_name"]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    partner_a_rev = result.df.loc["Partner A"].sum()["revenue"]
+    # Note: This happens to have an even number of leads so a simple mean works
+    partner_a_rpl = result.df.loc["Partner A"].mean()["rpl_lead_weighted"]
+
+    # Basic comparisons
+
+    dimensions = [
+        {"name": "partner_is_a", "formula": "({partner_name} = 'Partner A')"},
+    ]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.loc[1]["revenue"] == partner_a_rev
+    assert result.df.loc[1]["rpl_lead_weighted"] == partner_a_rpl
+
+    dimensions = [
+        {"name": "partner_is_a", "formula": "({partner_name} = 'Partner A')"},
+        "campaign_name",
+    ]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.loc[1].sum()["revenue"] == partner_a_rev
+    assert result.df.loc[1].mean()["rpl_lead_weighted"] == partner_a_rpl
+
+    # Rollup vs baseline
+
+    rollup = RollupTypes.ALL
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.rollup_rows.loc[1].sum()["revenue"] == partner_a_rev
+    assert result.rollup_rows.loc[1].mean()["rpl_lead_weighted"] == partner_a_rpl
+
+    # Criteria
+
+    rollup = None
+    criteria = [("partner_name", "=", "Partner A")]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.loc[1].sum()["revenue"] == partner_a_rev
+    assert result.df.loc[1].mean()["rpl_lead_weighted"] == partner_a_rpl
+
+    # Row Filters
+
+    row_filters = [("revenue", ">", 20)]
+    criteria = None
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result.df.loc[1].sum()["revenue"] == partner_a_rev
+    assert result.df.loc[1].mean()["rpl_lead_weighted"] == partner_a_rpl
+
+
+def test_report_formula_dimension(wh):
+    metrics = ["revenue", "leads"]
+    dimensions = ["partner_name_formula", "partner_name_formula_nested"]
     result = wh_execute(wh, locals())
     assert result
     info(result.df)
