@@ -42,7 +42,7 @@ for repo in git_requires:
 
 
 extras_require = {
-    "mysql": ["pymysql~=0.9.3"],
+    "mysql": ["pymysql~=1.0.2"],
     "postgres": ["psycopg2-binary==2.9.5"],
     "dev": [
         "black",

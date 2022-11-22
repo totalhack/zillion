@@ -10,7 +10,7 @@ import time
 import uuid
 
 import numpy as np
-from pymysql import escape_string
+from pymysql.converters import escape_string
 import pandas as pd
 import sqlalchemy as sa
 from stopit import async_raise

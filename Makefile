@@ -44,7 +44,7 @@ test_upload:
 test_env:
 	rm -rf $(TEST_ENV)
 	mkdir $(TEST_ENV)
-	$(ENV)/bin/python	-m venv $(TEST_ENV)
+	$(ENV)/bin/python -m venv $(TEST_ENV)
 	$(TEST_ENV)/bin/pip install -U pip
 
 pip:
