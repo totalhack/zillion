@@ -260,6 +260,15 @@ def test_report_criteria_in(wh):
     assert result.rowcount == 0
 
 
+def test_report_criteria_like(wh):
+    metrics = ["leads"]
+    dimensions = ["campaign_name"]
+    criteria = [("campaign_name", "like", ["%1%", "%2%"])]
+    result = wh_execute(wh, locals())
+    info(result.df)
+    assert result and result.rowcount == 5
+
+
 def test_report_repeat_criteria(wh):
     metrics = ["rpl", "sales"]
     dimensions = ["date"]
