@@ -44,11 +44,13 @@ With `Zillion` you can:
     * [Reports](#example-reports)
 * [Advanced Topics](#advanced-topics)
     * [FormulaMetrics](#formula-metrics)
+    * [FormulaDimensions](#formula-dimensions)
     * [DataSource Formulas](#datasource-formulas)
     * [Type Conversions](#type-conversions)
     * [Config Variables](#config-variables)
     * [DataSource Priority](#datasource-priority)
     * [AdHocMetrics](#adhoc-metrics)
+    * [AdHocDimensions](#adhoc-dimensions)
     * [AdHocDataTables](#adhoc-data-tables)
     * [Technicals](#technicals)
 * [Supported DataSources](#supported-datasources)
@@ -467,6 +469,20 @@ in our example.
 }
 ```
 
+<a name="formula-dimensions"></a>
+
+### **Formula Dimensions**
+
+Experimental support exists for `FormulaDimension` fields as well. A `FormulaDimension` can only use other dimensions as part of its formula, and it also gets evaluated in the Combined Layer database. As an additional restriction, a `FormulaDimension` can not be used in report criteria as those filters are evaluated at the DataSource Layer. The following example assumes a SQLite Combined Layer database:
+
+
+```json
+{
+    "name": "partner_is_a",
+    "formula": "{partner_name} = 'Partner A'"
+}
+```
+
 <a name="datasource-formulas"></a>
 
 ### **DataSource Formulas**
@@ -575,6 +591,20 @@ result = wh.execute(
 )
 ```
 
+<a name="adhoc-dimensions"></a>
+
+### **Ad Hoc Dimensions**
+
+You may also define dimensions "ad hoc" with each report request. Below is an
+example that creates a dimension that partitions on a particular dimension value on the fly. Ad Hoc Dimensions are a subclass of `FormulaDimension`s and therefore have the same restrictions, such as not being able to use a metric as a formula field. These only exist within the scope of the report, and the name can not conflict with any existing fields:
+
+```python
+result = wh.execute(
+    metrics=["leads"],
+    dimensions=[{"name": "partner_is_a", "formula": "{partner_name} = 'Partner A'"]
+)
+```
+
 <a name="adhoc-tables"></a>
 
 ### **Ad Hoc Tables**
@@ -652,9 +682,9 @@ help add more support!
 * SQLite: supported and tested
 * MySQL: supported and tested
 * PostgreSQL: supported and *lightly* tested
-* MSSQL: not tested, but support is planned
-* Oracle: not tested, but support is planned
-* BigQuery, Redshift, Snowflake, etc: not tested, but support is planned
+* BigQuery, Redshift, Snowflake, SingleStore, PlanetScale: not tested but would like to support these
+* MSSQL: not tested, not currently in the roadmap
+* Oracle: not tested, not currently in the roadmap
 
 Note that this is different than the database support for the Combined Layer
 database. Currently only SQLite is supported there, though it is planned to
