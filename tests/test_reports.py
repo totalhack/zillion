@@ -65,6 +65,15 @@ def test_report_criteria_values_from_callable(wh):
     result = wh_execute(wh, locals())
     assert len(result.df) == 0
 
+    # Should allow comparing to lists of values
+    criteria = [("partner_name", "in", ["Partner A", "XYZ"])]
+    result = wh_execute(wh, locals())
+    assert len(result.df) == 1
+
+    criteria = [("partner_name", "in", ["ABC"])]
+    with pytest.raises(InvalidDimensionValueException):
+        result = wh_execute(wh, locals())
+
     # NULL comparisons should be allowed
     criteria = [("partner_name", "=", None)]
     result = wh_execute(wh, locals())

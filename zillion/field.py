@@ -413,7 +413,7 @@ class Dimension(Field):
         **Parameters:**
 
         * **warehouse_id** - (*int*) A zillion warehouse ID
-        * **value** - (*any*) Check if this value is valid
+        * **value** - (*any*) Check if this value or list of values is valid
         * **ignore_none** - (*bool*) If True, consider value=None
         to always be valid.
 
@@ -424,10 +424,18 @@ class Dimension(Field):
         """
         if ignore_none and value is None:
             return True
-        values = self.get_values(warehouse_id)
-        if not values:
+
+        allowed_values = self.get_values(warehouse_id)
+        if not allowed_values:
             return True
-        return value in values
+
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for test_value in values:
+            if ignore_none and test_value is None:
+                continue
+            if test_value not in allowed_values:
+                return False
+        return True
 
     def sort(self, warehouse_id, values):
         """Sort the given dimension values according to the sorter
