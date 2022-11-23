@@ -682,7 +682,12 @@ class AdHocField(FormulaField):
         """Copy this AdHocField"""
         schema = AdHocFieldSchema()
         field_def = schema.load(obj)
-        return cls(field_def["name"], field_def["formula"])
+        return cls(
+            field_def["name"],
+            field_def["formula"],
+            display_name=field_def["display_name"],
+            description=field_def["description"],
+        )
 
 
 class AdHocMetric(FormulaMetric):
@@ -767,7 +772,12 @@ class AdHocDimension(FormulaDimension):
         """Copy this AdHocDimension"""
         schema = AdHocFieldSchema()
         field_def = schema.load(obj)
-        return cls(field_def["name"], field_def["formula"])
+        return cls(
+            field_def["name"],
+            field_def["formula"],
+            display_name=field_def["display_name"],
+            description=field_def["description"],
+        )
 
 
 def create_metric(metric_def):

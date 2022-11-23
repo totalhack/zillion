@@ -436,6 +436,7 @@ def test_report_df_display(wh):
     rollup = RollupTypes.TOTALS
     result = wh_execute(wh, locals())
     assert result
+    assert result.df_display["Revenue"].any()
     info(result.df_display)
 
 
@@ -443,6 +444,7 @@ def test_report_df_display_no_dims(wh):
     metrics = ["revenue", "main_sales_quantity"]
     result = wh_execute(wh, locals())
     assert result
+    assert result.df_display["Revenue"].any()
     info(result.df_display)
 
 
@@ -450,6 +452,7 @@ def test_report_df_display_no_metrics(wh):
     dimensions = ["partner_name", "campaign_name"]
     result = wh_execute(wh, locals())
     assert result
+    assert result.df_display.reset_index()["Partner Name"].any()
     info(result.df_display)
 
 

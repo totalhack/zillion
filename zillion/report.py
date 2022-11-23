@@ -2295,10 +2295,11 @@ class ReportResult(PrintMixin):
     @property
     def display_name_map(self):
         """Get the map from default to display names"""
-        name_map = {v.name: v.display_name for v in self.dimensions.values()}
+        name_map = {v.name: v.display_name or v.name for v in self.dimensions.values()}
         for column in self.df.columns:
             if column in self.metrics:
-                name_map[column] = self.metrics[column].display_name
+                field = self.metrics[column]
+                name_map[column] = field.display_name or field.name
             else:
                 # Some technicals add additional columns, this ensures they
                 # use a reasonable display format instead of getting ignored.
@@ -2313,5 +2314,7 @@ class ReportResult(PrintMixin):
         if self.rollup:
             df = df.rename(index={ROLLUP_INDEX_LABEL: ROLLUP_INDEX_DISPLAY_LABEL})
         if self.dimensions:
-            df.index.names = [v.display_name for v in self.dimensions.values()]
+            df.index.names = [
+                v.display_name or v.name for v in self.dimensions.values()
+            ]
         return df.rename(columns=self.display_name_map)
