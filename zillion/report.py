@@ -902,14 +902,15 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                     adhoc_fms=self.adhoc_datasources,
                     ifnull_clause=self.ifnull_clause,
                 )
-                return f"SUM(1.0* %s * %s)/SUM(%s) as %s" % (
+                # All the 1.0 stuff is to work around sqlite default casting
+                return f"1.0 * SUM((1.0*%s) * (%s))/SUM(%s) as %s" % (
                     clause,
                     w_clause,
                     w_clause,
                     metric.name,
                 )
             else:
-                return f"AVG(%s) as %s" % (clause, metric.name)
+                return f"AVG(1.0 * %s) as %s" % (clause, metric.name)
         if aggr == AggregationTypes.MIN:
             return f"MIN(%s) as %s" % (clause, metric.name)
         if aggr == AggregationTypes.MAX:

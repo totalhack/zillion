@@ -889,6 +889,8 @@ def test_report_weighted_formula_metric(wh):
     dimensions = ["partner_name"]
     result = wh_execute(wh, locals())
     assert result
+    assert result.df.loc["Partner B"]["rpl"] == 9.5
+    assert result.df.loc["Partner B"]["rpl_weighted"] == 9.5
     info(result.df)
 
 
