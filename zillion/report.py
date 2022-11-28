@@ -35,15 +35,6 @@ from zillion.sql_utils import (
 
 logging.getLogger(name="stopit").setLevel(logging.ERROR)
 
-# Last unicode char - this helps get the rollup rows to sort last, but may
-# need to be replaced for presentation.
-ROLLUP_INDEX_LABEL = chr(1114111)
-# HACK: pandas can't group MultiIndex NaN values, so we replace them with a
-# value we *hope* to never see in the index as a workaround.
-NAN_DIMENSION_VALUE_LABEL = chr(1114110)
-# This is more friendly for front-end viewing, but has a better chance of
-# conflicting with actual report data.
-ROLLUP_INDEX_DISPLAY_LABEL = "::"
 
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT: "sum",
@@ -981,6 +972,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         dimension_aliases = []
         custom_sorts = []
         formula_dims = []
+        default_order_by = []
 
         for dim in dimensions.values():
             if isinstance(dim, FormulaDimension):
@@ -997,11 +989,12 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             dimension_aliases.append(dim.name)
             if getattr(dim, "sorter", None):
                 custom_sorts.append((dim.name, OrderByTypes.ASC))
+            default_order_by.append((dim.name, OrderByTypes.ASC))
 
         if custom_sorts and not order_by:
             # We still need to do ordering even if no order_by was specified
             # if some of the dimensions use custom sorting.
-            order_by = custom_sorts
+            order_by = default_order_by
 
         technicals = {}
         rounding = {}
@@ -1076,11 +1069,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
     def _sort(self, series):
         """Apply custom sort logic to a pandas Series if possible"""
         field = self.warehouse.get_field(series.name)
-        if not hasattr(field, "sorter"):
-            return series
-        if field.sorter:
-            return field.sort(self.warehouse.id, series)
-        return series
+        if not getattr(field, "sorter", None):
+            return series.fillna(float("-inf"))
+        return field.sort(self.warehouse.id, series)
 
     def _wavg(self, d, w, raise_on_zero_div_error=False):
         try:

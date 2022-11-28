@@ -1341,6 +1341,9 @@ def sort_by_value_order(warehouse_id, field, values):
     if not value_order:
         return values
     mapping = {value: order for order, value in enumerate(value_order)}
+    # In case a rollup row is present, include it in mapping and aim to
+    # have it sort ~last
+    mapping[ROLLUP_INDEX_LABEL] = float("inf")
     return values.map(mapping)
 
 

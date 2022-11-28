@@ -37,6 +37,15 @@ from tlbx import (
 )
 import yaml
 
+# Last unicode char - this helps get the rollup rows to sort last, but may
+# need to be replaced for presentation.
+ROLLUP_INDEX_LABEL = chr(1114111)
+# HACK: pandas can't group MultiIndex NaN values, so we replace them with a
+# value we *hope* to never see in the index as a workaround.
+NAN_DIMENSION_VALUE_LABEL = chr(1114110)
+# This is more friendly for front-end viewing, but has a better chance of
+# conflicting with actual report data.
+ROLLUP_INDEX_DISPLAY_LABEL = "::"
 
 ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
 RESERVED_FIELD_NAMES = set(["row_hash"])

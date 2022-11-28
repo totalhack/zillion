@@ -391,6 +391,22 @@ def test_report_custom_sort_conversion_field():
     assert result.df.index[0] == "January"
 
 
+def test_report_custom_sort_rollups(wh):
+    config = "https://raw.githubusercontent.com/totalhack/zillion-covid-19/master/zillion_covid_19/covid_warehouse.json"
+    wh = Warehouse(config=config)
+    metrics = ["cases"]
+    dimensions = ["day_name", "date"]
+    criteria = [("date", "between", ["2020-07-01", "2020-08-01"])]
+    rollup = RollupTypes.ALL
+    result = wh_execute(wh, locals())
+    assert result
+    assert result.df.reset_index()["date"].values[-1] == ROLLUP_INDEX_LABEL
+    assert result.df.reset_index()["date"].values[-2] == ROLLUP_INDEX_LABEL
+    assert result.df.reset_index()["day_name"].values[-1] == ROLLUP_INDEX_LABEL
+    assert result.df.reset_index()["day_name"].values[-2] == "Sunday"
+    info(result.df)
+
+
 def test_report_limit(wh):
     metrics = ["revenue"]
     dimensions = ["lead_id"]
@@ -998,7 +1014,8 @@ def test_report_rollup_order_null(wh):
     revenue_sum = result.non_rollup_rows.sum()["revenue"]
     assert revenue == revenue_sum
     sub_df = result.df.loc["Partner C", np.nan]
-    assert sub_df.index[1] == "Campaign 1C"
+    info(sub_df)
+    assert sub_df.index[0] == "Campaign 1C"
 
     # Test single dimension case
     dimensions = ["lead_name"]
