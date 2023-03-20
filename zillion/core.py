@@ -81,6 +81,10 @@ class WarehouseException(ZillionException):
     pass
 
 
+class InvalidWarehouseIdException(ZillionException):
+    pass
+
+
 class ReportException(ZillionException):
     pass
 
