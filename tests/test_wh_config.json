@@ -62,7 +62,15 @@
             "name": "revenue",
             "type": "numeric(10,2)",
             "aggregation": "sum",
-            "rounding": 2
+            "rounding": 2,
+            "divisors": {
+                "metrics": [
+                    "leads",
+                    "sales"
+                ],
+                "rounding": 2,
+                "formula": "1.0*IFNULL({metric},0)/{divisor}"
+            }
         },
         {
             "name": "revenue_ma_5",

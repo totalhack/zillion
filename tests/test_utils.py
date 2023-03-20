@@ -12,6 +12,7 @@ import copy
 import logging
 import os
 import random
+import sys
 from shutil import copyfile
 
 import pymysql
@@ -39,6 +40,9 @@ from zillion.warehouse import Warehouse
 
 
 DEFAULT_TEST_DB = "testdb1"
+if os.path.exists("tests"):
+    sys.exit("ERROR: Please run tests from within the tests directory")
+
 TEST_WH_CONFIG = load_warehouse_config("test_wh_config.json")
 TEST_ADHOC_CONFIG = load_warehouse_config("test_adhoc_ds_config.json")
 REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_wh_config.json"

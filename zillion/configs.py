@@ -368,6 +368,56 @@ def is_valid_datasource_config(val):
     return True
 
 
+def is_valid_divisors_config(val):
+    """Validate metric divisors"""
+    if isinstance(val, dict):
+        schema = DivisorsConfigSchema()
+        schema.load(val)
+        return True
+    raise ValidationError("Invalid metric divisors config: %s" % val)
+
+
+def get_divisor_metrics(metric):
+    """Given a metric with a divisor config, generate the formula metrics"""
+
+    new_metrics = []
+    dconfig = metric.get("divisors", {})
+    if not dconfig:
+        return []
+
+    for divisor in dconfig["metrics"]:
+        new_metric = {}
+
+        # Formula fields will get substituted at report time so we need to
+        # maintain braces around the fields name.
+        metric_ph = "{" + metric["name"] + "}"
+        divisor_ph = "{" + divisor + "}"
+
+        if "name" in dconfig:
+            new_metric["name"] = dconfig["name"].format(divisor=f"{divisor}")
+        else:
+            # Naively try to convert from plural to singular by chopping 's'
+            new_metric["name"] = f"{metric['name']}_per_{divisor.rstrip('s')}"
+
+        if "formula" in dconfig:
+            new_metric["formula"] = dconfig["formula"].format(
+                metric=f"{metric_ph}", divisor=f"{divisor_ph}"
+            )
+        else:
+            # TODO Assumes sqlite!
+            new_metric["formula"] = f"1.0*IFNULL({metric_ph},0)/{divisor_ph}"
+
+        new_metric["aggregation"] = "mean"
+        new_metric["weighting_metric"] = divisor
+        new_metric["rounding"] = dconfig.get("rounding", metric.get("rounding", None))
+        new_metric["description"] = f"Auto-generated {metric['name']} divisor metric"
+        meta = (metric.get("meta", {}) or {}).copy()
+        new_metric["meta"] = meta or None
+        new_metrics.append(new_metric)
+
+    return new_metrics
+
+
 # Inspiration: https://gist.github.com/ramnes/89245fbd9f2dfff52a78
 class PolyNested(mfields.Nested):
     """A polytype nested field that iterates through a list of possible types"""
@@ -405,7 +455,7 @@ class BaseSchema(Schema):
     class Meta:
         """Use the json module as imported from tlbx"""
 
-        json_module = json
+        render_module = json
 
 
 class TechnicalInfoSchema(BaseSchema):
@@ -606,7 +656,7 @@ class TableConfigSchema(TableInfoSchema):
 
 
 class FieldConfigSchema(BaseSchema):
-    """The based schema of a field configuration
+    """The base schema of a field configuration
 
     **Attributes:**
 
@@ -627,7 +677,7 @@ class FieldConfigSchema(BaseSchema):
 
 
 class FormulaFieldConfigSchema(BaseSchema):
-    """The based schema of a formula field configuration
+    """The base schema of a formula field configuration
 
     **Attributes:**
 
@@ -692,6 +742,36 @@ class MetricConfigSchemaMixin:
             )
 
 
+class DivisorsConfigSchema(BaseSchema):
+    """The schema of metric divisor settings
+
+    **Attributes:**
+
+    * **metrics** - (*list of str*) A list of metric names to use as divisors
+    * **rounding** - (*int, optional*) If specified, the number of decimal
+    places to round each new metric to.
+    * **name** - (*str, optional*) A template to use for the name where {divisor}
+    can be substituted for the divisor metric name. Defaults to "{metric}_per_{divisor}".
+    It will naively attempt to singularize the divisor name by stripping a trailing 's'.
+    * **formula** - (*str, optional*) A template to use for the formula where
+    {divisor} can be substituted for the divisor metric name.
+
+    """
+
+    metrics = mfields.List(mfields.Str, required=True)
+    rounding = mfields.Integer(default=None, missing=None)
+    name = mfields.String(default=None, missing=None)
+    formula = mfields.String(default=None, missing=None)
+
+
+class DivisorsConfigField(mfields.Field):
+    """The schema of a metric divisors field"""
+
+    def _validate(self, value):
+        is_valid_divisors_config(value)
+        super()._validate(value)
+
+
 class MetricConfigSchema(FieldConfigSchema, MetricConfigSchemaMixin):
     """The schema of a metric configuration
 
@@ -699,10 +779,14 @@ class MetricConfigSchema(FieldConfigSchema, MetricConfigSchemaMixin):
 
     * **ifnull** - (*float, optional*) A numeric value to use in place of NULLs
     in the Combined Layer query.
+    * **divisors** - (*dict, optional*) Divisor config for this metric. This is
+    used to automatically add fields from this metric by dividing by other fields.
+    See DivisorsConfigField for more info on the format.
 
     """
 
     ifnull = mfields.Float(default=None, missing=None)
+    divisors = DivisorsConfigField(default=None, missing=None)
 
 
 class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixin):
@@ -860,6 +944,16 @@ class DataSourceConfigSchema(BaseSchema):
 
         return data
 
+    @pre_load
+    def _check_metric_divisors(self, data, **kwargs):
+        """Create formula metrics from metric divisor settings"""
+
+        metrics = data.get("metrics", [])
+        for metric in metrics[:]:
+            metrics.extend(get_divisor_metrics(metric))
+        data["metrics"] = metrics
+        return data
+
 
 class DataSourceConfigField(mfields.Field):
     """The schema of a datasource configuration represented as a marshmallow
@@ -921,6 +1015,16 @@ class WarehouseConfigSchema(BaseSchema):
             )
             data["datasources"][ds_name] = config
 
+        return data
+
+    @pre_load
+    def _check_metric_divisors(self, data, **kwargs):
+        """Create formula metrics from metric divisor settings"""
+
+        metrics = data.get("metrics", [])
+        for metric in metrics[:]:
+            metrics.extend(get_divisor_metrics(metric))
+        data["metrics"] = metrics
         return data
 
 

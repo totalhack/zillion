@@ -364,6 +364,13 @@ def test_warehouse_technical_within_formula(config):
         wh = Warehouse(config=config)
 
 
+def test_warehouse_metric_divisor(config):
+    wh = Warehouse(config=config)
+    # These are dynamically generated from the divisors config on the revenue metric
+    assert wh.has_metric("revenue_per_lead")
+    assert wh.has_metric("revenue_per_sale")
+
+
 def test_warehouse_remote_datasource_config(config):
     config["datasources"][
         "testdb2"

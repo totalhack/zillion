@@ -182,7 +182,7 @@ def test_report_reuse_after_kill(wh):
             adhoc_datasources=[adhoc_ds],
         )
 
-        t = threading.Timer(0.1, report.kill)
+        t = threading.Timer(0.01, report.kill)
         t.start()
         with pytest.raises(ExecutionKilledException):
             result = report.execute()
@@ -759,6 +759,14 @@ def test_report_multiple_queries(wh):
 
 def test_report_formula_metric(wh):
     metrics = ["rpl", "revenue", "leads"]
+    dimensions = ["partner_name"]
+    result = wh_execute(wh, locals())
+    assert result
+    info(result.df)
+
+
+def test_report_formula_metric_divisor(wh):
+    metrics = ["revenue_per_lead"]
     dimensions = ["partner_name"]
     result = wh_execute(wh, locals())
     assert result
