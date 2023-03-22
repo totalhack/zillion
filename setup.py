@@ -56,8 +56,9 @@ extras_require = {
         "mkdocs-material==5.2.1",
         "mkdocs-material-extensions==1.0",
         "mkdocs-minify-plugin==0.3.0",
-        "mkautodoc==0.1.0",
+        "mkautodoc==0.2.0",
         "psycopg2-binary==2.9.5",
+        "jinja2<3.1.0",
     ],
 }
 extras_require["complete"] = sorted(set(sum(extras_require.values(), [])))

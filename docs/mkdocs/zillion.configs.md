@@ -2,7 +2,7 @@
 # Module zillion.configs
 
 
-## [AdHocFieldSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L835-L838)
+## [AdHocFieldSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L859-L862)
 
 *Bases*: zillion.configs.FormulaFieldConfigSchema
 
@@ -11,7 +11,7 @@
     
 
 
-## [AdHocMetricSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L841-L869)
+## [AdHocMetricSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L865-L893)
 
 *Bases*: zillion.configs.AdHocFieldSchema
 
@@ -20,7 +20,7 @@
     
 
 
-## [BaseSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L443-L458)
+## [BaseSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L467-L482)
 
 *Bases*: marshmallow.schema.Schema
 
@@ -29,7 +29,7 @@
     
 
 
-## [BollingerTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1385-L1406)
+## [BollingerTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1404-L1425)
 
 *Bases*: zillion.configs.RollingTechnical
 
@@ -38,7 +38,7 @@
     :members: apply get_default_mode parse_technical_string_params
 
 
-## [ColumnConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L549-L552)
+## [ColumnConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L573-L576)
 
 *Bases*: zillion.configs.ColumnInfoSchema
 
@@ -47,7 +47,7 @@
     
 
 
-## [ColumnFieldConfigField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L514-L519)
+## [ColumnFieldConfigField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L538-L543)
 
 *Bases*: marshmallow.fields.Field
 
@@ -56,7 +56,7 @@
     
 
 
-## [ColumnFieldConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L496-L511)
+## [ColumnFieldConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L520-L535)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -65,7 +65,7 @@
     
 
 
-## [ColumnInfo](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1132-L1218)
+## [ColumnInfo](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1151-L1237)
 
 *Bases*: zillion.configs.ZillionInfo, tlbx.logging_utils.PrintMixin
 
@@ -74,7 +74,7 @@
     :members: add_field create field_ds_formula get_criteria_conversion get_field get_field_names get_fields has_field has_field_ds_formula schema_load schema_validate
 
 
-## [ColumnInfoSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L522-L546)
+## [ColumnInfoSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L546-L570)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -83,14 +83,14 @@
     
 
 
-## [ConfigMixin](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1036-L1053)
+## [ConfigMixin](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1055-L1072)
 
 ::: zillion.configs.ConfigMixin
     :docstring:
     :members: from_config to_config
 
 
-## [DataSourceConfigField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L963-L969)
+## [DataSourceConfigField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L982-L988)
 
 *Bases*: marshmallow.fields.Field
 
@@ -99,7 +99,7 @@
     
 
 
-## [DataSourceConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L899-L960)
+## [DataSourceConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L923-L979)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -108,7 +108,7 @@
     
 
 
-## [DataSourceConnectField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L891-L896)
+## [DataSourceConnectField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L915-L920)
 
 *Bases*: marshmallow.fields.Field
 
@@ -117,7 +117,7 @@
     
 
 
-## [DataSourceConnectSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L880-L888)
+## [DataSourceConnectSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L904-L912)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -126,7 +126,7 @@
     
 
 
-## [DataSourceCriteriaConversionsField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L477-L485)
+## [DataSourceCriteriaConversionsField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L501-L509)
 
 *Bases*: marshmallow.fields.Field
 
@@ -135,7 +135,7 @@
     
 
 
-## [DiffTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1342-L1357)
+## [DiffTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1361-L1376)
 
 *Bases*: zillion.configs.PandasTechnical
 
@@ -144,7 +144,7 @@
     :members: apply get_default_mode parse_technical_string_params
 
 
-## [DimensionConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L821-L824)
+## [DimensionConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L845-L848)
 
 *Bases*: zillion.configs.FieldConfigSchema, zillion.configs.DimensionConfigSchemaMixin
 
@@ -153,14 +153,14 @@
     
 
 
-## [DimensionConfigSchemaMixin](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L798-L818)
+## [DimensionConfigSchemaMixin](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L822-L842)
 
 ::: zillion.configs.DimensionConfigSchemaMixin
     :docstring:
     
 
 
-## [DimensionValuesField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L488-L493)
+## [DimensionValuesField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L512-L517)
 
 *Bases*: marshmallow.fields.Field
 
@@ -169,7 +169,7 @@
     
 
 
-## [DivisorsConfigField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L767-L772)
+## [DivisorsConfigField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L791-L796)
 
 *Bases*: marshmallow.fields.Field
 
@@ -178,7 +178,7 @@
     
 
 
-## [DivisorsConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L745-L764)
+## [DivisorsConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L769-L788)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -187,7 +187,7 @@
     
 
 
-## [FieldConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L658-L676)
+## [FieldConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L682-L700)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -196,7 +196,7 @@
     
 
 
-## [FormulaDimensionConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L827-L832)
+## [FormulaDimensionConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L851-L856)
 
 *Bases*: zillion.configs.FormulaFieldConfigSchema, zillion.configs.DimensionConfigSchemaMixin
 
@@ -205,7 +205,7 @@
     
 
 
-## [FormulaFieldConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L679-L699)
+## [FormulaFieldConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L703-L723)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -214,7 +214,7 @@
     
 
 
-## [FormulaMetricConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L792-L795)
+## [FormulaMetricConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L816-L819)
 
 *Bases*: zillion.configs.FormulaFieldConfigSchema, zillion.configs.MetricConfigSchemaMixin
 
@@ -223,7 +223,7 @@
     
 
 
-## [MetricConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L775-L789)
+## [MetricConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L799-L813)
 
 *Bases*: zillion.configs.FieldConfigSchema, zillion.configs.MetricConfigSchemaMixin
 
@@ -232,14 +232,14 @@
     
 
 
-## [MetricConfigSchemaMixin](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L702-L742)
+## [MetricConfigSchemaMixin](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L726-L766)
 
 ::: zillion.configs.MetricConfigSchemaMixin
     :docstring:
     
 
 
-## [PandasTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1322-L1329)
+## [PandasTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1341-L1348)
 
 *Bases*: zillion.configs.Technical
 
@@ -248,7 +248,7 @@
     :members: apply get_default_mode parse_technical_string_params
 
 
-## [PolyNested](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L422-L440)
+## [PolyNested](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L446-L464)
 
 *Bases*: marshmallow.fields.Nested
 
@@ -257,7 +257,7 @@
     
 
 
-## [RankTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1332-L1339)
+## [RankTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1351-L1358)
 
 *Bases*: zillion.configs.PandasTechnical
 
@@ -266,7 +266,7 @@
     :members: apply get_default_mode parse_technical_string_params
 
 
-## [RollingTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1360-L1382)
+## [RollingTechnical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1379-L1401)
 
 *Bases*: zillion.configs.Technical
 
@@ -275,7 +275,7 @@
     :members: apply get_default_mode parse_technical_string_params
 
 
-## [TableConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L616-L655)
+## [TableConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L640-L679)
 
 *Bases*: zillion.configs.TableInfoSchema
 
@@ -284,7 +284,7 @@
     
 
 
-## [TableInfo](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1124-L1129)
+## [TableInfo](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1143-L1148)
 
 *Bases*: zillion.configs.ZillionInfo, tlbx.logging_utils.PrintMixin
 
@@ -293,7 +293,7 @@
     :members: create schema_load schema_validate
 
 
-## [TableInfoSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L563-L613)
+## [TableInfoSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L587-L637)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -302,7 +302,7 @@
     
 
 
-## [TableNameField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L872-L877)
+## [TableNameField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L896-L901)
 
 *Bases*: marshmallow.fields.String
 
@@ -311,7 +311,7 @@
     
 
 
-## [TableTypeField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L555-L560)
+## [TableTypeField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L579-L584)
 
 *Bases*: marshmallow.fields.Field
 
@@ -320,7 +320,7 @@
     
 
 
-## [Technical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1224-L1319)
+## [Technical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1243-L1338)
 
 *Bases*: tlbx.object_utils.MappingMixin, tlbx.logging_utils.PrintMixin
 
@@ -329,7 +329,7 @@
     :members: apply get_default_mode parse_technical_string_params
 
 
-## [TechnicalField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L469-L474)
+## [TechnicalField](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L493-L498)
 
 *Bases*: marshmallow.fields.Field
 
@@ -338,7 +338,7 @@
     
 
 
-## [TechnicalInfoSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L461-L466)
+## [TechnicalInfoSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L485-L490)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -347,7 +347,7 @@
     
 
 
-## [WarehouseConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L972-L1033)
+## [WarehouseConfigSchema](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L991-L1052)
 
 *Bases*: zillion.configs.BaseSchema
 
@@ -356,7 +356,7 @@
     
 
 
-## [ZillionInfo](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1056-L1121)
+## [ZillionInfo](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1075-L1140)
 
 *Bases*: tlbx.object_utils.MappingMixin
 
@@ -365,182 +365,188 @@
     :members: create schema_load schema_validate
 
 
-## [create_technical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1490-L1514)
+## [create_technical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1509-L1533)
 
 ::: zillion.configs.create_technical
     :docstring:
 
 
-## [default_field_display_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L154-L168)
+## [default_field_display_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L178-L192)
 
 ::: zillion.configs.default_field_display_name
     :docstring:
 
 
-## [default_field_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L138-L151)
+## [default_field_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L162-L175)
 
 ::: zillion.configs.default_field_name
     :docstring:
 
 
-## [field_safe_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L119-L135)
+## [field_safe_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L143-L159)
 
 ::: zillion.configs.field_safe_name
     :docstring:
 
 
-## [get_divisor_metrics](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L380-L418)
+## [get_divisor_metrics](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L404-L442)
 
 ::: zillion.configs.get_divisor_metrics
     :docstring:
 
 
-## [has_valid_sqlalchemy_type_values](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L237-L244)
+## [has_valid_sqlalchemy_type_values](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L261-L268)
 
 ::: zillion.configs.has_valid_sqlalchemy_type_values
     :docstring:
 
 
-## [is_active](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L171-L177)
+## [is_active](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L195-L201)
 
 ::: zillion.configs.is_active
     :docstring:
 
 
-## [is_valid_aggregation](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L247-L251)
+## [is_valid_aggregation](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L271-L275)
 
 ::: zillion.configs.is_valid_aggregation
     :docstring:
 
 
-## [is_valid_column_field_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L254-L262)
+## [is_valid_column_field_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L278-L286)
 
 ::: zillion.configs.is_valid_column_field_config
     :docstring:
 
 
-## [is_valid_connect_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L340-L348)
+## [is_valid_connect_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L364-L372)
 
 ::: zillion.configs.is_valid_connect_type
     :docstring:
 
 
-## [is_valid_datasource_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L362-L368)
+## [is_valid_datasource_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L386-L392)
 
 ::: zillion.configs.is_valid_datasource_config
     :docstring:
 
 
-## [is_valid_datasource_connect](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L351-L359)
+## [is_valid_datasource_connect](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L375-L383)
 
 ::: zillion.configs.is_valid_datasource_connect
     :docstring:
 
 
-## [is_valid_datasource_criteria_conversions](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L297-L337)
+## [is_valid_datasource_criteria_conversions](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L321-L361)
 
 ::: zillion.configs.is_valid_datasource_criteria_conversions
     :docstring:
 
 
-## [is_valid_dimension_values](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L288-L294)
+## [is_valid_dimension_values](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L312-L318)
 
 ::: zillion.configs.is_valid_dimension_values
     :docstring:
 
 
-## [is_valid_divisors_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L371-L377)
+## [is_valid_divisors_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L395-L401)
 
 ::: zillion.configs.is_valid_divisors_config
     :docstring:
 
 
-## [is_valid_field_display_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L215-L224)
+## [is_valid_field_display_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L239-L248)
 
 ::: zillion.configs.is_valid_field_display_name
     :docstring:
 
 
-## [is_valid_field_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L201-L212)
+## [is_valid_field_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L225-L236)
 
 ::: zillion.configs.is_valid_field_name
     :docstring:
 
 
-## [is_valid_if_exists](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L194-L198)
+## [is_valid_if_exists](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L218-L222)
 
 ::: zillion.configs.is_valid_if_exists
     :docstring:
 
 
-## [is_valid_sqlalchemy_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L227-L234)
+## [is_valid_sqlalchemy_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L251-L258)
 
 ::: zillion.configs.is_valid_sqlalchemy_type
     :docstring:
 
 
-## [is_valid_table_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L187-L191)
+## [is_valid_table_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L211-L215)
 
 ::: zillion.configs.is_valid_table_name
     :docstring:
 
 
-## [is_valid_table_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L180-L184)
+## [is_valid_table_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L204-L208)
 
 ::: zillion.configs.is_valid_table_type
     :docstring:
 
 
-## [is_valid_technical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L279-L285)
+## [is_valid_technical](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L303-L309)
 
 ::: zillion.configs.is_valid_technical
     :docstring:
 
 
-## [is_valid_technical_mode](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L272-L276)
+## [is_valid_technical_mode](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L296-L300)
 
 ::: zillion.configs.is_valid_technical_mode
     :docstring:
 
 
-## [is_valid_technical_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L265-L269)
+## [is_valid_technical_type](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L289-L293)
 
 ::: zillion.configs.is_valid_technical_type
     :docstring:
 
 
-## [load_datasource_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L93-L109)
+## [load_datasource_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L98-L114)
 
 ::: zillion.configs.load_datasource_config
     :docstring:
 
 
-## [load_datasource_config_from_env](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L112-L116)
+## [load_datasource_config_from_env](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L117-L121)
 
 ::: zillion.configs.load_datasource_config_from_env
     :docstring:
 
 
-## [load_warehouse_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L67-L83)
+## [load_warehouse_config](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L72-L88)
 
 ::: zillion.configs.load_warehouse_config
     :docstring:
 
 
-## [load_warehouse_config_from_env](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L86-L90)
+## [load_warehouse_config_from_env](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L91-L95)
 
 ::: zillion.configs.load_warehouse_config_from_env
     :docstring:
 
 
-## [parse_schema_file](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L42-L64)
+## [parse_schema_file](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L47-L69)
 
 ::: zillion.configs.parse_schema_file
     :docstring:
 
 
-## [parse_technical_string](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1459-L1487)
+## [parse_technical_string](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L1478-L1506)
 
 ::: zillion.configs.parse_technical_string
+    :docstring:
+
+
+## [table_safe_name](https://github.com/totalhack/zillion/blob/master/zillion/configs.py#L124-L140)
+
+::: zillion.configs.table_safe_name
     :docstring:
 
