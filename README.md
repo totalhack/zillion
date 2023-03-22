@@ -506,7 +506,7 @@ rate variants of a core metric, you can specify a divisor metric configuration o
 }
 ```
 
-See `zillion.zoncigs.DivisorsConfigSchema` for more details on configuration options, such as overriding naming templates, formula templates, and rounding.
+See `zillion.configs.DivisorsConfigSchema` for more details on configuration options, such as overriding naming templates, formula templates, and rounding.
 
 <a name="formula-dimensions"></a>
 
