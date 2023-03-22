@@ -41,7 +41,7 @@ With `Zillion` you can:
     * [Warehouse Creation](#warehouse-creation)
     * [Executing Reports](#executing-reports)
 * [Example - Sales Analytics](#example-sales-analytics)
-    * [Warehouse Creation](#example-warehouse-config)
+    * [Warehouse Configuration](#example-warehouse-config)
     * [Reports](#example-reports)
 * [Advanced Topics](#advanced-topics)
     * [FormulaMetrics](#formula-metrics)
