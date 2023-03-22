@@ -1,10 +1,8 @@
 import pytest
 
 from .test_utils import *
-from zillion.configs import zillion_config, load_datasource_config
 from zillion.core import *
 from zillion.datasource import *
-from zillion.warehouse import Warehouse
 
 
 def test_postgresql_datasource(postgresql_wh):
@@ -39,7 +37,7 @@ def test_postgresql_multithreaded_timeout(postgresql_wh):
         metrics = ["cost"]
         dimensions = ["benchmark"]
         with pytest.raises(DataSourceQueryTimeoutException):
-            result = postgresql_wh.execute(metrics, dimensions=dimensions)
+            postgresql_wh.execute(metrics, dimensions=dimensions)
 
 
 def test_postgresql_date_dimension_conversions(postgresql_wh):

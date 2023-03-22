@@ -32,6 +32,11 @@ FIELD_DISPLAY_NAME_ALLOWED_CHARS_STR = (
 )
 FIELD_DISPLAY_NAME_ALLOWED_CHARS = set(FIELD_DISPLAY_NAME_ALLOWED_CHARS_STR)
 
+TABLE_NAME_ALLOWED_CHARS_STR = (
+    string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
+)
+TABLE_NAME_ALLOWED_CHARS = set(TABLE_NAME_ALLOWED_CHARS_STR)
+
 DATASOURCE_NAME_ALLOWED_CHARS_STR = (
     string.ascii_uppercase + string.ascii_lowercase + string.digits + "_"
 )
@@ -114,6 +119,25 @@ def load_datasource_config_from_env(var):
     variable"""
     f = os.environ.get(var)
     return load_datasource_config(f)
+
+
+def table_safe_name(name):
+    """Replace characters with underscores if they are not in
+    TABLE_NAME_ALLOWED_CHARS
+
+    **Parameters:**
+
+    * **name** - (*str*) The field name to process
+
+    **Returns:**
+
+    (*str*) - The "safe" table name
+
+    """
+    for char in name:
+        if char not in TABLE_NAME_ALLOWED_CHARS:
+            name = name.replace(char, "_")
+    return name
 
 
 def field_safe_name(name):

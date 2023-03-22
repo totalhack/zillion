@@ -10,7 +10,7 @@ Zillion: Make sense of it all
 **Introduction**
 ----------------
 
-`Zillion` is a free, open data warehousing and dimensional modeling tool that
+`Zillion` is a data warehousing and dimensional modeling tool that
 allows combining and analyzing data from multiple datasources through a simple
 API. It writes SQL so you don't have to, and it easily bolts onto existing
 database infrastructure via SQLAlchemy.
@@ -38,12 +38,14 @@ With `Zillion` you can:
     * [Metrics and Dimensions](#metrics-and-dimensions)
     * [Warehouse Theory](#warehouse-theory)
     * [Query Layers](#query-layers)
+    * [Warehouse Creation](#warehouse-creation)
     * [Executing Reports](#executing-reports)
 * [Example - Sales Analytics](#example-sales-analytics)
-    * [Warehouse Creation](#example-warehouse-creation)
+    * [Warehouse Creation](#example-warehouse-config)
     * [Reports](#example-reports)
 * [Advanced Topics](#advanced-topics)
     * [FormulaMetrics](#formula-metrics)
+    * [Divisor Metrics](#divisor-metrics)
     * [FormulaDimensions](#formula-dimensions)
     * [DataSource Formulas](#datasource-formulas)
     * [Type Conversions](#type-conversions)
@@ -64,7 +66,7 @@ With `Zillion` you can:
 **Installation**
 ----------------
 
-> ⚠️ **Warning**: This project is in an alpha state and is rapidly changing. Please test carefully for production usage and report any issues.
+> **Warning**: This project is in an alpha state and is subject to change. Please test carefully for production usage and report any issues.
 
 ```shell
 $ pip install zillion
@@ -78,11 +80,10 @@ $ pip install zillion
 ----------
 
 The following is meant to give a quick overview of some theory and
-nomenclature used in data warehousing with `Zillion`. Skip below for a
-quickstart [example](#example-sales-analytics).
+nomenclature used in data warehousing with `Zillion` which will be useful
+if you are newer to this area. You can also skip below for a usage [example](#example-sales-analytics).
 
-In short: `Zillion` writes SQL for you and makes data accessible through a very
-simple API:
+In short: `Zillion` writes SQL for you and makes data accessible through a very simple API:
 
 ```python
 result = warehouse.execute(
@@ -107,10 +108,9 @@ your report requests:
 
 A `Field` encapsulates the concept of a column in your data. For example, you
 may have a `Field` called "revenue". That `Field` may occur across several
-datasources or possibly in multiple tables within a single
-datasource. `Zillion` understands that all of those columns represent the same
-concept, and it can try to use any of them to satisfy reports requesting
-"revenue".
+datasources or possibly in multiple tables within a single datasource. `Zillion` 
+understands that all of those columns represent the same concept, and it can try 
+to use any of them to satisfy reports requesting "revenue".
 
 Likewise there are two main types of tables used to structure your warehouse:
 
@@ -132,16 +132,14 @@ would be records for web requests, ecommerce sales, or stock market price histor
 
 If you really want to go deep on dimensional modeling and the drill-across
 querying technique `Zillion` employs, I recommend reading Ralph Kimball's
-[book](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/books/data-warehouse-dw-toolkit/)
-on data warehousing.
+[book](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/books/data-warehouse-dw-toolkit/) on data warehousing.
 
 To summarize, [drill-across
 querying](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/drilling-across/)
 forms one or more queries to satisfy a report request for `metrics` that may
-exist across multiple datasources and/or tables at a particular `dimension`
-grain.
+exist across multiple datasources and/or tables at a particular `dimension` grain.
 
-`Zillion` technically supports
+`Zillion` supports flexible warehouse setups such as
 [snowflake](https://en.wikipedia.org/wiki/Snowflake_schema) or
 [star](https://en.wikipedia.org/wiki/Star_schema) schemas, though it isn't
 picky about it. You can specify table relationships through a parent-child
@@ -162,15 +160,38 @@ The Combined Layer is just another SQL database (in-memory SQLite by default)
 that is used to tie the datasource data together and apply a few additional
 features such as rollups, row filters, row limits, sorting, pivots, and technical computations.
 
----
+<a name="warehouse-creation"></a>
+
+### **Warehouse Creation**
+
+There are multiple ways to quickly initialize a warehouse from a local or remote
+file:
+
+```python
+# Path/link to a CSV, XLSX, XLS, JSON, HTML, or Google Sheet
+# This builds a single-table Warehouse for quick/ad-hoc analysis.
+url = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.xlsx"
+wh = Warehouse.from_data_file(url, ["Zip_Code"]) # Second arg is primary key
+
+# Path/link to a sqlite database
+# This can build a single or multi-table Warehouse
+url = "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true"
+wh = Warehouse.from_db_file(url)
+
+# Path/link to a WarehouseConfigSchema (or pass a dict)
+# This is the recommended production approach!
+config = "https://raw.githubusercontent.com/totalhack/zillion/master/examples/example_wh_config.json"
+wh = Warehouse(config=config)
+```
+
+Zillion also provides a helper script to boostrap a configuration file for an existing. See `zillion.scripts.bootstrap_config.py`.
 
 <a name="executing-reports"></a>
 
 ### **Executing Reports**
 
 The main purpose of `Zillion` is to execute reports against a `Warehouse`.
-You'll see how to initialize a `Warehouse` in a bit, but at a high level
-you will be crafting reports as follows:
+At a high level you will be crafting reports as follows:
 
 ```python
 result = warehouse.execute(
@@ -248,18 +269,12 @@ CREATE TABLE sales (
 );
 ```
 
-<a name="example-warehouse-creation"></a>
+<a name="example-warehouse-config"></a>
 
-### **Warehouse Creation**
+### **Warehouse Configuration**
 
-A `Warehouse` may be created from an existing SQLAlchemy MetaData instance,
-purely from a JSON/YAML configuration, or a combination of the two. The code below
-shows how it can be done in as little as one line of code if you have a pointer
-to a JSON/YAML `Warehouse` config.
-
-> *Note*: Defining your config in JSON or YAML is recommended, so we'll save an example
-of defining `Zillion` metadata directly on your SQLAlchemy objects for another
-time.
+A `Warehouse` may be created from a from a JSON or YAML configuration that defines
+its fields, datasources, and tables. The code below shows how it can be done in as little as one line of code if you have a pointer to a JSON/YAML `Warehouse` config.
 
 ```python
 from zillion import Warehouse
@@ -469,6 +484,30 @@ in our example.
 }
 ```
 
+<a name="divisor-metrics"></a>
+
+### **Divisor Metrics**
+
+As a convenience, rather than having to repeatedly define formula metrics for
+rate variants of a core metric, you can specify a divisor metric configuration on a non-formula metric. As an example, say you have a `revenue` metric and want to create variants for `revenue_per_lead` and `revenue_per_sale`. You can define your revenue metric as follows:
+
+```json
+{
+    "name": "revenue",
+    "type": "numeric(10,2)",
+    "aggregation": "sum",
+    "rounding": 2,
+    "divisors": {
+        "metrics": [
+            "leads",
+            "sales"
+        ]
+    }
+}
+```
+
+See `zillion.zoncigs.DivisorsConfigSchema` for more details on configuration options, such as overriding naming templates, formula templates, and rounding.
+
 <a name="formula-dimensions"></a>
 
 ### **Formula Dimensions**
@@ -623,7 +662,7 @@ data file is large. It is often better to sync and create your data ahead of
 time so you have complete schema control, but this method can be very useful
 in certain scenarios.
 
-> ⚠️ **Warning**: be careful not to overwrite existing tables in your database!
+> **Warning**: be careful not to overwrite existing tables in your database!
 
 <a name="technicals"></a>
 
@@ -671,7 +710,7 @@ appending it to the technical string: i.e. "cumsum:all" or "mean(5):group"
 -------------------------
 
 `Zillion's` goal is to support any database technology that SQLAlchemy
-supports. That said the support and testing levels in `Zillion` vary at the
+supports (pictured below). That said the support and testing levels in `Zillion` vary at the
 moment. In particular, the ability to do type conversions, database
 reflection, and kill running queries all require some database-specific code
 for support. The following list summarizes known support levels. Your mileage
@@ -682,14 +721,16 @@ help add more support!
 * SQLite: supported and tested
 * MySQL: supported and tested
 * PostgreSQL: supported and *lightly* tested
-* BigQuery, Redshift, Snowflake, SingleStore, PlanetScale: not tested but would like to support these
-* MSSQL: not tested, not currently in the roadmap
-* Oracle: not tested, not currently in the roadmap
+* BigQuery, Redshift, Snowflake, SingleStore, PlanetScale, etc: not tested but would like to support these
 
-Note that this is different than the database support for the Combined Layer
-database. Currently only SQLite is supported there, though it is planned to
-make this more generic such that any SQLAlchemy supported database could be
-used.
+SQLAlchemy has connectors to many popular databases. The barrier to support many of these is likely
+pretty low given the simple nature of the sql operations `Zillion` uses.
+
+![SQLAlchemy Connectors](https://github.com/totalhack/zillion/blob/master/docs/images/sqlalchemy_connectors.webp?raw=true)
+
+Note that the above is different than the database support for the Combined Layer
+database. Currently only SQLite is supported there; that should be sufficient for
+most use cases but more options will be added down the road.
 
 <a name="multiprocess-considerations"></a>
 
@@ -712,7 +753,6 @@ requires no coordination/communication with other processes or nodes.
 **Related Projects**
 --------------------
 
-* [Awesome Zillion](https://github.com/totalhack/awesome-zillion) - A collection of `Zillion` projects and resources.
 * [Zillion Web UI](https://github.com/totalhack/zillion-web) - A demo UI and web API for Zillion
 
 ---

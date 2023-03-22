@@ -3,9 +3,9 @@ import time
 
 import sqlalchemy as sa
 
-from zillion.configs import load_warehouse_config, is_active
+from zillion.configs import load_warehouse_config, table_safe_name, is_active
 from zillion.core import *
-from zillion.datasource import DataSource
+from zillion.datasource import DataSource, datatable_from_config
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.model import zillion_engine, Warehouses
 from zillion.report import Report
@@ -1037,3 +1037,15 @@ class Warehouse(FieldManagerMixin):
             return row
         finally:
             conn.close()
+
+    @classmethod
+    def from_db_file(cls, *args, **kwargs):
+        """Pass args through to DataSource.from_db_file and create a Warehouse"""
+        ds = DataSource.from_db_file(*args, **kwargs)
+        return cls(datasources=[ds])
+
+    @classmethod
+    def from_data_file(cls, *args, **kwargs):
+        """Pass args through to DataSource.from_data_file and create a Warehouse"""
+        ds = DataSource.from_data_file(*args, **kwargs)
+        return cls(datasources=[ds])

@@ -2,7 +2,7 @@
 # Module zillion.field
 
 
-## [AdHocDimension](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L760-L770)
+## [AdHocDimension](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L765-L780)
 
 *Bases*: zillion.field.FormulaDimension
 
@@ -11,7 +11,7 @@
     :members: copy create from_config get_all_raw_fields get_ds_expression get_final_select_clause get_formula_fields to_config
 
 
-## [AdHocField](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L677-L685)
+## [AdHocField](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L677-L690)
 
 *Bases*: zillion.field.FormulaField
 
@@ -20,7 +20,7 @@
     :members: copy create from_config get_all_raw_fields get_ds_expression get_final_select_clause get_formula_fields to_config
 
 
-## [AdHocMetric](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L688-L757)
+## [AdHocMetric](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L693-L762)
 
 *Bases*: zillion.field.FormulaMetric
 
@@ -47,7 +47,7 @@
     :members: copy from_config get_all_raw_fields get_ds_expression get_final_select_clause get_formula_fields to_config
 
 
-## [FieldManagerMixin](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L805-L1157)
+## [FieldManagerMixin](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L815-L1167)
 
 ::: zillion.field.FieldManagerMixin
     :docstring:
@@ -90,73 +90,73 @@
     :members: copy from_config get_all_raw_fields get_ds_expression get_final_select_clause get_formula_fields to_config
 
 
-## [create_dimension](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L789-L802)
+## [create_dimension](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L799-L812)
 
 ::: zillion.field.create_dimension
     :docstring:
 
 
-## [create_metric](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L773-L786)
+## [create_metric](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L783-L796)
 
 ::: zillion.field.create_metric
     :docstring:
 
 
-## [get_conversions_for_type](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1337-L1353)
+## [get_conversions_for_type](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1350-L1366)
 
 ::: zillion.field.get_conversions_for_type
     :docstring:
 
 
-## [get_dialect_type_conversions](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1368-L1421)
+## [get_dialect_type_conversions](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1381-L1434)
 
 ::: zillion.field.get_dialect_type_conversions
     :docstring:
 
 
-## [get_table_dimensions](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1186-L1209)
+## [get_table_dimensions](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1196-L1219)
 
 ::: zillion.field.get_table_dimensions
     :docstring:
 
 
-## [get_table_field_column](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1234-L1255)
+## [get_table_field_column](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1244-L1265)
 
 ::: zillion.field.get_table_field_column
     :docstring:
 
 
-## [get_table_fields](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1212-L1231)
+## [get_table_fields](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1222-L1241)
 
 ::: zillion.field.get_table_fields
     :docstring:
 
 
-## [get_table_metrics](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1160-L1183)
+## [get_table_metrics](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1170-L1193)
 
 ::: zillion.field.get_table_metrics
     :docstring:
 
 
-## [replace_non_named_formula_args](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1356-L1365)
+## [replace_non_named_formula_args](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1369-L1378)
 
 ::: zillion.field.replace_non_named_formula_args
     :docstring:
 
 
-## [sort_by_value_order](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1315-L1334)
+## [sort_by_value_order](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1325-L1347)
 
 ::: zillion.field.sort_by_value_order
     :docstring:
 
 
-## [table_field_allows_grain](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1258-L1275)
+## [table_field_allows_grain](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1268-L1285)
 
 ::: zillion.field.table_field_allows_grain
     :docstring:
 
 
-## [values_from_db](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1278-L1312)
+## [values_from_db](https://github.com/totalhack/zillion/blob/master/zillion/field.py#L1288-L1322)
 
 ::: zillion.field.values_from_db
     :docstring:

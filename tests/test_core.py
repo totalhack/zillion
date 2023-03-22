@@ -172,12 +172,21 @@ def test_parse_replace_after():
         parse_replace_after("1 x")
 
 
-def test_datasource_from_data_url(ds_config):
+def test_datasource_from_db_file(ds_config):
+    ds_name = "testdb1"
     data_url = "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true"
-    ds = DataSource.from_data_url("testdb1", data_url, ds_config, if_exists="replace")
+    ds = DataSource.from_db_file(
+        data_url, name=ds_name, config=ds_config, if_exists="replace"
+    )
+    assert ds
     print()  # Format test output
     ds.print_info()
+
+    # Test with local file URL
+    ds = DataSource.from_db_file("testdb1", config=ds_config, if_exists="replace")
     assert ds
+    print()  # Format test output
+    ds.print_info()
 
 
 def test_datasource_config_table_data_url(adhoc_config):
@@ -454,6 +463,21 @@ def test_bad_table_data_url(ds_config):
         ds = DataSource("test", config=ds_config)
 
 
+def test_warehouse_from_data_file():
+    url = (
+        "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.xlsx"
+    )
+    wh = Warehouse.from_data_file(url, ["Zip_Code"])
+    wh.print_info()
+    assert wh.has_dimension("Zip_Code")
+
+
+def test_warehouse_from_db_file():
+    data_url = "https://github.com/totalhack/zillion/blob/master/tests/testdb1?raw=true"
+    wh = Warehouse.from_db_file(data_url, if_exists="replace")
+    wh.print_info()
+
+
 def test_column_config_override(config):
     table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
     table_config["columns"]["revenue"]["active"] = False
@@ -629,6 +653,7 @@ def test_adhoc_datatable_no_columns():
         columns=None,
         if_exists=IfExistsModes.REPLACE,
         schema="main",
+        use_full_column_names=True,
     )
     ds = DataSource.from_datatables("adhoc_ds", [dt])
     assert ds.has_dimension("main_adhoc_table1_partner_name")
@@ -719,6 +744,7 @@ def test_json_datatable():
         primary_key=primary_key,
         if_exists=IfExistsModes.REPLACE,
         schema="main",
+        use_full_column_names=True,
     )
     ds = DataSource.from_datatables("adhoc_ds", [dt])
     assert "main_dma_zip_Zip_Code" in ds.get_dimensions()
@@ -736,6 +762,7 @@ def test_html_datatable():
         primary_key=primary_key,
         if_exists=IfExistsModes.REPLACE,
         schema="main",
+        use_full_column_names=True,
     )
     ds = DataSource.from_datatables("adhoc_ds", [dt])
     assert "main_dma_zip_Zip_Code" in ds.get_dimensions()

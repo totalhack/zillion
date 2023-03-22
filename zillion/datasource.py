@@ -20,6 +20,7 @@ from zillion.configs import (
     TableConfigSchema,
     default_field_name,
     default_field_display_name,
+    table_safe_name,
     is_valid_field_name,
     is_valid_datasource_criteria_conversions,
     is_active,
@@ -863,8 +864,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 continue
 
             adhoc_tables.append(table_name)
-            if get_string_format_args(cfg["data_url"]):
-                cfg["data_url"] = cfg["data_url"].format(**ds_config_context)
+
+            # TODO: we currently ignore this with adhoc tables since we
+            # don't want to accidentally leak secrets from the DS context.
+            # It's allowed for datasource connect urls since those form the
+            # entire datasource so it's possible to apply an appropriate
+            # context. Here we probably need a way to specify which context
+            # is allowed for adhoc tables within each DS context.
+            #
+            # if get_string_format_args(cfg["data_url"]):
+            #     cfg["data_url"] = cfg["data_url"].format(**ds_config_context)
 
             schema, table_name = get_schema_and_table_name(table_name)
             dt = datatable_from_config(table_name, cfg, schema=schema)
@@ -1362,23 +1371,24 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return joins
 
     @classmethod
-    def from_data_url(
+    def from_db_file(
         cls,
-        name,
-        data_url,
+        file,
+        name=None,
         config=None,
         if_exists=IfFileExistsModes.FAIL,
         replace_after=DEFAULT_REPLACE_AFTER,
     ):
-        """Create a DataSource from a data url
+        """Create a DataSource from a sqlite db file path or url
 
         **Parameters:**
 
-        * **name** - (*str*) The name to give the datasource
-        * **data_url** - (*str*) A url pointing to a SQLite database to download
+        * **file** - (*str*) A file path/url pointing to a SQLite database
+        * **name** - (*str, optional*) The name to give the datasource. If blank it
+        will be derived from the file name.
         * **config** - (*dict, optional*) A DataSourceConfigSchema dict config.
         Note that the connect param of this config will be overwritten if
-        present.
+        present!
         * **if_exists** - (*str, optional*) Control behavior when the database
         already exists
         * **replace_after** - (*str, optional*) Replace the data file after this
@@ -1387,19 +1397,27 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         **Returns:**
 
-        (*DataSource*) - A DataSource created from the data_url and config
+        (*DataSource*) - A DataSource created from the db and config
 
         """
         config = (config or {}).copy()
         connect = config.get("connect", {})
         if connect:
             connect = {}
-            warn("Overwriting datasource connect settings for from_data_url()")
+            warn("Overwriting datasource connect settings for from_db_file()")
         connect["func"] = "zillion.datasource.url_connect"
-        connect["params"] = dict(data_url=data_url, if_exists=if_exists)
-        if replace_after:
-            connect["params"]["replace_after"] = replace_after
+
+        if os.path.isfile(file):
+            url = "sqlite:///" + os.path.abspath(file)
+            connect["params"] = dict(connect_url=url, if_exists=if_exists)
+        else:
+            connect["params"] = dict(data_url=file, if_exists=if_exists)
+            if replace_after:
+                connect["params"]["replace_after"] = replace_after
+
         config["connect"] = connect
+
+        name = name or os.path.basename(file.split("?")[0]).split(".")[0]
         return cls(name, config=config)
 
     @classmethod
@@ -1440,6 +1458,50 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return cls(ds_name, metadata=metadata, config=config)
 
     @classmethod
+    def from_data_file(
+        cls,
+        file,
+        primary_key,
+        ds_name=None,
+        schema="main",
+        table_name=None,
+        # TODO infer table type from columns if not provided
+        table_type="metric",
+        **kwargs,
+    ):
+        """Create a DataSource from a data file path/url that represents a single table
+
+        **Parameters:**
+
+        * **file** - (*str*) A file path/url pointing to a data file. If remote the
+        file will be downloaded to the adhoc data directory.
+        * **primary_key** - (*list of str*)  A list of fields representing the
+        primary key of the table
+        * **ds_name** - (*str, optional*) The name to give the datasource
+        * **schema** - (*str, optional*) The schema to create the table in
+        * **table_name** - (*str, optional*) The name to give the table. If blank it will be
+        derived from the file name.
+        * **table_type** - (*str, optional*) Specifies the TableType
+        * **kwargs** - (*dict, optional*) Additional keyword arguments to pass to
+        the the AdHocDataTable
+
+        **Returns:**
+
+        (*DataSource*) - A DataSource created from the file data and config
+
+        """
+        raiseifnot(schema, "Schema must be specified")
+        table_name = table_name or table_safe_name(os.path.basename(file.split('?')[0]).split(".")[0])
+        table_config = dict(
+            data_url=file,
+            type=table_type,
+            primary_key=primary_key,
+            **kwargs,
+        )
+        dt = datatable_from_config(table_name, table_config, schema=schema)
+        return cls.from_datatables(ds_name, [dt])
+
+    @classmethod
     def _check_or_create_name(cls, name):
         """Validate the datasource name or create one if necessary"""
         if not name:
@@ -1462,7 +1524,7 @@ class AdHocDataTable(PrintMixin):
     **Parameters:**
 
     * **name** - (*str*) The name of the table
-    * **data** - (*iterable or DataFrame*) The data to create the adhoc
+    * **data** - (*iterable, DataFrame, or str*) The data to create the adhoc
     table from
     * **table_type** - (*str*) Specify the TableType
     * **columns** - (*dict, optional*) Column configuration for the table
@@ -1501,6 +1563,7 @@ class AdHocDataTable(PrintMixin):
         drop_dupes=False,
         convert_types=None,
         fillna_value="",
+        use_full_column_names=False,
         schema=None,
         **kwargs,
     ):
@@ -1538,6 +1601,7 @@ class AdHocDataTable(PrintMixin):
                 drop_dupes=drop_dupes,
                 convert_types=convert_types,
                 primary_key=primary_key,
+                use_full_column_names=use_full_column_names,
             )
         )
 
@@ -1765,6 +1829,8 @@ def datatable_from_config(name, config, schema=None, **kwargs):
         if_exists=config.get("if_exists", IfExistsModes.FAIL),
         drop_dupes=config.get("drop_dupes", False),
         convert_types=config.get("convert_types", None),
+        fillna_value=config.get("fillna_value", None),
+        use_full_column_names=config.get("use_full_column_names", False),
         schema=schema,
         **kwargs,
     )

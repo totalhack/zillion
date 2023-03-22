@@ -1,7 +1,7 @@
 **Introduction**
 ----------------
 
-`Zillion` is a free, open data warehousing and dimensional modeling tool that
+`Zillion` is a data warehousing and dimensional modeling tool that
 allows combining and analyzing data from multiple datasources through a simple
 API. It writes SQL so you don't have to, and it easily bolts onto existing
 database infrastructure via SQLAlchemy.
