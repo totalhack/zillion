@@ -184,7 +184,7 @@ config = "https://raw.githubusercontent.com/totalhack/zillion/master/examples/ex
 wh = Warehouse(config=config)
 ```
 
-Zillion also provides a helper script to boostrap a configuration file for an existing. See `zillion.scripts.bootstrap_config.py`.
+Zillion also provides a helper script to boostrap a configuration file for an existing database. See `zillion.scripts.bootstrap_config.py`.
 
 <a name="executing-reports"></a>
 
