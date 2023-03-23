@@ -1,10 +1,8 @@
 import pytest
 
 from .test_utils import *
-from zillion.configs import zillion_config
 from zillion.core import *
 from zillion.datasource import *
-from zillion.warehouse import Warehouse
 
 
 def test_mysql_datasource(mysql_wh):
