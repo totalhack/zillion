@@ -51,6 +51,20 @@ def postgresql_setup():
         postgresql_data_init()
 
 
+@pytest.fixture(scope="session")
+def duckdb_setup():
+    conn = get_sqlalchemy_duckdb_conn()
+    try:
+        conn.execute("select 1 from zillion_test.partners")
+    except Exception as e:
+        if not "does not exist" in str(e):
+            raise
+        print("Doing DuckDB database setup...")
+        duckdb_data_init(conn)
+    finally:
+        conn.close()
+
+
 @pytest.fixture(scope="function")
 def config():
     return copy.deepcopy(TEST_WH_CONFIG)
@@ -118,6 +132,12 @@ def postgresql_ds(postgresql_ds_config):
 @pytest.fixture(scope="function")
 def postgresql_wh(postgresql_ds):
     return Warehouse(datasources=[postgresql_ds])
+
+
+@pytest.fixture(scope="function")
+def duckdb_wh():
+    config = load_warehouse_config("test_duckdb_wh_config.json")
+    return Warehouse(config=config)
 
 
 @pytest.fixture

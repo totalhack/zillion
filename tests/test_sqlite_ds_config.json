@@ -16,53 +16,79 @@
         "main.partners": {
             "type": "dimension",
             "create_fields": true,
-            "primary_key": ["partner_id"],
+            "primary_key": [
+                "partner_id"
+            ],
             "columns": {
                 "id": {
-                    "fields": ["partner_id"]
+                    "fields": [
+                        "partner_id"
+                    ]
                 },
                 "name": {
-                    "fields": ["partner_name"]
+                    "fields": [
+                        "partner_name"
+                    ]
                 }
             }
         },
-        
         "main.campaigns": {
             "type": "dimension",
             "create_fields": true,
             "parent": "main.partners",
-            "primary_key": ["campaign_id"],
+            "primary_key": [
+                "campaign_id"
+            ],
             "columns": {
                 "id": {
-                    "fields": ["campaign_id"]
+                    "fields": [
+                        "campaign_id"
+                    ]
                 },
                 "name": {
-                    "fields": ["campaign_name"]
+                    "fields": [
+                        "campaign_name"
+                    ]
                 },
                 "partner_id": {
-                    "fields": ["partner_id"]
+                    "fields": [
+                        "partner_id"
+                    ]
                 }
             }
         },
-
         "main.aggregated_stats": {
             "type": "metric",
             "create_fields": true,
             "use_full_column_names": false,
-            "primary_key": ["partner_id", "campaign_id"],
+            "primary_key": [
+                "partner_id",
+                "campaign_id"
+            ],
             "columns": {
                 "partner_id": {
-                    "fields": ["partner_id"]
+                    "fields": [
+                        "partner_id"
+                    ]
                 },
                 "campaign_id": {
-                    "fields": ["campaign_id"]
+                    "fields": [
+                        "campaign_id"
+                    ]
                 },
                 "sales": {
-                    "fields": ["sales", "aggr_sales"]
+                    "fields": [
+                        "sales",
+                        "aggr_sales"
+                    ]
                 },
                 "revenue": {
-                    "required_grain": ["partner_name"],
-                    "fields": ["revenue"]
+                    "required_grain": [
+                        "partner_name"
+                    ],
+                    "fields": [
+                        "revenue"
+                    ]
                 }
             }
         }

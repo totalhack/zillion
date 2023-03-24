@@ -1542,6 +1542,7 @@ for _dim in DATETIME_CONVERSION_FIELDS:
 # zillion assumes everything is in the same timezone (or the datasource
 # formulas take care of aligning timezones).
 DIALECT_CONVERSIONS = {
+    "duckdb": DUCKDB_DIALECT_CONVERSIONS,
     "sqlite": SQLITE_DIALECT_CONVERSIONS,
     "mysql": MYSQL_DIALECT_CONVERSIONS,
     "postgresql": POSTGRESQL_DIALECT_CONVERSIONS,

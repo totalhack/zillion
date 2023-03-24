@@ -1,0 +1,7 @@
+id,name,category,partner_id,created_at
+1,"Campaign 1A",fruits,1,"2019-03-26 21:02:15"
+2,"Campaign 2A",vegetables,1,"2019-03-26 21:02:15"
+3,"Campaign 1B",fruits,2,"2019-03-26 21:02:15"
+4,"Campaign 2B",vegetables,2,"2019-03-26 21:02:15"
+5,"Campaign 1C",fruits,3,"2019-03-26 21:02:15"
+6,"Campaign 2C",vegetables,3,"2019-03-26 21:02:15"

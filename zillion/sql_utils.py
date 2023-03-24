@@ -196,7 +196,9 @@ def to_generic_sa_type(type):
 
 
 def infer_aggregation_and_rounding(column):
-    """Infer the aggregation and rounding settings based on the column type
+    """Infer the aggregation and rounding settings based on the column type.
+    This is just a rough / best guess based on the column type, precision
+    and rounding settings.
 
     **Parameters:**
 
@@ -216,10 +218,15 @@ def infer_aggregation_and_rounding(column):
         if rounding is None and precision is None:
             aggregation = AggregationTypes.SUM
         else:
-            whole_digits = precision - rounding
-            if whole_digits <= DIGIT_THRESHOLD_FOR_MEAN_AGGR:
-                aggregation = AggregationTypes.MEAN
+            if rounding:
+                whole_digits = precision - rounding
+                if whole_digits <= DIGIT_THRESHOLD_FOR_MEAN_AGGR:
+                    aggregation = AggregationTypes.MEAN
+                else:
+                    aggregation = AggregationTypes.SUM
             else:
+                # We really don't know what to do here, so we'll just
+                # guess SUM.
                 aggregation = AggregationTypes.SUM
         return aggregation, rounding
     raise ZillionException("Column %s is not a numeric type" % column)
@@ -481,6 +488,13 @@ def to_postgresql_type(type):
 def to_sqlite_type(type):
     """Compile into a SQLite SQLAlchemy type"""
     return type.compile(dialect=sqlite_dialect())
+
+
+def to_duckdb_type(type):
+    """Compile into a DuckDB SQLAlchemy type"""
+    from duckdb_engine import Dialect as duckdb_dialect
+
+    return type.compile(dialect=duckdb_dialect())
 
 
 def filter_dialect_schemas(schemas, dialect):

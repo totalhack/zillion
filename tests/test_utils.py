@@ -39,10 +39,10 @@ from zillion.report import Report
 from zillion.warehouse import Warehouse
 
 
-DEFAULT_TEST_DB = "testdb1"
 if os.path.exists("tests"):
     sys.exit("ERROR: Please run tests from within the tests directory")
 
+DEFAULT_TEST_DB = "testdb1"
 TEST_WH_CONFIG = load_warehouse_config("test_wh_config.json")
 TEST_ADHOC_CONFIG = load_warehouse_config("test_adhoc_ds_config.json")
 REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_wh_config.json"
@@ -83,6 +83,14 @@ def postgresql_data_init():
     )
     res = shell(cmd)
     assert res.returncode == 0, f"Error initializing PostgreSQL: {res.stderr}"
+
+
+def duckdb_data_init(conn):
+    for table in ["partners", "campaigns", "partner_sibling", "leads", "sales"]:
+        print(f"Creating table {table}")
+        conn.execute(
+            f"CREATE TABLE {table} AS SELECT * FROM read_csv_auto('setup/{table}.csv')"
+        )
 
 
 def get_pymysql_conn():
@@ -136,6 +144,18 @@ def get_sqlalchemy_postgresql_engine():
 
 def get_sqlalchemy_postgresql_conn():
     engine = get_sqlalchemy_postgresql_engine()
+    return engine.connect()
+
+
+def get_sqlalchemy_duckdb_engine():
+    schema = test_config["DuckDBTestSchema"]
+    conn_str = f"duckdb:///{schema}"
+    engine = sa.create_engine(conn_str)
+    return engine
+
+
+def get_sqlalchemy_duckdb_conn():
+    engine = get_sqlalchemy_duckdb_engine()
     return engine.connect()
 
 
