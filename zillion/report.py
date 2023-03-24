@@ -1376,7 +1376,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 else ROLLUP_INDEX_LABEL
             )
             with pd.option_context("mode.chained_assignment", None):
-                df.at[totals_rollup_index, :] = totals
+                df.loc[totals_rollup_index, :] = totals
 
         return df
 
