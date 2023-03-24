@@ -655,9 +655,10 @@ may vary with untested database technologies that SQLAlchemy supports (it
 might work just fine, just hasn't been tested yet). Please report bugs and
 help add more support!
 
-* SQLite: supported and tested
-* MySQL: supported and tested
-* PostgreSQL: supported and *lightly* tested
+* SQLite: supported
+* MySQL: supported
+* PostgreSQL: supported
+* DuckDB: supported
 * BigQuery, Redshift, Snowflake, SingleStore, PlanetScale, etc: not tested but would like to support these
 
 SQLAlchemy has connectors to many popular databases. The barrier to support many of these is likely
