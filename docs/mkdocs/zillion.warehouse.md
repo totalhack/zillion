@@ -2,7 +2,7 @@
 # Module zillion.warehouse
 
 
-## [Warehouse](https://github.com/totalhack/zillion/blob/master/zillion/warehouse.py#L15-L1051)
+## [Warehouse](https://github.com/totalhack/zillion/blob/master/zillion/warehouse.py#L15-L1061)
 
 *Bases*: zillion.field.FieldManagerMixin
 

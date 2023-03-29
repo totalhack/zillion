@@ -7,7 +7,7 @@ LOG_LEVEL: WARNING
 # Chunk size for loading datasource query results at the combined layer
 LOAD_TABLE_CHUNK_SIZE: 5000
 # Connection string for Zillion metadata DB
-ZILLION_DB_URL: sqlite:////tmp/zillion.db
+DB_URL: sqlite:////tmp/zillion.db
 # Where to store adhoc SQLite databases
 ADHOC_DATASOURCE_DIRECTORY: /tmp
 # Either "sequential" or "multithread"

@@ -41,12 +41,17 @@ from zillion.sql_utils import (
     column_fullname,
     infer_aggregation_and_rounding,
     is_probably_metric,
+    get_nlp_table_info,
     get_schema_and_table_name,
     get_schemas,
     filter_dialect_schemas,
     check_metadata_url,
     type_string_to_sa_type,
 )
+
+
+def entity_name_from_file(filename):
+    return os.path.basename(filename.split("?")[0]).split(".")[0]
 
 
 def get_ds_config_context(name):
@@ -470,12 +475,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
     and column `info.zillion` attribute
     * **config** - (*dict, str, or buffer, optional*) A dict adhering to the
     DataSourceConfigSchema or a file location to load the config from
+    * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+    fields
 
     """
 
     repr_attrs = ["name"]
 
-    def __init__(self, name, metadata=None, config=None):
+    def __init__(self, name, metadata=None, config=None, nlp=False):
         self.name = self._check_or_create_name(name)
         self._metrics = {}
         self._dimensions = {}
@@ -510,7 +517,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 "MetaData object must have a bind (engine) attribute specified",
             )
 
-        self.apply_config(config, reflect=reflect)
+        self.apply_config(config, reflect=reflect, nlp=nlp)
 
     @property
     def metric_tables(self):
@@ -610,7 +617,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     columns.append(col)
         return columns
 
-    def apply_config(self, config, reflect=False):
+    def apply_config(self, config, reflect=False, nlp=False):
         """Apply a datasource config to this datasource's metadata. This will
         also ensure zillion info is present on the metadata, populate global
         fields, and rebuild the datasource graph.
@@ -620,7 +627,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
         * **config** - (*dict*) The datasource config to apply
         * **reflect** - (*bool, optional*) If true, use SQLAlchemy to reflect
         the database. Table-level reflection will also occur if any tables are
-        created from data URLs.
+        created from data URLs
+        * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+        fields
 
         """
         raiseifnot(self.metadata, "apply_config called with no datasource metadata")
@@ -644,7 +653,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         self.prefix_with = config.get("prefix_with", None)
 
-        self._populate_fields(config)
+        self._populate_fields(config, nlp=nlp)
 
         self._build_graph()
 
@@ -1043,14 +1052,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
                         else:
                             self.add_metric(field_def)
 
-    def _add_metric_column(self, column, field):
+    def _add_metric_column(self, column, field, aggregation=None, rounding=None):
         """Add a metric to the datasource from a column"""
         if not self.has_metric(field):
             dbg(
                 "Adding metric %s from column %s.%s"
                 % (field, self.name, column_fullname(column))
             )
-            aggregation, rounding = infer_aggregation_and_rounding(column)
+            _aggregation, _rounding = infer_aggregation_and_rounding(column)
+            aggregation = aggregation.lower() if aggregation != None else _aggregation
+            rounding = int(rounding) if rounding != None else _rounding
             metric = Metric(
                 field, column.type, aggregation=aggregation, rounding=rounding
             )
@@ -1066,8 +1077,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
             dimension = Dimension(field, column.type)
             self.add_dimension(dimension)
 
-    def _add_metric_table_fields(self, table):
+    def _add_metric_table_fields(self, table, nlp=False):
         """Populate fields from a metric table"""
+
+        nlp_table_info = get_nlp_table_info(table) if nlp else {}
+
         for column in table.c:
             if not is_active(column):
                 continue
@@ -1087,8 +1101,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     if isinstance(field_def, dict)
                     else None
                 )
-                if is_probably_metric(column, formula=formula):
-                    self._add_metric_column(column, field)
+                nlp_column_info = nlp_table_info.get(column.name, {})
+                if is_probably_metric(
+                    column, formula=formula, nlp_column_info=nlp_column_info
+                ):
+                    self._add_metric_column(
+                        column,
+                        field,
+                        aggregation=nlp_column_info.get("aggregation", None),
+                        rounding=nlp_column_info.get("rounding", None),
+                    )
                 else:
                     self._add_dimension_column(column, field)
 
@@ -1115,7 +1137,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 self._add_dimension_column(column, field)
 
-    def _populate_fields(self, config):
+    def _populate_fields(self, config, nlp=False):
         """Populate fields from a datasource config"""
         self._populate_global_fields(config, force=True)
 
@@ -1123,7 +1145,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             if not is_active(table):
                 continue
             if table.zillion.type == TableTypes.METRIC:
-                self._add_metric_table_fields(table)
+                self._add_metric_table_fields(table, nlp=nlp)
             elif table.zillion.type == TableTypes.DIMENSION:
                 self._add_dimension_table_fields(table)
             else:
@@ -1378,6 +1400,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         config=None,
         if_exists=IfFileExistsModes.FAIL,
         replace_after=DEFAULT_REPLACE_AFTER,
+        nlp=False,
     ):
         """Create a DataSource from a sqlite db file path or url
 
@@ -1394,6 +1417,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
         * **replace_after** - (*str, optional*) Replace the data file after this
         interval if `if_exists` is "replace_after". See `url_connect` docs for
         more information.
+        * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+        fields
 
         **Returns:**
 
@@ -1417,11 +1442,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         config["connect"] = connect
 
-        name = name or os.path.basename(file.split("?")[0]).split(".")[0]
-        return cls(name, config=config)
+        name = name or entity_name_from_file(file)
+        return cls(name, config=config, nlp=nlp)
 
     @classmethod
-    def from_datatables(cls, name, datatables, config=None):
+    def from_datatables(cls, name, datatables, config=None, nlp=False):
         """Create a DataSource from a list of datatables
 
         **Parameters:**
@@ -1430,6 +1455,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
         * **datatables** - (*list of AdHocDataTables*) A list of AdHocDataTables
         to use to create the DataSource
         * **config** - (*dict, optional*) A DataSourceConfigSchema dict config
+        * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+        fields
 
         **Returns:**
 
@@ -1455,7 +1482,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             config.setdefault("tables", {})[dt.fullname] = dt.table_config
 
         reflect_metadata(metadata)
-        return cls(ds_name, metadata=metadata, config=config)
+        return cls(ds_name, metadata=metadata, config=config, nlp=nlp)
 
     @classmethod
     def from_data_file(
@@ -1467,6 +1494,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         table_name=None,
         # TODO infer table type from columns if not provided
         table_type="metric",
+        nlp=False,
         **kwargs,
     ):
         """Create a DataSource from a data file path/url that represents a single table
@@ -1484,6 +1512,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
         * **table_type** - (*str, optional*) Specifies the TableType
         * **kwargs** - (*dict, optional*) Additional keyword arguments to pass to
         the the AdHocDataTable
+        * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+        fields
 
         **Returns:**
 
@@ -1491,7 +1521,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         """
         raiseifnot(schema, "Schema must be specified")
-        table_name = table_name or table_safe_name(os.path.basename(file.split('?')[0]).split(".")[0])
+        table_name = table_name or table_safe_name(entity_name_from_file(file))
         table_config = dict(
             data_url=file,
             type=table_type,
@@ -1499,7 +1529,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             **kwargs,
         )
         dt = datatable_from_config(table_name, table_config, schema=schema)
-        return cls.from_datatables(ds_name, [dt])
+        return cls.from_datatables(ds_name, [dt], nlp=nlp)
 
     @classmethod
     def _check_or_create_name(cls, name):

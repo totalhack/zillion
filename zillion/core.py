@@ -417,6 +417,8 @@ def load_zillion_config():
             DB_URL="sqlite:////tmp/zillion.db",
             ADHOC_DATASOURCE_DIRECTORY="/tmp",
             LOAD_TABLE_CHUNK_SIZE=5000,
+            OPENAI_API_KEY=None,
+            OPENAI_MODEL="gpt-3.5-turbo",
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
             DATASOURCE_QUERY_TIMEOUT=None,
             DATASOURCE_CONTEXTS={},
@@ -425,6 +427,11 @@ def load_zillion_config():
     for k, v in os.environ.items():
         if k.startswith("ZILLION_"):
             config[k.replace("ZILLION_", "")] = v
+
+    if isinstance(config.get("DATASOURCE_CONTEXTS", None), str):
+        config["DATASOURCE_CONTEXTS"] = load_json_or_yaml_from_str(
+            config["DATASOURCE_CONTEXTS"]
+        )
 
     return config
 
@@ -454,6 +461,12 @@ def set_log_level_from_config(cfg):
 
 
 set_log_level_from_config(zillion_config)
+
+
+def set_log_level(level):
+    """Set the log level for the zillion logger"""
+    global default_logger
+    default_logger.setLevel(level)
 
 
 def dbg(msg, **kwargs):

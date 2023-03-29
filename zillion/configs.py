@@ -599,7 +599,7 @@ class TableInfoSchema(BaseSchema):
     * **siblings** - (*list, optional*) A list of references to the full names
     of sibling tables. This impacts the possible join relationships of this table.
     It is assumed to be safe to join back to any sibling table via shared
-    keys (the child table must have the primary key of the sibling table).
+    keys (the table must have the primary key of the sibling table).
     * **create_fields** - (*bool, optional*) If true, try to create Field
     objects from all columns in the table. Specifying the fields in a column
     config will override this behavior. Metric vs Dimension fields are inferred

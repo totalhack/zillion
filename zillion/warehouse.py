@@ -3,9 +3,9 @@ import time
 
 import sqlalchemy as sa
 
-from zillion.configs import load_warehouse_config, table_safe_name, is_active
+from zillion.configs import load_warehouse_config, is_active
 from zillion.core import *
-from zillion.datasource import DataSource, datatable_from_config
+from zillion.datasource import DataSource
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.model import zillion_engine, Warehouses
 from zillion.report import Report
@@ -31,10 +31,12 @@ class Warehouse(FieldManagerMixin):
     establishing querying priority. This comes into play when part of a report
     may be satisfied by multiple datasources. Datasources earlier in this list
     will be higher priority.
+    * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+    fields
 
     """
 
-    def __init__(self, config=None, datasources=None, ds_priority=None):
+    def __init__(self, config=None, datasources=None, ds_priority=None, nlp=False):
         self.id = None
         self.name = None
         self.meta = None
@@ -48,7 +50,7 @@ class Warehouse(FieldManagerMixin):
 
         if config:
             config = load_warehouse_config(config)
-            self.apply_config(config, skip_integrity_checks=True)
+            self.apply_config(config, skip_integrity_checks=True, nlp=nlp)
 
         raiseifnot(self._datasources, "No datasources provided or found in config")
 
@@ -162,7 +164,7 @@ class Warehouse(FieldManagerMixin):
         if not skip_integrity_checks:
             self.run_integrity_checks()
 
-    def apply_config(self, config, skip_integrity_checks=False):
+    def apply_config(self, config, skip_integrity_checks=False, nlp=False):
         """Apply a warehouse config
 
         **Parameters:**
@@ -170,10 +172,14 @@ class Warehouse(FieldManagerMixin):
         * **config** - (*dict*) A dict adhering to the WarehouseConfigSchema
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
+         * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+        fields
 
         """
         self._create_or_update_datasources(
-            config.get("datasources", {}), skip_integrity_checks=skip_integrity_checks
+            config.get("datasources", {}),
+            skip_integrity_checks=skip_integrity_checks,
+            nlp=nlp,
         )
         # TODO: this goes second in case any formula fields reference fields
         # defined or created in the datasources. It may make more sense to
@@ -465,7 +471,9 @@ class Warehouse(FieldManagerMixin):
             )
         return table_set
 
-    def _create_or_update_datasources(self, ds_configs, skip_integrity_checks=False):
+    def _create_or_update_datasources(
+        self, ds_configs, skip_integrity_checks=False, nlp=False
+    ):
         """Given a set of datasource configs, create or update the datasources
         on this warehouse. If a datasource exists already it will be updated by
         applying the datasource config. Otherwise this attempts to create a
@@ -477,6 +485,8 @@ class Warehouse(FieldManagerMixin):
         datasource configs
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
+        * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
+        fields
 
         """
         for ds_name in ds_configs:
@@ -484,7 +494,7 @@ class Warehouse(FieldManagerMixin):
                 self.get_datasource(ds_name).apply_config(ds_configs[ds_name])
                 continue
 
-            ds = DataSource(ds_name, config=ds_configs[ds_name])
+            ds = DataSource(ds_name, config=ds_configs[ds_name], nlp=nlp)
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
     def _clear_supported_dimension_cache(self):

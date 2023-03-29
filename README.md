@@ -81,7 +81,7 @@ $ pip install zillion
 
 The following is meant to give a quick overview of some theory and
 nomenclature used in data warehousing with `Zillion` which will be useful
-if you are newer to this area. You can also skip below for a usage [example](#example-sales-analytics).
+if you are newer to this area. You can also skip below for a usage [example](#example-sales-analytics) or warehouse/datasource creation [quickstart](#warehouse-creation) options.
 
 In short: `Zillion` writes SQL for you and makes data accessible through a very simple API:
 
@@ -164,8 +164,7 @@ features such as rollups, row filters, row limits, sorting, pivots, and technica
 
 ### **Warehouse Creation**
 
-There are multiple ways to quickly initialize a warehouse from a local or remote
-file:
+There are multiple ways to quickly initialize a warehouse from a local or remote file:
 
 ```python
 # Path/link to a CSV, XLSX, XLS, JSON, HTML, or Google Sheet
@@ -184,7 +183,9 @@ config = "https://raw.githubusercontent.com/totalhack/zillion/master/examples/ex
 wh = Warehouse(config=config)
 ```
 
-Zillion also provides a helper script to boostrap a configuration file for an existing database. See `zillion.scripts.bootstrap_config.py`.
+Zillion also provides a helper script to boostrap a DataSource configuration file for an existing database. See `zillion.scripts.bootstrap_datasource_config.py`. The bootstrap script requires an output file as an argument and will prompt you for a url at run time (connection string or database url). See `--help` output for more options, including
+the optional `--nlp` flag that leverages OpenAI to infer configuration 
+information such as column types, table types, and table relationships.
 
 <a name="executing-reports"></a>
 

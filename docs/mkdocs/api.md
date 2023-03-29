@@ -6,6 +6,7 @@
 * [zillion.dialects](zillion.dialects.md)
 * [zillion.field](zillion.field.md)
 * [zillion.model](zillion.model.md)
+* [zillion.nlp](zillion.nlp.md)
 * [zillion.report](zillion.report.md)
 * [zillion.scripts](zillion.scripts.md)
 * [zillion.sql_utils](zillion.sql_utils.md)

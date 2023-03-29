@@ -182,8 +182,10 @@ def test_datasource_from_db_file(ds_config):
     print()  # Format test output
     ds.print_info()
 
-    # Test with local file URL
-    ds = DataSource.from_db_file("testdb1", config=ds_config, if_exists="replace")
+    # Test with local file URL and nlp=True
+    ds = DataSource.from_db_file(
+        "testdb1", config=ds_config, if_exists="replace", nlp=True
+    )
     assert ds
     print()  # Format test output
     ds.print_info()

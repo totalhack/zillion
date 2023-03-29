@@ -48,6 +48,10 @@ extras_require = {
         "duckdb~=0.7.1",
         "duckdb-engine~=0.7.0",
     ],
+    "nlp": [
+        "langchain==0.0.115",
+        "openai==0.27.2",
+    ],
     "dev": [
         "black",
         "pre-commit",
