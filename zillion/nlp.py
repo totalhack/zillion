@@ -1,6 +1,17 @@
-from langchain.chains import LLMChain
-from langchain.llms import OpenAI, OpenAIChat
-from langchain.prompts import PromptTemplate
+def raise_not_installed(*args, **kwargs):
+    raise ImportError("langchain is not installed. Did you install zillion[nlp]?")
+
+
+try:
+    from langchain.chains import LLMChain
+    from langchain.llms import OpenAI, OpenAIChat
+    from langchain.prompts import PromptTemplate
+except ImportError:
+    PromptTemplate = raise_not_installed
+    LLMChain = None
+    OpenAI = None
+    OpenAIChat = None
+
 from tlbx import raiseifnot
 
 from zillion.core import info, zillion_config
