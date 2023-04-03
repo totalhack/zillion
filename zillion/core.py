@@ -6,6 +6,16 @@ import requests
 import sys
 import time
 
+nlp_installed = False
+
+try:
+    import langchain
+    import qdrant_client
+
+    nlp_installed = True
+except ImportError:
+    pass
+
 from tlbx import (
     st,
     dbg as _dbg,
@@ -419,6 +429,7 @@ def load_zillion_config():
             LOAD_TABLE_CHUNK_SIZE=5000,
             OPENAI_API_KEY=None,
             OPENAI_MODEL="gpt-3.5-turbo",
+            QDRANT_HOST=None,
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
             DATASOURCE_QUERY_TIMEOUT=None,
             DATASOURCE_CONTEXTS={},

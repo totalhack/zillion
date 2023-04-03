@@ -51,6 +51,7 @@ extras_require = {
     "nlp": [
         "langchain==0.0.115",
         "openai==0.27.2",
+        "qdrant-client==0.11.0",
     ],
     "dev": [
         "black",

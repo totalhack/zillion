@@ -1,4 +1,3 @@
-import copy
 import contextlib
 import cProfile
 import pstats

@@ -8,12 +8,20 @@ LOG_LEVEL: WARNING
 LOAD_TABLE_CHUNK_SIZE: 5000
 # Connection string for Zillion metadata DB
 DB_URL: sqlite:////tmp/zillion.db
+
+# If NLP extras are installed:
+# OPENAI_API_KEY: <key>
+# OPENAI_MODEL: gpt-3.5-turbo
+# QDRANT_HOST: localhost
+
 # Where to store adhoc SQLite databases
 ADHOC_DATASOURCE_DIRECTORY: /tmp
 # Either "sequential" or "multithread"
 DATASOURCE_QUERY_MODE: sequential
 # Set a timeout in seconds for datasource layer queries
 DATASOURCE_QUERY_TIMEOUT: null
+# Max number of parallel query threads
+DATASOURCE_QUERY_WORKERS: 4
 
 # These vars can be used to substitute values in connection URLs by datasource.
 DATASOURCE_CONTEXTS:

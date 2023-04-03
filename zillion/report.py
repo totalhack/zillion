@@ -26,6 +26,7 @@ from zillion.field import (
     FIELD_VALUE_CHECK_OPERATIONS,
 )
 from zillion.model import zillion_engine, ReportSpecs
+from zillion.nlp import text_to_report_params, map_warehouse_report_params
 from zillion.sql_utils import (
     sqla_compile,
     get_sqla_criterion_expr,
@@ -234,12 +235,13 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
             return True
         return False
 
-    def add_metric(self, metric):
+    def add_metric(self, metric, adhoc_fms=None):
         """Add a metric to this query
 
         **Parameters:**
 
         * **metric** - (*str*) A metric name
+        * **adhoc_fms** - (*list, optional*) A list of adhoc FieldManagers
 
         """
         raiseifnot(
@@ -248,7 +250,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         self.table_set.target_fields.add(metric)
         # TODO: this implies metrics defined on multiple levels will
         # favor warehouse-level definition.
-        self.metrics[metric] = self.warehouse.get_metric(metric)
+        self.metrics[metric] = self.warehouse.get_metric(metric, adhoc_fms=adhoc_fms)
         self.select = self.select.column(self._get_field_expression(metric))
 
     def get_conn(self):
@@ -2004,7 +2006,7 @@ class Report(ExecutionStateMixin):
         def metric_covered_in_queries(metric):
             for query in queries:
                 if query.covers_metric(metric):
-                    query.add_metric(metric)
+                    query.add_metric(metric, adhoc_fms=self.adhoc_datasources)
                     return query
             return False
 
@@ -2102,6 +2104,31 @@ class Report(ExecutionStateMixin):
             )
         return Report(
             warehouse, **params["kwargs"], adhoc_datasources=adhoc_datasources
+        )
+
+    @classmethod
+    def from_text(cls, warehouse, text, adhoc_datasources=None, allow_partial=False):
+        """Build a report from a set of report params
+
+        **Parameters:**
+
+        * **warehouse** - (*Warehouse*) A zillion warehouse object
+        * **text** - (*str*) A natural language query
+        * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
+        * **allow_partial** - (*bool, optional*) Allow partial report results
+
+        **Returns:**
+
+        * **report** - (*Report*) A report object
+
+        """
+        params = text_to_report_params(text)
+        report_params = map_warehouse_report_params(warehouse, params)
+        return Report(
+            warehouse,
+            **report_params,
+            adhoc_datasources=adhoc_datasources,
+            allow_partial=allow_partial,
         )
 
     @classmethod

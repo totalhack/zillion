@@ -42,12 +42,11 @@ from zillion.datasource import (
     reflect_metadata,
     DataSource,
 )
+from zillion.nlp import get_nlp_table_info, get_nlp_table_relationships
 from zillion.sql_utils import (
     column_fullname,
     is_probably_metric,
     to_generic_sa_type,
-    get_nlp_table_info,
-    get_nlp_table_relationships,
     infer_aggregation_and_rounding,
 )
 from zillion.warehouse import Warehouse
@@ -205,15 +204,16 @@ def get_configs(
 
 class SecureAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        val = getpass.getpass(self.dest + ": ")
-        setattr(namespace, self.dest, val)
+        if values is None:
+            values = getpass.getpass(self.dest + ": ")
+        setattr(namespace, self.dest, values)
 
 
 @Script(
     Arg(
         "url",
         action=SecureAction,
-        nargs=0,
+        nargs="?",
         type=str,
         help="Database connection string or url. You will be prompted for this on script run.",
     ),

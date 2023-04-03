@@ -37,11 +37,11 @@ from zillion.field import (
     table_field_allows_grain,
     FieldManagerMixin,
 )
+from zillion.nlp import get_nlp_table_info
 from zillion.sql_utils import (
     column_fullname,
     infer_aggregation_and_rounding,
     is_probably_metric,
-    get_nlp_table_info,
     get_schema_and_table_name,
     get_schemas,
     filter_dialect_schemas,

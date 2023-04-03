@@ -8,6 +8,7 @@ from zillion.core import *
 from zillion.datasource import DataSource
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.model import zillion_engine, Warehouses
+from zillion.nlp import init_warehouse_embeddings
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
 
@@ -37,9 +38,11 @@ class Warehouse(FieldManagerMixin):
     """
 
     def __init__(self, config=None, datasources=None, ds_priority=None, nlp=False):
+        # Note: id/name/meta get updated on save/load
         self.id = None
         self.name = None
         self.meta = None
+        self.nlp = nlp
         self._datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
@@ -308,7 +311,7 @@ class Warehouse(FieldManagerMixin):
             "A config URL must be specified to save a Warehouse",
         )
 
-        params = dict(ds_priority=self.ds_priority, config=config_url)
+        params = dict(ds_priority=self.ds_priority, config=config_url, nlp=self.nlp)
 
         conn = zillion_engine.connect()
         try:
@@ -385,6 +388,24 @@ class Warehouse(FieldManagerMixin):
         """
         start = time.time()
         report = self.load_report(spec_id, adhoc_datasources=adhoc_datasources)
+        result = report.execute()
+        dbg("warehouse report took %.3fs" % (time.time() - start))
+        return result
+
+    def execute_text(self, text, adhoc_datasources=None, allow_partial=False):
+        """Build and execute a report from a natural language query"""
+
+        if not nlp_installed:
+            raise WarehouseException("nlp extension is not installed")
+
+        if not self._get_embeddings_collection_name():
+            info(f"Initializing Warehouse embeddings")
+            self.init_embeddings()
+
+        start = time.time()
+        report = Report.from_text(
+            self, text, adhoc_datasources=adhoc_datasources, allow_partial=allow_partial
+        )
         result = report.execute()
         dbg("warehouse report took %.3fs" % (time.time() - start))
         return result
@@ -470,6 +491,17 @@ class Warehouse(FieldManagerMixin):
                 "No dimension table set found to meet grain: %s" % grain
             )
         return table_set
+
+    def init_embeddings(self):
+        collection_name = init_warehouse_embeddings(self)
+        self._set_embeddings_collection_name(collection_name)
+
+    def _get_embeddings_collection_name(self):
+        return (self.meta or {}).get("embeddings", {}).get("collection_name", None)
+
+    def _set_embeddings_collection_name(self, name):
+        self.meta = self.meta or {}
+        self.meta["embeddings"] = dict(collection_name=name)
 
     def _create_or_update_datasources(
         self, ds_configs, skip_integrity_checks=False, nlp=False

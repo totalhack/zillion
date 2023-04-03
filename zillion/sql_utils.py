@@ -9,12 +9,12 @@ from sqlalchemy.dialects.sqlite import dialect as sqlite_dialect
 from sqlalchemy.engine import reflection
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.schema import CreateTable
 from sqlalchemy.sql import expression as exp
 import sqlparse as sp
 
 from zillion.core import *
-from zillion.nlp import build_chain, PromptTemplate
+
+# from zillion.nlp import build_chain, PromptTemplate
 
 DIGIT_THRESHOLD_FOR_MEAN_AGGR = 1
 
@@ -245,145 +245,6 @@ def is_numeric_type(type):
     if isinstance(type, tuple(NUMERIC_SA_TYPES)):
         return True
     return False
-
-
-NLP_RELATIONSHIP_TABLE_PROMPT = """Given the following tables, what are the suggested foreign key relationships? If there isn't a good option, say "None".
-
-{table_defs}
-
-List the output relationships in child column -> parent column format with no other explanation.
-Include schema and table names in the column names if possible. For example, if the table was called "main.users" and the column was called "id", the column format must be "main.users.id".
-Output:"""
-
-
-def parse_nlp_table_relationships(output):
-    """
-    Parse the output of the NLP table relationships prompt.
-
-    **Parameters:**
-
-    * **output** - (*str*) The output of the prompt
-
-    **Returns:**
-
-    (*dict*) - Map child columns to parent columns
-
-    """
-    if (not output) or output.lower().strip() == "none":
-        return {}
-    child_parent = {}
-    for row in output.strip().split("\n"):
-        child_column, parent_column = [x.strip() for x in row.split("->")]
-        child_parent[child_column] = parent_column
-    return child_parent
-
-
-def get_nlp_table_relationships(metadata, table_names):
-    """
-    Get the NLP table relationships for the given tables.
-
-    **Parameters:**
-
-    * **metadata** - (*SQLAlchemy Metadata*) The metadata for the database
-    * **table_names** - (*list of str*) The names of the tables to get the relationships for
-
-    **Returns:**
-
-    (*dict*) - Map child columns to parent columns
-
-    """
-    if not table_names:
-        return {}
-
-    table_defs = []
-
-    def get_column_str(c):
-        return f"{c.name} ({c.type}) primary_key:{c.primary_key}"
-
-    for table_name in table_names:
-        table = metadata.tables[table_name]
-        table_defs.append(
-            f"Table: {table_name}\n"
-            "Fields:\n"
-            f"{chr(10).join(get_column_str(c) for c in table.columns)}"
-        )
-
-    table_defs_str = "\n\n".join(table_defs)
-    prompt = PromptTemplate(
-        input_variables=["table_defs"],
-        template=NLP_RELATIONSHIP_TABLE_PROMPT,
-    )
-    chain = build_chain(prompt)
-    llm_start = time.time()
-    output = chain.run(table_defs_str).strip(". -\n\r")
-    info(output)
-    info(f"LLM took {time.time() - llm_start:.3f}s")
-    return parse_nlp_table_relationships(output)
-
-
-NLP_TABLE_PROMPT_TEMPLATE = """For each column in the following table definition, list the following comma separated:
-
-* The column name
-* Whether the column is a metric or dimension
-* The aggregation type for the metric (sum or mean), or "NULL" if it is a dimension
-* The rounding for "mean" metrics, "NULL" if it is a dimension or "sum" metric
-
-Example output rows:
-id,dimension,NULL,NULL
-revenue,metric,sum,2
-cpc,metric,mean,2
-
-Table definition:
-{create_table}
-"""
-
-
-def parse_nlp_table_info(output):
-    """Parse the output from the LLM to get the table info
-
-    **Parameters:**
-
-    * **output** - (*str*) The output from the LLM
-
-    **Returns:**
-
-    (*dict*) - A mapping of column names to properties
-
-    """
-    res = {}
-    for row in output.strip().split("\n"):
-        name, type, aggregation, rounding = [x.strip() for x in row.split(",")]
-        res[name] = dict(
-            type=type,
-            aggregation=aggregation if aggregation != "NULL" else None,
-            rounding=int(rounding) if rounding != "NULL" else None,
-        )
-    return res
-
-
-def get_nlp_table_info(table):
-    """Build a langchain chain to get the table info from the LLM
-
-    **Parameters:**
-
-    * **table** - (*SQLAlchemy table*) The table to analyze
-
-    **Returns:**
-
-    (*dict*) - A mapping of column names to properties
-
-    """
-    raiseifnot(table.bind, "Table must be bound to an engine")
-    create_table = str(CreateTable(table).compile(table.bind)).strip()
-    prompt = PromptTemplate(
-        input_variables=["create_table"], template=NLP_TABLE_PROMPT_TEMPLATE
-    )
-    chain = build_chain(prompt)
-    llm_start = time.time()
-    output = chain.run(create_table).strip(". -\n\r")
-    info(output)
-    info(f"LLM took {time.time() - llm_start:.3f}s")
-    return parse_nlp_table_info(output)
 
 
 def is_probably_metric(column, formula=None, nlp_column_info=None):

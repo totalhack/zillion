@@ -6,6 +6,13 @@ from .test_utils import *
 
 def pytest_addoption(parser):
     parser.addoption(
+        "--nlp",
+        action="store_true",
+        dest="nlp",
+        default=False,
+        help="enable nlp decorated tests",
+    )
+    parser.addoption(
         "--longrun",
         action="store_true",
         dest="longrun",
@@ -15,8 +22,13 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    markexprs = []
     if not config.option.longrun:
-        setattr(config.option, "markexpr", "not longrun")
+        markexprs.append("not longrun")
+    if not config.option.nlp:
+        markexprs.append("not nlp")
+    if markexprs:
+        setattr(config.option, "markexpr", " and ".join(markexprs))
 
 
 @pytest.fixture(scope="session")
