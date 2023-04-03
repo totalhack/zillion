@@ -722,11 +722,15 @@ def text_to_report_params(query, prompt_version="v1"):
     return parser(output)
 
 
-NLP_RELATIONSHIP_TABLE_PROMPT = """Given the following tables, what are the suggested foreign key relationships? If there isn't a good option, say "None".
+NLP_RELATIONSHIP_TABLE_PROMPT = """Given the following tables, what are the suggested foreign key relationships?
+Rules:
+- If there isn't a good option just skip that table and output nothing.
+- Only include relationships between the tables given below. Do not reference any other tables.
+- Ignore any self-referencing keys (i.e. a table with a column that references itself)
 
 {table_defs}
 
-List the output relationships in child column -> parent column format with no other explanation.
+List the output relationships in child column -> parent column format with no other explanation or output.
 Include schema and table names in the column names if possible. For example, if the table was called "main.users" and the column was called "id", the column format must be "main.users.id".
 Output:"""
 
@@ -744,10 +748,15 @@ def parse_nlp_table_relationships(output):
     (*dict*) - Map child columns to parent columns
 
     """
-    if (not output) or output.lower().strip() == "none":
+    if not output:
         return {}
     child_parent = {}
     for row in output.strip().split("\n"):
+        if not row:
+            continue
+        if "->" not in row:
+            warn(f"Invalid row in NLP table relationships output: {row}")
+            continue
         child_column, parent_column = [x.strip() for x in row.split("->")]
         child_parent[child_column] = parent_column
     return child_parent

@@ -537,12 +537,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
             if is_active(table) and table.zillion.type == TableTypes.DIMENSION
         }
 
-    def has_table(self, table):
+    def has_table(self, table, check_active=True):
         """Check whether the table is in this datasource's metadata
 
         **Parameters:**
 
         * **table** - (*SQLAlchemy Table*) A SQLAlchemy table
+        * **check_active** - (*bool, optional*) If true, check that the table
+        is active
 
         **Returns:**
 
@@ -553,14 +555,20 @@ class DataSource(FieldManagerMixin, PrintMixin):
             name = table
         else:
             name = table.fullname
-        return name in self.metadata.tables and is_active(self.metadata.tables[name])
+        if name not in self.metadata.tables:
+            return False
+        if not check_active:
+            return True
+        return is_active(self.metadata.tables[name])
 
-    def get_table(self, fullname):
+    def get_table(self, fullname, check_active=True):
         """Get the table object from the datasource's metadata
 
         **Parameters:**
 
         * **fullname** - (*str*) The full name of the table
+        * **check_active** - (*bool, optional*) If true, check that the table
+
 
         **Returns:**
 
@@ -568,7 +576,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         """
         table = self.metadata.tables[fullname]
-        if not is_active(table):
+        if check_active and not is_active(table):
             raise ZillionException("Table %s is not active" % fullname)
         return table
 

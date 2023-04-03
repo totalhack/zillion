@@ -227,6 +227,9 @@ class Warehouse(FieldManagerMixin):
         errors.extend(
             self._check_incomplete_dimensions(adhoc_datasources=adhoc_datasources)
         )
+        errors.extend(
+            self._check_valid_table_parents(adhoc_datasources=adhoc_datasources)
+        )
 
         if errors:
             raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
@@ -718,6 +721,33 @@ class Warehouse(FieldManagerMixin):
                             "Table %s->%s references unknown dimension %s in incomplete_dimensions"
                             % (ds.name, table.fullname, field)
                         )
+
+        return errors
+
+    def _check_valid_table_parents(self, adhoc_datasources=None):
+        """Integrity check for table parents"""
+        errors = []
+
+        for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
+            for table in ds.metadata.tables.values():
+                if not is_active(table):
+                    continue
+
+                if not table.zillion.parent:
+                    continue
+
+                if not ds.has_table(table.zillion.parent, check_active=False):
+                    errors.append(
+                        "Table %s->%s references unknown parent %s"
+                        % (ds.name, table.fullname, table.zillion.parent)
+                    )
+
+                parent = ds.get_table(table.zillion.parent, check_active=False)
+                if table.zillion.type != parent.zillion.type:
+                    errors.append(
+                        "Table %s->%s references parent %s with different table type"
+                        % (ds.name, table.fullname, table.zillion.parent)
+                    )
 
         return errors
 

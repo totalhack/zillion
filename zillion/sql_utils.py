@@ -271,8 +271,10 @@ def is_probably_metric(column, formula=None, nlp_column_info=None):
         return False
     if column.name.endswith("_id") or column.name.endswith("Id") or column.name == "id":
         return False
-    if nlp_column_info and nlp_column_info.get("type", None) == FieldTypes.METRIC:
-        return True
+    if nlp_column_info:
+        if nlp_column_info.get("type", None) == FieldTypes.METRIC:
+            return True
+        return False
     if not isinstance(column.type, tuple(NUMERIC_SA_TYPES)):
         return False
     return True

@@ -88,13 +88,17 @@ def infer_table_relationships(metadata, table_configs, nlp=False):
 
     for child_column_full, parent_column_full in all_rel.items():
         child_table = ".".join(child_column_full.split(".")[:-1])
+        parent_table = ".".join(parent_column_full.split(".")[:-1])
+        if child_table == parent_table:
+            warn(f"Skipping self-referential relationship for {child_column_full}")
+            continue
+
         child_column = child_column_full.split(".")[-1]
         child_config = table_configs[child_table]
         if child_config.get("parent", None):
             warn(f"Parent already set for {child_table}, skipping")
             continue
 
-        parent_table = ".".join(parent_column_full.split(".")[:-1])
         parent_config = table_configs[parent_table]
         parent_pk = parent_config["primary_key"]
         if len(parent_pk) != 1:
