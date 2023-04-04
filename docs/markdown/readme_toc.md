@@ -8,6 +8,8 @@
     * [Query Layers](#query-layers)
     * [Warehouse Creation](#warehouse-creation)
     * [Executing Reports](#executing-reports)
+    * [Natural Language Querying](#natural-language-querying)
+    * [Zillion Configuration](#zillion-configuration)
 * [Example - Sales Analytics](#example-sales-analytics)
     * [Warehouse Configuration](#example-warehouse-config)
     * [Reports](#example-reports)

@@ -7,10 +7,11 @@
 **Introduction**
 ----------------
 
-`Zillion` is a data warehousing and dimensional modeling tool that
-allows combining and analyzing data from multiple datasources through a simple
-API. It writes SQL so you don't have to, and it easily bolts onto existing
-database infrastructure via SQLAlchemy.
+`Zillion` is a data modeling and analytics tool that allows combining and 
+analyzing data from multiple datasources through a simple API. It writes SQL 
+so you don't have to, and it easily bolts onto existing database infrastructure 
+via SQLAlchemy. The `Zillion` NLP extension has experimental support for AI-powered 
+natural language querying and warehouse configuration.
 
 With `Zillion` you can:
 
@@ -26,6 +27,8 @@ With `Zillion` you can:
   from a "date" column
 * Save and share report specifications
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
+* Query your warehouse with natural language (NLP extension)
+* Leverage AI to bootstrap your warehouse configurations (NLP extension)
 
 ---
 
@@ -38,6 +41,10 @@ With `Zillion` you can:
 
 ```shell
 $ pip install zillion
+
+or
+
+$ pip install zillion[nlp]
 ```
 
 ---
@@ -151,9 +158,10 @@ config = "https://raw.githubusercontent.com/totalhack/zillion/master/examples/ex
 wh = Warehouse(config=config)
 ```
 
-Zillion also provides a helper script to boostrap a DataSource configuration file for an existing database. See `zillion.scripts.bootstrap_datasource_config.py`. The bootstrap script requires an output file as an argument and will prompt you for a url at run time (connection string or database url). See `--help` output for more options, including
-the optional `--nlp` flag that leverages OpenAI to infer configuration 
-information such as column types, table types, and table relationships.
+Zillion also provides a helper script to boostrap a DataSource configuration file for an existing database. See `zillion.scripts.bootstrap_datasource_config.py`. The bootstrap script requires a connection/database url and output file as arguments. See `--help` output for more options, including the optional `--nlp` flag that leverages OpenAI to infer configuration information such as column types, table types, and table relationships. The NLP feature requires the NLP extension to be installed as well as the following set in your `Zillion` config file:
+
+* OPENAI_MODEL
+* OPENAI_API_KEY
 
 <a name="executing-reports"></a>
 
@@ -192,6 +200,39 @@ dimensions for this report to be possible.
 These concepts can take time to sink in and obviously vary with the specifics
 of your data model, but you will become more familiar with them as you start
 putting together reports against your data warehouses.
+
+<a name="natural-language-querying"></a>
+
+### **Natural Language Querying**
+
+With the NLP extension `Zillion` has experimental support for natural language querying of your data warehouse. For example:
+
+```python
+result = warehouse.execute_text("revenue and leads by date last month")
+print(result.df) # Pandas DataFrame
+```
+
+This NLP feature require a running instance of Qdrant (vector database) and the following values set in your `Zillion` config file:
+
+* QDRANT_HOST
+* OPENAI_API_KEY
+
+Embeddings will be produced and stored in both Qdrant and a local cache. The
+vector database will be initialized the first time you try to use this by
+analyzing all fields in your warehouse. An example docker file to run Qdrant is provided in the root of this repo.
+
+> *Note:* This feature is in its infancy. It's usefulness will depend on the
+quality of both the input query and your data model (i.e. good field names).
+
+<a name="zillion-configuration"></a>
+
+### **Zillion Configuration**
+
+In addition to configuring the structure of your `Warehouse`, which will be
+discussed further below, `Zillion` has a global configuration to control some
+basic settings. The `ZILLION_CONFIG` environment var can point to a yaml config file. See `examples/sample_config.yaml` for more details on what values can be set. Environment vars prefixed with ZILLION_ can override config settings (i.e. ZILLION_DB_URL will override DB_URL).
+
+The database used to store Zillion report specs can be configured by setting the DB_URL value in your `Zillion` config to a valid database connection string. By default a SQLite DB in /tmp is used.
 
 ---
 
@@ -258,7 +299,7 @@ scenarios you would put a connection string to an existing database like you
 see
 [here](https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_mysql_ds_config.json)
 
-The basics of `Zillion's` configuration structure are as follows:
+The basics of `Zillion's` warehouse configuration structure are as follows:
 
 A `Warehouse` config has the following main sections:
 
@@ -402,13 +443,7 @@ a built-in way to output a complete config to a file for reference when saving.
 result = wh.execute_id(spec_id)
 ```
 
-> *Note:* The ZILLION_CONFIG environment var can point to a yaml config file.
-The database used to store Zillion report specs can be configured by setting
-the DB_URL value in your Zillion config to a valid database connection
-string. By default a SQLite DB in /tmp is used. See this [sample
-config](https://github.com/totalhack/zillion/blob/master/examples/sample_config.yaml).
-Environment vars prefixed with ZILLION_ can override config settings (i.e. ZILLION_DB_URL
-will override DB_URL).
+This assumes you have saved this report ID previously in the database specified by the DB_URL in your `Zillion` yaml configuration.
 
 **Example:** Unsupported Grain
 

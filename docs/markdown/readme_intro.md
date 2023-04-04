@@ -1,10 +1,11 @@
 **Introduction**
 ----------------
 
-`Zillion` is a data warehousing and dimensional modeling tool that
-allows combining and analyzing data from multiple datasources through a simple
-API. It writes SQL so you don't have to, and it easily bolts onto existing
-database infrastructure via SQLAlchemy.
+`Zillion` is a data modeling and analytics tool that allows combining and 
+analyzing data from multiple datasources through a simple API. It writes SQL 
+so you don't have to, and it easily bolts onto existing database infrastructure 
+via SQLAlchemy. The `Zillion` NLP extension has experimental support for AI-powered 
+natural language querying and warehouse configuration.
 
 With `Zillion` you can:
 
@@ -20,3 +21,5 @@ With `Zillion` you can:
   from a "date" column
 * Save and share report specifications
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
+* Query your warehouse with natural language (NLP extension)
+* Leverage AI to bootstrap your warehouse configurations (NLP extension)
