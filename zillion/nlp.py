@@ -33,12 +33,13 @@ LLM_MAX_TOKENS = -1
 LLM_REQUEST_TIMEOUT = 20
 OPENAI_DAVINCI_MODEL_NAME = "text-davinci-003"
 OPENAI_VECTOR_SIZE = 1536
-MIN_FIELD_SIMILARITY_SCORE = 0.9
+MIN_FIELD_SIMILARITY_SCORE = 0.8
 DEFAULT_VECTOR_SIZE = OPENAI_VECTOR_SIZE
 DEFAULT_WAREHOUSE_COLLECTION_NAME = "default_warehouse_fields"
 
 
 def hash_text(text):
+    """Hash a string to a 32-character hex string""" ""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
@@ -49,6 +50,20 @@ if nlp_installed:
     )
 
     class EmbeddingsCache:
+        """
+        A cache for embeddings. This is a wrapper around a database table
+        that stores embeddings for text. It also provides a cache for
+        embeddings that have been retrieved from the database.
+
+        **Parameters:**
+
+        * **table** - (*SQLAlchemy Table*) The database table to use for the cache
+        * **model** - (*str*) The model to use for the embeddings
+        * **binary** - (*bool, optional) Whether embeddings are store in binary format
+        * **binary_size** - (*int, optional) The size of the vector for converting to/from binary
+
+        """
+
         def __init__(
             self,
             table,
@@ -65,6 +80,7 @@ if nlp_installed:
 
         @classmethod
         def get_text_hash(cls, text):
+            """Get the hash of a text string"""
             return hash_text(text)
 
         @property
@@ -78,9 +94,11 @@ if nlp_installed:
             self._cache = value
 
         def decode(self, blob):
+            """Decode a binary blob into a list of floats"""
             return struct.unpack("f" * self.binary_size, blob)
 
         def encode(self, values):
+            """Encode a list of floats into a binary blob"""
             return struct.pack("f" * self.binary_size, *values)
 
         def init_cache(self):
@@ -96,10 +114,23 @@ if nlp_installed:
             info(f"Initialized embeddings cache with {len(self.cache)} records")
 
         def _get_key(self, text):
-            """Get the in-memory cache key. Matches the unique/primary key of the cache database table"""
+            """Get the in-memory cache key. Matches the unique/primary key of
+            the cache database table"""
             return (self.get_text_hash(text), self.model)
 
         def __getitem__(self, key):
+            """Get an embedding from the cache. If it's not in the cache,
+            it will be retrieved from the database.
+
+            **Parameters:**
+
+            * **key** - (*str*) The text to get the embedding for
+
+            **Returns:**
+
+            * (*list*) The embedding vector
+
+            """
             cache_key = self._get_key(key)
             text_hash, _ = cache_key
             value = self.cache.get(cache_key)
@@ -119,6 +150,15 @@ if nlp_installed:
             return value
 
         def __setitem__(self, key, value):
+            """Set an embedding in the cache. If it's not in the cache,
+            it will be added to the database.
+
+            **Parameters:**
+
+            * **key** - (*str*) The text to set the embedding for
+            * **value** - (*list*) The embedding vector
+
+            """
             record = self.__getitem__(key)
             cache_key = self._get_key(key)
             text_hash, _ = cache_key
@@ -145,6 +185,13 @@ if nlp_installed:
             self.cache[cache_key] = value
 
         def __delitem__(self, key):
+            """Delete an embedding from the cache
+
+            **Parameters:**
+
+            * **key** - (*str*) The text to delete the embedding for
+
+            """
             cache_key = self._get_key(key)
             text_hash, _ = cache_key
             stmt = self.table.delete().where(self.table.c.text_hash == text_hash)
@@ -153,6 +200,9 @@ if nlp_installed:
                 del self.cache[cache_key]
 
     class OpenAIEmbeddingsCached(OpenAIEmbeddings):
+        """OpenAI Embeddings with a cache for faster retrieval and
+        to avoid extra API calls"""
+
         class Config:
             """Configuration for this pydantic object."""
 
@@ -168,6 +218,7 @@ if nlp_installed:
             )
 
         def embed_query(self, query):
+            """Embed a query and cache the result"""
             res = self._cache[query]
             if res:
                 return res
@@ -176,6 +227,7 @@ if nlp_installed:
             return embedding
 
         def embed_documents(self, documents):
+            """Embed documents and cache the results"""
             uncached = [d for d in documents if not self._cache[d]]
             info(f"Embedding {len(uncached)}/{len(documents)} uncached documents")
             if uncached:
@@ -185,12 +237,30 @@ if nlp_installed:
             return [self._cache[d] for d in documents]
 
     class QdrantCustom(Qdrant):
+        """Qdrant with custom ID generation and bulk embedding"""
+
         @classmethod
         def get_id(cls, text):
+            """Get the hash of a text string to use as an ID"""
             return hash_text(text)
 
         def add_texts(self, texts, metadatas=None, bulk_embedder=None):
-            """Set repeatable IDs so we don't reinsert data"""
+            """Add texts to Qdrant. If a bulk embedder is provided, it will be
+            used to embed the texts in bulk. Otherwise, the texts will be
+            embedded one at a time.
+
+            **Parameters:**
+
+            * **texts** - (*list*) List of texts to add to Qdrant
+            * **metadatas** - (*list, optional*) List of metadata dictionaries to add to Qdrant
+            * **bulk_embedder - (*callable, optional*) A function that takes a list of texts and
+            returns a list of embeddings
+
+            **Returns:**
+
+            * **ids** - (*list*) List of IDs for the texts added to Qdrant
+
+            """
             ids = [self.get_id(text) for text in texts]
             if bulk_embedder:
                 vectors = bulk_embedder(texts)
@@ -203,14 +273,31 @@ if nlp_installed:
                 self.metadata_payload_key,
             )
 
+            start = time.time()
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=rest.Batch(ids=ids, vectors=vectors, payloads=payloads),
+                # points=rest.Batch(ids=ids, vectors=vectors, payloads=payloads),
+                points=rest.Batch.construct(
+                    ids=ids, vectors=[list(v) for v in vectors], payloads=payloads
+                ),
             )
+            info(f"Added {len(texts)} texts to Qdrant in {time.time() - start:.2f}s")
             return ids
 
         def similarity_search_with_score(self, query, k=4, **kwargs):
-            """Allow passing kwargs through to Qdrant"""
+            """Search for similar texts to a query and return the results with scores
+
+            **Parameters:**
+
+            * **query** - (*str*) The query text to search for
+            * **k** - (*int, optional*) The number of results to return
+            * **kwargs** - (*dict, optional*) Additional keyword arguments to pass to Qdrant
+
+            **Returns:**
+
+            * **results** - (*list*) List of tuples of the form (document, score)
+
+            """
             embedding = self.embedding_function(query)
             results = self.client.search(
                 collection_name=self.collection_name,
@@ -231,6 +318,8 @@ if nlp_installed:
 
 
 class EmbeddingsAPI:
+    """API for embedding texts and querying Qdrant"""
+
     def __init__(self):
         key = zillion_config["OPENAI_API_KEY"]
         self.embeddings = OpenAIEmbeddingsCached(openai_api_key=key)
@@ -239,18 +328,22 @@ class EmbeddingsAPI:
         self.client = None
 
     def connect(self):
+        """Connect to Qdrant"""
         host = zillion_config["QDRANT_HOST"]
         info(f"Connecting to Qdrant at {host}...")
         self.client = QdrantClient(host=host, port=6333, prefer_grpc=True)
 
     def ensure_client(self):
+        """Make sure we have a client. If not, connect to Qdrant."""
         if not self.client:
             self.connect()
 
     def embed_documents(self, rows):
+        """Embed a list of texts"""
         return self.embeddings.embed_documents(rows)
 
     def embed_query(self, query):
+        """Embed a query"""
         return self.embeddings.embed_query(query)
 
     def create_collection_if_necessary(
@@ -261,6 +354,23 @@ class EmbeddingsAPI:
         sample=None,
         **kwargs,
     ):
+        """
+        Create a collection if it doesn't already exist. If it does exist,
+        just return the collection.
+
+        **Parameters:**
+
+        * **collection_name** - (*str*) Name of the collection
+        * **vector_size** - (*int, optional*) Size of the vector. If not provided, will be inferred
+        from the sample.
+        * **distance** - (*Distance, optional*) Distance metric to use. Defaults to cosine.
+        * **sample** - (*str, optional*) A sample text to use to infer the vector size.
+
+        **Returns:**
+
+        * **collection** - (*QdrantCollection*) The collection
+
+        """
         try:
             collection = self.get_collection(collection_name)
             if collection:
@@ -285,6 +395,7 @@ class EmbeddingsAPI:
         return self.get_collection(collection_name)
 
     def add_texts(self, collection_name, texts, metadatas=None):
+        """Add texts to Qdrant. See QdrantCustom.add_texts for details."""
         self.ensure_client()
         self.create_collection_if_necessary(collection_name, sample=texts[0])
         qdrant = QdrantCustom(self.client, collection_name, self.embeddings.embed_query)
@@ -293,19 +404,36 @@ class EmbeddingsAPI:
         )
 
     def similarity_search_with_score(self, collection_name, query, **kwargs):
+        """Search for similar texts to a query and return the results with scores.
+        See QdrantCustom.similarity_search_with_score for details."""
         self.ensure_client()
         qdrant = QdrantCustom(self.client, collection_name, self.embeddings.embed_query)
         return qdrant.similarity_search_with_score(query, **kwargs)
 
     def get_collection(self, name):
+        """Get a collection by name"""
         self.ensure_client()
         return self.client.get_collection(collection_name=name)
 
     def delete_collection(self, name):
+        """Delete a collection by name"""
         self.ensure_client()
         return self.client.delete_collection(collection_name=name)
 
     def get_embeddings(self, collection_name, with_payload=True, with_vectors=False):
+        """Get all embeddings in a collection
+
+        **Parameters:**
+
+        * **collection_name** - (*str*) Name of the collection
+        * **with_payload** - (*bool, optional*) Whether to include the payload. Defaults to True.
+        * **with_vectors** - (*bool, optional*) Whether to include the vectors. Defaults to False.
+
+        **Returns:**
+
+        * **result** - (*list*) List of embeddings
+
+        """
         self.ensure_client()
         collection = self.get_collection(collection_name)
         raiseifnot(collection, f"No collection found: {collection_name}")
@@ -326,6 +454,14 @@ class EmbeddingsAPI:
         return result
 
     def delete_embeddings(self, collection_name, texts):
+        """Delete embeddings by text
+
+        **Parameters:**
+
+        * **collection_name** - (*str*) Name of the collection
+        * **texts** - (*list*) List of texts to delete
+
+        """
         ids = [QdrantCustom.get_id(text) for text in texts]
         self.ensure_client()
         self.client.delete(
@@ -334,6 +470,19 @@ class EmbeddingsAPI:
         )
 
     def upsert_embedding(self, collection_name, text, payload):
+        """Upsert an embedding
+
+        **Parameters:**
+
+        * **collection_name** - (*str*) Name of the collection
+        * **text** - (*str*) Text to upsert
+        * **payload** - (*dict*) Payload to upsert
+
+        **Returns:**
+
+        * **result** - (*dict*) Result of the upsert
+
+        """
         self.ensure_client()
         qdrant = QdrantCustom(self.client, collection_name, self.embeddings.embed_query)
         return qdrant.add_texts([text], metadatas=[payload])
@@ -345,10 +494,12 @@ if nlp_installed:
 
 
 def field_name_to_embedding_text(name):
+    """Convert a field name to a format for embedding"""
     return name.replace("_", " ").lower()
 
 
 def get_warehouse_collection_name(warehouse):
+    """Get the collection name for a warehouse's embeddings"""
     meta = warehouse.meta or {}
     if meta.get("embeddings", {}).get("collection_name", None):
         return meta["embeddings"]["collection_name"]
@@ -555,12 +706,12 @@ def parse_text_to_report_v1_output(output):
 
 
 def parse_text_to_report_v2_output(output):
-    """Parse the output of the TEXT_TO_REPORT_V2 chain, which outputs python arguments"""
+    """TODO Parse the output of the TEXT_TO_REPORT_V2 chain, which outputs python arguments"""
     raise NotImplementedError
 
 
 def parse_text_to_report_v3_output(output):
-    """Parse the output of the TEXT_TO_REPORT_V3 chain, would require sqlparse"""
+    """TODO Parse the output of the TEXT_TO_REPORT_V3 chain, would require sqlparse"""
     raise NotImplementedError
 
 
@@ -610,6 +761,21 @@ def get_field_name_variants(name):
 
 
 def get_field_fuzzy(warehouse, name, field_type=None):
+    """Try to do a fuzzy match to warehouse fields. The field names
+    from the LLM are not always exact matches to the warehouse field.
+
+    **Parameters:**
+
+    * **warehouse** - (Warehouse) The warehouse to look for a field match
+    * **name** - (str) The name of the field to match
+    * **field_type** - (str, optional) The type of field to match. If not
+    passed, will match any field type.
+
+    **Returns:**
+
+    (*str*) - The name of the field that was matched, or the original name
+    """
+
     has_field_func = warehouse.has_field
     if field_type == FieldTypes.METRIC:
         has_field_func = warehouse.has_metric
@@ -636,12 +802,26 @@ def get_field_fuzzy(warehouse, name, field_type=None):
     if score >= MIN_FIELD_SIMILARITY_SCORE:
         info(f"Found fuzzy match for {name}: {best.metadata['name']} / {score}")
         return best.metadata["name"]
+    else:
+        warn(f"No good match found for '{name}': {res}")
 
     # No good match found but guess the original name
     return name
 
 
 def map_warehouse_report_params(warehouse, report):
+    """Map an LLM report params dict to the warehouse's field names.
+
+    **Parameters:**
+
+    * **warehouse** - (Warehouse) The warehouse to map the report params to
+    * **report** - (dict) The report params dict
+
+    **Returns:**
+
+    (*dict*) - A new report params dict with the warehouse's field names
+
+    """
     res = {}
     for k, v in report.items():
         if k == "metrics":
@@ -667,7 +847,7 @@ def map_warehouse_report_params(warehouse, report):
         elif k == "rollup":
             # TODO should we semantic match to valid values?
             # i.e. "summary" -> "totals
-            if v and v.lower() == "totals":
+            if v and v.lower() in ["totals", "summary"]:
                 res[k] = RollupTypes.TOTALS
             elif v and v.lower() == "all":
                 res[k] = RollupTypes.ALL
@@ -678,6 +858,9 @@ def map_warehouse_report_params(warehouse, report):
         else:
             raise ValueError(f"Unexpected key {k}")
     return res
+
+
+text_to_report_chain = None
 
 
 def text_to_report_params(query, prompt_version="v1"):
@@ -705,28 +888,31 @@ def text_to_report_params(query, prompt_version="v1"):
         yesterday=str(datetime.now().date() - timedelta(days=1)),
         thirty_days_ago=str(datetime.now().date() - timedelta(days=30)),
     )
-    prompt = PromptTemplate(
-        input_variables=["query", "current_date", "yesterday", "thirty_days_ago"],
-        template=prompt_text,
-    )
 
-    chain = build_chain(
-        prompt,
-        model=OPENAI_DAVINCI_MODEL_NAME,
-        max_tokens=1000,
-        request_timeout=LLM_REQUEST_TIMEOUT,
-    )
+    global text_to_report_chain
+    if not text_to_report_chain:
+        prompt = PromptTemplate(
+            input_variables=["query", "current_date", "yesterday", "thirty_days_ago"],
+            template=prompt_text,
+        )
+        text_to_report_chain = build_chain(
+            prompt,
+            model=OPENAI_DAVINCI_MODEL_NAME,
+            max_tokens=1000,
+            request_timeout=LLM_REQUEST_TIMEOUT,
+        )
+
     llm_start = time.time()
-    output = chain.run(**context).strip(". -\n\r")
+    output = text_to_report_chain.run(**context).strip(". -\n\r")
     info(f"LLM took {time.time() - llm_start:.3f}s")
     return parser(output)
 
 
-NLP_RELATIONSHIP_TABLE_PROMPT = """Given the following tables, what are the suggested foreign key relationships?
+NLP_TABLE_RELATIONSHIP_PROMPT = """Given the following tables, what are the suggested foreign key relationships starting from these tables?
 Rules:
-- If there isn't a good option just skip that table and output nothing.
-- Only include relationships between the tables given below. Do not reference any other tables.
-- Ignore any self-referencing keys (i.e. a table with a column that references itself)
+- If there isn't a good option you must skip that table and output nothing.
+- Only include relationships between the tables given below. Do not reference any other tables not in the list.
+- Ignore self-referencing relationships (i.e. a table with a column that references itself)
 
 {table_defs}
 
@@ -762,9 +948,13 @@ def parse_nlp_table_relationships(output):
     return child_parent
 
 
+relationship_chain = None
+
+
 def get_nlp_table_relationships(metadata, table_names):
     """
-    Get the NLP table relationships for the given tables.
+    Get the NLP table relationships for the given tables. Note: if a table has
+    a composite primary key it will be skipped.
 
     **Parameters:**
 
@@ -786,6 +976,9 @@ def get_nlp_table_relationships(metadata, table_names):
 
     for table_name in table_names:
         table = metadata.tables[table_name]
+        if len(table.primary_key) > 1:
+            warn(f"Skipping table {table_name} with composite primary key")
+            continue
         table_defs.append(
             f"Table: {table_name}\n"
             "Fields:\n"
@@ -793,19 +986,23 @@ def get_nlp_table_relationships(metadata, table_names):
         )
 
     table_defs_str = "\n\n".join(table_defs)
-    prompt = PromptTemplate(
-        input_variables=["table_defs"],
-        template=NLP_RELATIONSHIP_TABLE_PROMPT,
-    )
-    chain = build_chain(prompt)
+
+    global relationship_chain
+    if not relationship_chain:
+        prompt = PromptTemplate(
+            input_variables=["table_defs"],
+            template=NLP_TABLE_RELATIONSHIP_PROMPT,
+        )
+        relationship_chain = build_chain(prompt)
+
     llm_start = time.time()
-    output = chain.run(table_defs_str).strip(". -\n\r")
+    output = relationship_chain.run(table_defs_str).strip(". -\n\r")
     info(output)
     info(f"LLM took {time.time() - llm_start:.3f}s")
     return parse_nlp_table_relationships(output)
 
 
-NLP_TABLE_PROMPT_TEMPLATE = """For each column in the following table definition, list the following comma separated:
+NLP_TABLE_COLUMN_PROMPT = """For each column in the following table definition, list the following comma separated:
 
 * The column name
 * Whether the column is a metric or dimension
@@ -845,6 +1042,9 @@ def parse_nlp_table_info(output):
     return res
 
 
+table_info_chain = None
+
+
 def get_nlp_table_info(table):
     """Build a langchain chain to get the table info from the LLM
 
@@ -859,12 +1059,16 @@ def get_nlp_table_info(table):
     """
     raiseifnot(table.bind, "Table must be bound to an engine")
     create_table = str(CreateTable(table).compile(table.bind)).strip()
-    prompt = PromptTemplate(
-        input_variables=["create_table"], template=NLP_TABLE_PROMPT_TEMPLATE
-    )
-    chain = build_chain(prompt)
+
+    global table_info_chain
+    if not table_info_chain:
+        prompt = PromptTemplate(
+            input_variables=["create_table"], template=NLP_TABLE_COLUMN_PROMPT
+        )
+        table_info_chain = build_chain(prompt)
+
     llm_start = time.time()
-    output = chain.run(create_table).strip(". -\n\r")
+    output = table_info_chain.run(create_table).strip(". -\n\r")
     info(output)
     info(f"LLM took {time.time() - llm_start:.3f}s")
     return parse_nlp_table_info(output)

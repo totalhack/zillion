@@ -81,7 +81,7 @@ exist across multiple datasources and/or tables at a particular `dimension` grai
 [star](https://en.wikipedia.org/wiki/Star_schema) schemas, though it isn't
 picky about it. You can specify table relationships through a parent-child
 lineage, and `Zillion` can also infer acceptable joins based on the presence
-of dimension table primary keys.
+of dimension table primary keys. `Zillion` does not support many-to-many relationships at this time, though most analytics-focused scenarios should be able to work around that by adding views to the model if needed.
 
 <a name="query-layers"></a>
 

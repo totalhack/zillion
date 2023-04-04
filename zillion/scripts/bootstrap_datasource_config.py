@@ -6,6 +6,9 @@ work that goes into creating and structuring the config file. This script will r
 the database schema and do its best to infer the metric, dimension, and table
 configurations. 
 
+Note that this does not produce a full Warehouse config -- you'll still need to
+add the datasource config to a warehouse config.
+
 WARNING: Any secret information (e.g. passwords) in the given connection url will 
 be stored in plaintext in the output file. See https://totalhack.github.io/zillion/#config-variables
 for more information on how to use config variables as secret placeholders.
@@ -56,6 +59,7 @@ set_log_level("INFO")
 
 
 def get_primary_key(table, full_names=False):
+    """Get the primary key fields for a table, optionally with fully qualified names"""
     if full_names:
         return [field_safe_name(column_fullname(x)) for x in table.primary_key.columns]
     return [
@@ -64,49 +68,132 @@ def get_primary_key(table, full_names=False):
 
 
 def get_field_name(table, column, full_names=False):
+    """Get the field name for a column, optionally with fully qualified names"""
     if full_names:
         return field_safe_name(column_fullname(column))
     return field_safe_name(table.name + "_" + column.name)
 
 
+def get_foreign_key_relationships(metadata, table_configs):
+    """Get the foreign key relationships between tables
+
+    **Parameters:**
+
+    * **metadata** - (*SQLAlchemy metadata*) The SQLAlchemy metadata object
+    * **table_configs** - (*dict*) The table configs to use
+
+    **Returns:**
+
+    * **metric_rel** - (*dict*) A dictionary mapping metric child->parent relationships
+    * **dim_rel** - (*dict*) A dictionary mapping dimension child->parent relationships
+
+    """
+    metric_rel = {}
+    dim_rel = {}
+
+    for table_name, table_config in table_configs.items():
+        table = metadata.tables[table_name]
+        if not table.foreign_keys:
+            continue
+
+        for fk in table.foreign_keys:
+            # SQLAlchemy does it backwards from how we view parent/child!
+            child = column_fullname(fk.parent)
+            parent = column_fullname(fk.column)
+            if table_config["type"] == TableTypes.METRIC:
+                metric_rel[child] = parent
+            else:
+                dim_rel[child] = parent
+
+    return metric_rel, dim_rel
+
+
 def infer_table_relationships(metadata, table_configs, nlp=False):
-    # TODO: Also analyze foreign keys on reflected metadata
+    """Infer table relationships from the database schema and modify
+    the table configs in place. Foreign key relationships defined in the
+    metadata take precedence over relationships inferred from NLP.
 
-    if not nlp:
-        return
+    **Parameters:**
 
-    metric_tables = {
-        k for k, v in table_configs.items() if v["type"] == TableTypes.METRIC
-    }
-    dim_tables = {
-        k for k, v in table_configs.items() if v["type"] == TableTypes.DIMENSION
-    }
+    * **metadata** - (*SQLAlchemy metadata*) The SQLAlchemy metadata object
+    * **table_configs** - (*list of dicts*) The table configs to use
+    * **nlp** - (*bool, optional*) Whether to use NLP to infer relationships. Requires
+    the NLP extension to be installed.
 
-    metric_rel = get_nlp_table_relationships(metadata, metric_tables)
-    dim_rel = get_nlp_table_relationships(metadata, dim_tables)
+    """
+    metric_rel, dim_rel = get_foreign_key_relationships(metadata, table_configs)
+
+    if nlp:
+        info(f"---- Inferring metric table relationships from NLP")
+        # Metric tables can join to either type, so include all configs
+        nlp_metric_rel = get_nlp_table_relationships(metadata, table_configs)
+        # FK relationships take precedence over NLP
+        nlp_metric_rel.update(metric_rel)
+        metric_rel = nlp_metric_rel
+
+        dim_tables = {
+            k for k, v in table_configs.items() if v["type"] == TableTypes.DIMENSION
+        }
+
+        info(f"---- Inferring dimension relationships from NLP")
+        nlp_dim_rel = get_nlp_table_relationships(metadata, dim_tables)
+        # FK relationships take precedence over NLP
+        nlp_dim_rel.update(dim_rel)
+        dim_rel = nlp_dim_rel
+
     all_rel = {**metric_rel, **dim_rel}
 
     for child_column_full, parent_column_full in all_rel.items():
         child_table = ".".join(child_column_full.split(".")[:-1])
         parent_table = ".".join(parent_column_full.split(".")[:-1])
+        if child_table not in table_configs:
+            warn(
+                f"Table {child_table} not found for {child_column_full}->{parent_column_full}, LLM may have made it up."
+            )
+            continue
+        child_config = table_configs[child_table]
+        if parent_table not in table_configs:
+            warn(
+                f"Table {parent_table} not found for {child_column_full}->{parent_column_full}, LLM may have made it up."
+            )
+            continue
+        parent_config = table_configs[parent_table]
+
         if child_table == parent_table:
             warn(f"Skipping self-referential relationship for {child_column_full}")
             continue
 
-        child_column = child_column_full.split(".")[-1]
-        child_config = table_configs[child_table]
         if child_config.get("parent", None):
             warn(f"Parent already set for {child_table}, skipping")
             continue
 
-        parent_config = table_configs[parent_table]
         parent_pk = parent_config["primary_key"]
         if len(parent_pk) != 1:
             warn(f"Multiple primary key columns found for {parent_table}, skipping")
             continue
 
+        if (
+            child_config["type"] == TableTypes.DIMENSION
+            and parent_config["type"] == TableTypes.METRIC
+        ):
+            warn(
+                f"Skipping dimension->metric relationship for {child_column_full}->{parent_column_full}"
+            )
+            continue
+
+        set_parent = True
+        if (
+            child_config["type"] == TableTypes.METRIC
+            and parent_config["type"] == TableTypes.DIMENSION
+        ):
+            # This is not a parent-child relationship, just a joinable dimension
+            # Ensure the "parent" pk is in the child fields
+            set_parent = False
+
+        child_column = child_column_full.split(".")[-1]
         parent_pk = parent_pk[0]
-        child_config["parent"] = parent_table
+        if set_parent:
+            child_config["parent"] = parent_table
         for cname, cconfig in child_config["columns"].items():
             if cname != child_column:
                 continue
@@ -119,8 +206,32 @@ def infer_table_relationships(metadata, table_configs, nlp=False):
 
 
 def get_configs(
-    metadata, tables=None, manual_table_types=False, full_names=False, nlp=False
+    metadata,
+    tables=None,
+    ignore_tables=None,
+    manual_table_types=False,
+    full_names=False,
+    nlp=False,
 ):
+    """Get the fields and table configs for a database schema
+
+    **Parameters:**
+
+    * **metadata** - (SQLAlchemy metadata) The SQLAlchemy metadata object
+    * **tables** - (list of str) The tables to include, if None include all
+    * **ignore_tables** - (list of str) The tables to ignore, if None ignore none
+    * **manual_table_types** - (bool) Whether to prompt the user for table types
+    * **full_names** - (bool) Whether to use fully qualified names for fields
+    * **nlp** - (bool) Whether to use NLP to infer relationships. Requires
+    the NLP extension to be installed.
+
+    **Returns:**
+
+    * **table_configs** - (dict) The table configs
+    * **metrics** - (list of str) The metric fields
+    * **dimensions** - (list of str) The dimension fields
+
+    """
     metrics = []
     dimensions = []
     table_configs = {}
@@ -130,7 +241,11 @@ def get_configs(
             info(f"Skipping table: {table_name}")
             continue
 
-        info(f"---- Table: {table_name}")
+        if ignore_tables and table_name in ignore_tables:
+            info(f"Skipping table: {table_name}")
+            continue
+
+        info(f"\n---- Table: {table_name}")
 
         table_type = None
         table_metrics = []
@@ -228,6 +343,12 @@ class SecureAction(argparse.Action):
         default=None,
         help="A list of full table names to filter to (<schema>.<table>)",
     ),
+    Arg(
+        "--ignore-tables",
+        nargs="+",
+        default=None,
+        help="A list of full table names to ignore (<schema>.<table>)",
+    ),
     Arg("--ds-name", type=str, default=None, help="Name to give the DataSource"),
     Arg(
         "--full-names", action="store_true", default=False, help="Use full column names"
@@ -263,6 +384,7 @@ def main(
     url,
     filename,
     tables=None,
+    ignore_tables=None,
     ds_name=None,
     full_names=False,
     verify=False,
@@ -288,6 +410,7 @@ def main(
     table_configs, metrics, dimensions = get_configs(
         metadata,
         tables=tables,
+        ignore_tables=ignore_tables,
         manual_table_types=manual_table_types,
         full_names=full_names,
         nlp=nlp,

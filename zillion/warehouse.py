@@ -396,8 +396,21 @@ class Warehouse(FieldManagerMixin):
         return result
 
     def execute_text(self, text, adhoc_datasources=None, allow_partial=False):
-        """Build and execute a report from a natural language query"""
+        """Build and execute a report from a natural language query. Requires
+        the nlp extension to be installed.
 
+        **Parameters:**
+
+        * **text** - (*str*) A natural language query
+        * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
+        specific to this request
+        * **allow_partial** - (*bool, optional*) If True, allow partial
+
+        **Returns:**
+
+        (*ReportResult*) - The result of the report
+
+        """
         if not nlp_installed:
             raise WarehouseException("nlp extension is not installed")
 
@@ -496,13 +509,17 @@ class Warehouse(FieldManagerMixin):
         return table_set
 
     def init_embeddings(self):
+        """Initialize the warehouse embeddings collection. This is necessary
+        to use natural language query to report features."""
         collection_name = init_warehouse_embeddings(self)
         self._set_embeddings_collection_name(collection_name)
 
     def _get_embeddings_collection_name(self):
+        """Get the name of the embeddings collection for this warehouse"""
         return (self.meta or {}).get("embeddings", {}).get("collection_name", None)
 
     def _set_embeddings_collection_name(self, name):
+        """Set the name of the embeddings collection for this warehouse"""
         self.meta = self.meta or {}
         self.meta["embeddings"] = dict(collection_name=name)
 

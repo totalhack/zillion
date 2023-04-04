@@ -2,14 +2,14 @@
 # Module zillion.report
 
 
-## [BaseCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L701-L827)
+## [BaseCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L703-L829)
 
 ::: zillion.report.BaseCombinedResult
     :docstring:
     :members: add_warning clean_up create_table get_conn get_cursor get_final_result get_metric_clause ifnull_clause load_table
 
 
-## [DataSourceQuery](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L157-L641)
+## [DataSourceQuery](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L158-L643)
 
 *Bases*: zillion.report.ExecutionStateMixin, tlbx.logging_utils.PrintMixin
 
@@ -18,7 +18,7 @@
     :members: add_metric covers_field covers_metric execute get_conn get_datasource get_datasource_name get_dialect_name get_tables kill
 
 
-## [DataSourceQueryResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L682-L698)
+## [DataSourceQueryResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L684-L700)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -27,7 +27,7 @@
     
 
 
-## [DataSourceQuerySummary](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L644-L679)
+## [DataSourceQuerySummary](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L646-L681)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -36,23 +36,23 @@
     :members: format
 
 
-## [ExecutionStateMixin](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L45-L154)
+## [ExecutionStateMixin](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L46-L155)
 
 ::: zillion.report.ExecutionStateMixin
     :docstring:
     
 
 
-## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1433-L2223)
+## [Report](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L1435-L2250)
 
 *Bases*: zillion.report.ExecutionStateMixin
 
 ::: zillion.report.Report
     :docstring:
-    :members: delete execute from_params get_dimension_grain get_grain get_json get_params kill load load_warehouse_id_for_report save
+    :members: delete execute from_params from_text get_dimension_grain get_grain get_json get_params kill load load_warehouse_id_for_report save
 
 
-## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L2226-L2312)
+## [ReportResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L2253-L2339)
 
 *Bases*: tlbx.logging_utils.PrintMixin
 
@@ -61,7 +61,7 @@
     
 
 
-## [SQLiteMemoryCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L830-L1430)
+## [SQLiteMemoryCombinedResult](https://github.com/totalhack/zillion/blob/master/zillion/report.py#L832-L1432)
 
 *Bases*: zillion.report.BaseCombinedResult
 
