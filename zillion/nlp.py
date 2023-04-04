@@ -37,6 +37,8 @@ MIN_FIELD_SIMILARITY_SCORE = 0.8
 DEFAULT_VECTOR_SIZE = OPENAI_VECTOR_SIZE
 DEFAULT_WAREHOUSE_COLLECTION_NAME = "default_warehouse_fields"
 
+embeddings_api = None
+
 
 def hash_text(text):
     """Hash a string to a 32-character hex string""" ""
@@ -316,179 +318,189 @@ if nlp_installed:
                 for result in results
             ]
 
+    class EmbeddingsAPI:
+        """API for embedding texts and querying Qdrant"""
 
-class EmbeddingsAPI:
-    """API for embedding texts and querying Qdrant"""
+        def __init__(self):
+            key = zillion_config["OPENAI_API_KEY"]
+            self.embeddings = OpenAIEmbeddingsCached(openai_api_key=key)
+            # We delay connecting to Qdrant until we need it. This way
+            # we can init the API globally without Qdrant necessarily running.
+            self.client = None
 
-    def __init__(self):
-        key = zillion_config["OPENAI_API_KEY"]
-        self.embeddings = OpenAIEmbeddingsCached(openai_api_key=key)
-        # We delay connecting to Qdrant until we need it. This way
-        # we can init the API globally without Qdrant necessarily running.
-        self.client = None
+        def connect(self):
+            """Connect to Qdrant"""
+            host = zillion_config["QDRANT_HOST"]
+            info(f"Connecting to Qdrant at {host}...")
+            self.client = QdrantClient(host=host, port=6333, prefer_grpc=True)
 
-    def connect(self):
-        """Connect to Qdrant"""
-        host = zillion_config["QDRANT_HOST"]
-        info(f"Connecting to Qdrant at {host}...")
-        self.client = QdrantClient(host=host, port=6333, prefer_grpc=True)
+        def ensure_client(self):
+            """Make sure we have a client. If not, connect to Qdrant."""
+            if not self.client:
+                self.connect()
 
-    def ensure_client(self):
-        """Make sure we have a client. If not, connect to Qdrant."""
-        if not self.client:
-            self.connect()
+        def embed_documents(self, rows):
+            """Embed a list of texts"""
+            return self.embeddings.embed_documents(rows)
 
-    def embed_documents(self, rows):
-        """Embed a list of texts"""
-        return self.embeddings.embed_documents(rows)
+        def embed_query(self, query):
+            """Embed a query"""
+            return self.embeddings.embed_query(query)
 
-    def embed_query(self, query):
-        """Embed a query"""
-        return self.embeddings.embed_query(query)
-
-    def create_collection_if_necessary(
-        self,
-        collection_name,
-        vector_size=None,
-        distance=Distance.COSINE,
-        sample=None,
-        **kwargs,
-    ):
-        """
-        Create a collection if it doesn't already exist. If it does exist,
-        just return the collection.
-
-        **Parameters:**
-
-        * **collection_name** - (*str*) Name of the collection
-        * **vector_size** - (*int, optional*) Size of the vector. If not provided, will be inferred
-        from the sample.
-        * **distance** - (*Distance, optional*) Distance metric to use. Defaults to cosine.
-        * **sample** - (*str, optional*) A sample text to use to infer the vector size.
-
-        **Returns:**
-
-        * **collection** - (*QdrantCollection*) The collection
-
-        """
-        try:
-            collection = self.get_collection(collection_name)
-            if collection:
-                info(f"Collection {collection_name} already exists. Skipping creation.")
-                return collection
-        except Exception as e:
-            if "Not found" not in str(e):
-                raise e
-
-        info(f"Creating collection {collection_name}...")
-        if sample and vector_size is None:
-            vector_size = len(self.embed_documents([sample])[0])
-        elif vector_size is None:
-            vector_size = DEFAULT_VECTOR_SIZE
-
-        self.ensure_client()
-        self.client.recreate_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(size=vector_size, distance=distance),
+        def create_collection_if_necessary(
+            self,
+            collection_name,
+            vector_size=None,
+            distance=Distance.COSINE,
+            sample=None,
             **kwargs,
-        )
-        return self.get_collection(collection_name)
+        ):
+            """
+            Create a collection if it doesn't already exist. If it does exist,
+            just return the collection.
 
-    def add_texts(self, collection_name, texts, metadatas=None):
-        """Add texts to Qdrant. See QdrantCustom.add_texts for details."""
-        self.ensure_client()
-        self.create_collection_if_necessary(collection_name, sample=texts[0])
-        qdrant = QdrantCustom(self.client, collection_name, self.embeddings.embed_query)
-        qdrant.add_texts(
-            texts, metadatas=metadatas, bulk_embedder=self.embeddings.embed_documents
-        )
+            **Parameters:**
 
-    def similarity_search_with_score(self, collection_name, query, **kwargs):
-        """Search for similar texts to a query and return the results with scores.
-        See QdrantCustom.similarity_search_with_score for details."""
-        self.ensure_client()
-        qdrant = QdrantCustom(self.client, collection_name, self.embeddings.embed_query)
-        return qdrant.similarity_search_with_score(query, **kwargs)
+            * **collection_name** - (*str*) Name of the collection
+            * **vector_size** - (*int, optional*) Size of the vector. If not provided, will be inferred
+            from the sample.
+            * **distance** - (*Distance, optional*) Distance metric to use. Defaults to cosine.
+            * **sample** - (*str, optional*) A sample text to use to infer the vector size.
 
-    def get_collection(self, name):
-        """Get a collection by name"""
-        self.ensure_client()
-        return self.client.get_collection(collection_name=name)
+            **Returns:**
 
-    def delete_collection(self, name):
-        """Delete a collection by name"""
-        self.ensure_client()
-        return self.client.delete_collection(collection_name=name)
+            * **collection** - (*QdrantCollection*) The collection
 
-    def get_embeddings(self, collection_name, with_payload=True, with_vectors=False):
-        """Get all embeddings in a collection
+            """
+            try:
+                collection = self.get_collection(collection_name)
+                if collection:
+                    info(
+                        f"Collection {collection_name} already exists. Skipping creation."
+                    )
+                    return collection
+            except Exception as e:
+                if "Not found" not in str(e):
+                    raise e
 
-        **Parameters:**
+            info(f"Creating collection {collection_name}...")
+            if sample and vector_size is None:
+                vector_size = len(self.embed_documents([sample])[0])
+            elif vector_size is None:
+                vector_size = DEFAULT_VECTOR_SIZE
 
-        * **collection_name** - (*str*) Name of the collection
-        * **with_payload** - (*bool, optional*) Whether to include the payload. Defaults to True.
-        * **with_vectors** - (*bool, optional*) Whether to include the vectors. Defaults to False.
-
-        **Returns:**
-
-        * **result** - (*list*) List of embeddings
-
-        """
-        self.ensure_client()
-        collection = self.get_collection(collection_name)
-        raiseifnot(collection, f"No collection found: {collection_name}")
-        result = []
-        offset = None
-        while True:
-            points, next_page_offset = self.client.scroll(
+            self.ensure_client()
+            self.client.recreate_collection(
                 collection_name=collection_name,
-                with_payload=with_payload,
-                with_vectors=with_vectors,
-                limit=500,
-                offset=offset,
+                vectors_config=VectorParams(size=vector_size, distance=distance),
+                **kwargs,
             )
-            result.extend([dict(x) for x in points])
-            if next_page_offset is None:
-                break
-            offset = next_page_offset
-        return result
+            return self.get_collection(collection_name)
 
-    def delete_embeddings(self, collection_name, texts):
-        """Delete embeddings by text
+        def add_texts(self, collection_name, texts, metadatas=None):
+            """Add texts to Qdrant. See QdrantCustom.add_texts for details."""
+            self.ensure_client()
+            self.create_collection_if_necessary(collection_name, sample=texts[0])
+            qdrant = QdrantCustom(
+                self.client, collection_name, self.embeddings.embed_query
+            )
+            qdrant.add_texts(
+                texts,
+                metadatas=metadatas,
+                bulk_embedder=self.embeddings.embed_documents,
+            )
 
-        **Parameters:**
+        def similarity_search_with_score(self, collection_name, query, **kwargs):
+            """Search for similar texts to a query and return the results with scores.
+            See QdrantCustom.similarity_search_with_score for details."""
+            self.ensure_client()
+            qdrant = QdrantCustom(
+                self.client, collection_name, self.embeddings.embed_query
+            )
+            return qdrant.similarity_search_with_score(query, **kwargs)
 
-        * **collection_name** - (*str*) Name of the collection
-        * **texts** - (*list*) List of texts to delete
+        def get_collection(self, name):
+            """Get a collection by name"""
+            self.ensure_client()
+            return self.client.get_collection(collection_name=name)
 
-        """
-        ids = [QdrantCustom.get_id(text) for text in texts]
-        self.ensure_client()
-        self.client.delete(
-            collection_name=collection_name,
-            points_selector=rest.PointIdsList(points=ids),
-        )
+        def delete_collection(self, name):
+            """Delete a collection by name"""
+            self.ensure_client()
+            return self.client.delete_collection(collection_name=name)
 
-    def upsert_embedding(self, collection_name, text, payload):
-        """Upsert an embedding
+        def get_embeddings(
+            self, collection_name, with_payload=True, with_vectors=False
+        ):
+            """Get all embeddings in a collection
 
-        **Parameters:**
+            **Parameters:**
 
-        * **collection_name** - (*str*) Name of the collection
-        * **text** - (*str*) Text to upsert
-        * **payload** - (*dict*) Payload to upsert
+            * **collection_name** - (*str*) Name of the collection
+            * **with_payload** - (*bool, optional*) Whether to include the payload. Defaults to True.
+            * **with_vectors** - (*bool, optional*) Whether to include the vectors. Defaults to False.
 
-        **Returns:**
+            **Returns:**
 
-        * **result** - (*dict*) Result of the upsert
+            * **result** - (*list*) List of embeddings
 
-        """
-        self.ensure_client()
-        qdrant = QdrantCustom(self.client, collection_name, self.embeddings.embed_query)
-        return qdrant.add_texts([text], metadatas=[payload])
+            """
+            self.ensure_client()
+            collection = self.get_collection(collection_name)
+            raiseifnot(collection, f"No collection found: {collection_name}")
+            result = []
+            offset = None
+            while True:
+                points, next_page_offset = self.client.scroll(
+                    collection_name=collection_name,
+                    with_payload=with_payload,
+                    with_vectors=with_vectors,
+                    limit=500,
+                    offset=offset,
+                )
+                result.extend([dict(x) for x in points])
+                if next_page_offset is None:
+                    break
+                offset = next_page_offset
+            return result
+
+        def delete_embeddings(self, collection_name, texts):
+            """Delete embeddings by text
+
+            **Parameters:**
+
+            * **collection_name** - (*str*) Name of the collection
+            * **texts** - (*list*) List of texts to delete
+
+            """
+            ids = [QdrantCustom.get_id(text) for text in texts]
+            self.ensure_client()
+            self.client.delete(
+                collection_name=collection_name,
+                points_selector=rest.PointIdsList(points=ids),
+            )
+
+        def upsert_embedding(self, collection_name, text, payload):
+            """Upsert an embedding
+
+            **Parameters:**
+
+            * **collection_name** - (*str*) Name of the collection
+            * **text** - (*str*) Text to upsert
+            * **payload** - (*dict*) Payload to upsert
+
+            **Returns:**
+
+            * **result** - (*dict*) Result of the upsert
+
+            """
+            self.ensure_client()
+            qdrant = QdrantCustom(
+                self.client, collection_name, self.embeddings.embed_query
+            )
+            return qdrant.add_texts([text], metadatas=[payload])
 
 
-embeddings_api = None
 if nlp_installed:
     embeddings_api = EmbeddingsAPI()
 
