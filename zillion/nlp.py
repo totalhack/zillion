@@ -278,7 +278,6 @@ if nlp_installed:
             start = time.time()
             self.client.upsert(
                 collection_name=self.collection_name,
-                # points=rest.Batch(ids=ids, vectors=vectors, payloads=payloads),
                 points=rest.Batch.construct(
                     ids=ids, vectors=[list(v) for v in vectors], payloads=payloads
                 ),
