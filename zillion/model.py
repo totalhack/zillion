@@ -44,7 +44,7 @@ if nlp_installed:
         sa.Column("text_hash", sa.String(100), primary_key=True),
         sa.Column("model", sa.String(100), primary_key=True),
         sa.Column("text", sa.Text, nullable=False),
-        sa.Column("vector", sa.BLOB, nullable=False),
+        sa.Column("vector", sa.LargeBinary, nullable=False),
         sa.Column("created_at", sa.DateTime, server_default=sa.func.NOW()),
     )
 
