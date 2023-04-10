@@ -1610,6 +1610,7 @@ class AdHocDataTable(PrintMixin):
         will do that later.
         """
         self.df_kwargs = kwargs or {}
+        self.fillna_value = fillna_value or ""
 
         self.primary_key_columns = None
         if primary_key:

@@ -1,0 +1,506 @@
+{
+    "metrics": [
+        {
+            "name": "games",
+            "display_name": "G",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "at_bats",
+            "display_name": "AB",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "runs",
+            "display_name": "R",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "hits",
+            "display_name": "H",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "singles",
+            "display_name": "1B",
+            "aggregation": "sum",
+            "formula": "{hits} - {doubles} - {triples} - {home_runs}"
+        },
+        {
+            "name": "doubles",
+            "display_name": "2B",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "triples",
+            "display_name": "3B",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "home_runs",
+            "display_name": "HR",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "runs_batted_in",
+            "display_name": "RBI",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "stolen_bases",
+            "display_name": "SB",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "caught_stealing",
+            "display_name": "CS",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "walks",
+            "display_name": "BB",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "strikeouts",
+            "display_name": "SO",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "intentional_walks",
+            "display_name": "IBB",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "hit_by_pitch",
+            "display_name": "HBP",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "sacrifice_hits",
+            "display_name": "SH",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "sacrifice_flies",
+            "display_name": "SF",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "grounded_into_double_plays",
+            "display_name": "GIDP",
+            "type": "integer",
+            "aggregation": "sum"
+        },
+        {
+            "name": "batting_average",
+            "display_name": "AVG",
+            "aggregation": "mean",
+            "rounding": 3,
+            "formula": "1.0*{hits}/{at_bats}",
+            "description": "Hits per At Bat"
+        },
+        {
+            "name": "on_base_percentage",
+            "display_name": "OBP",
+            "aggregation": "mean",
+            "rounding": 3,
+            "formula": "1.0*({hits} + {walks} + {hit_by_pitch})/({at_bats} + {walks} + {hit_by_pitch} + {sacrifice_flies})",
+            "description": "(Hits + Walks + Hit By Pitch) / (At Bats + Walks + Hit By Pitch + Sacrifice Flies)"
+        },
+        {
+            "name": "slugging_percentage",
+            "display_name": "SLG",
+            "aggregation": "mean",
+            "rounding": 3,
+            "formula": "1.0*({singles} + 2*{doubles} + 3*{triples} + 4*{home_runs})/{at_bats}",
+            "description": "(Singles + 2xDoubles + 3xTriples + 4xHome Runs) / At Bats"
+        },
+        {
+            "name": "on_base_plus_slugging",
+            "display_name": "OPS",
+            "aggregation": "mean",
+            "rounding": 3,
+            "formula": "1.0*({on_base_percentage} + {slugging_percentage})",
+            "description": "OBP + SLG"
+        }
+    ],
+    "dimensions": [
+        {
+            "name": "player_id",
+            "display_name": "Player ID",
+            "type": "string(10)",
+            "description": "A unique code assigned to each player"
+        },
+        {
+            "name": "year",
+            "display_name": "Year",
+            "type": "integer",
+            "description": "Year"
+        },
+        {
+            "name": "stint",
+            "display_name": "Stint",
+            "type": "integer",
+            "description": "Player's stint (order of appearances within a season)"
+        },
+        {
+            "name": "team_id",
+            "display_name": "Team ID",
+            "type": "string(3)",
+            "description": "A unique ID for a franchise/year combination"
+        },
+        {
+            "name": "league_id",
+            "display_name": "League ID",
+            "type": "string(2)",
+            "description": "Unique ID for the league"
+        },
+        {
+            "name": "franchise_id",
+            "display_name": "Franchise ID",
+            "type": "string(3)",
+            "description": "A unique ID for the franchise"
+        },
+        {
+            "name": "franchise_name",
+            "display_name": "Franchise Name",
+            "type": "string(50)",
+            "description": "Full name of the franchise"
+        },
+        {
+            "name": "ballpark",
+            "display_name": "Ballpark",
+            "type": "string(50)",
+            "description": "Name of the ballpark"
+        },
+        {
+            "name": "birth_year",
+            "display_name": "Birth Year",
+            "type": "integer",
+            "description": "Year player was born"
+        },
+        {
+            "name": "birth_country",
+            "display_name": "Birth Country",
+            "type": "string(32)",
+            "description": "Country where player was born"
+        },
+        {
+            "name": "birth_state",
+            "display_name": "Birth State",
+            "type": "string(3)",
+            "description": "State where player was born"
+        },
+        {
+            "name": "first_name",
+            "display_name": "First Name",
+            "type": "string(32)",
+            "description": "Player's first name"
+        },
+        {
+            "name": "last_name",
+            "display_name": "Last Name",
+            "type": "string(32)",
+            "description": "Player's last name"
+        },
+        {
+            "name": "weight",
+            "display_name": "Weight",
+            "type": "integer",
+            "description": "Player's weight in pounds"
+        },
+        {
+            "name": "height",
+            "display_name": "Height",
+            "type": "integer",
+            "description": "Player's height in inches"
+        },
+        {
+            "name": "bats",
+            "display_name": "Bats",
+            "type": "string(5)",
+            "description": "Player's batting hand (left, right, or both)"
+        },
+        {
+            "name": "throws",
+            "display_name": "Throws",
+            "type": "string(5)",
+            "description": "Player's throwing hand (left or right)"
+        },
+        {
+            "name": "debut_date",
+            "display_name": "Debut Date",
+            "type": "date",
+            "description": "Date that player made first major league appearance"
+        }
+    ],
+    "datasources": {
+        "baseball_data_bank": {
+            "connect": "sqlite:////tmp/baseball.db",
+            "tables": {
+                "main.people": {
+                    "type": "dimension",
+                    "data_url": "https://raw.githubusercontent.com/chadwickbureau/baseballdatabank/master/core/People.csv",
+                    "if_exists": "ignore",
+                    "primary_key": [
+                        "player_id"
+                    ],
+                    "columns": {
+                        "playerID": {
+                            "fields": [
+                                "player_id"
+                            ]
+                        },
+                        "birthYear": {
+                            "fields": [
+                                "birth_year"
+                            ]
+                        },
+                        "birthCountry": {
+                            "fields": [
+                                "birth_country"
+                            ]
+                        },
+                        "birthState": {
+                            "fields": [
+                                "birth_state"
+                            ]
+                        },
+                        "nameFirst": {
+                            "fields": [
+                                "first_name"
+                            ]
+                        },
+                        "nameLast": {
+                            "fields": [
+                                "last_name"
+                            ]
+                        },
+                        "weight": {
+                            "fields": [
+                                "weight"
+                            ]
+                        },
+                        "height": {
+                            "fields": [
+                                "height"
+                            ]
+                        },
+                        "bats": {
+                            "fields": [
+                                "bats"
+                            ]
+                        },
+                        "throws": {
+                            "fields": [
+                                "throws"
+                            ]
+                        },
+                        "debut": {
+                            "fields": [
+                                "debut_date"
+                            ]
+                        }
+                    }
+                },
+                "main.teams": {
+                    "type": "dimension",
+                    "data_url": "https://raw.githubusercontent.com/chadwickbureau/baseballdatabank/master/core/Teams.csv",
+                    "if_exists": "ignore",
+                    "parent": "main.franchises",
+                    "primary_key": [
+                        "year",
+                        "league_id",
+                        "team_id"
+                    ],
+                    "columns": {
+                        "yearID": {
+                            "fields": [
+                                "year"
+                            ]
+                        },
+                        "lgID": {
+                            "fields": [
+                                "league_id"
+                            ]
+                        },
+                        "teamID": {
+                            "fields": [
+                                "team_id"
+                            ]
+                        },
+                        "franchID": {
+                            "fields": [
+                                "franchise_id"
+                            ]
+                        },
+                        "park": {
+                            "fields": [
+                                "ballpark"
+                            ]
+                        }
+                    }
+                },
+                "main.franchises": {
+                    "type": "dimension",
+                    "data_url": "https://raw.githubusercontent.com/chadwickbureau/baseballdatabank/master/core/TeamsFranchises.csv",
+                    "if_exists": "ignore",
+                    "primary_key": [
+                        "franchise_id"
+                    ],
+                    "columns": {
+                        "franchID": {
+                            "fields": [
+                                "franchise_id"
+                            ]
+                        },
+                        "franchName": {
+                            "fields": [
+                                "franchise_name"
+                            ]
+                        }
+                    }
+                },
+                "main.batting": {
+                    "type": "metric",
+                    "data_url": "https://raw.githubusercontent.com/chadwickbureau/baseballdatabank/master/core/Batting.csv",
+                    "if_exists": "ignore",
+                    "primary_key": [
+                        "player_id",
+                        "year",
+                        "stint"
+                    ],
+                    "columns": {
+                        "playerID": {
+                            "fields": [
+                                "player_id"
+                            ]
+                        },
+                        "yearID": {
+                            "fields": [
+                                "year"
+                            ]
+                        },
+                        "stint": {
+                            "fields": [
+                                "stint"
+                            ]
+                        },
+                        "teamID": {
+                            "fields": [
+                                "team_id"
+                            ]
+                        },
+                        "lgID": {
+                            "fields": [
+                                "league_id"
+                            ]
+                        },
+                        "G": {
+                            "fields": [
+                                "games"
+                            ]
+                        },
+                        "AB": {
+                            "fields": [
+                                "at_bats"
+                            ]
+                        },
+                        "R": {
+                            "fields": [
+                                "runs"
+                            ]
+                        },
+                        "H": {
+                            "fields": [
+                                "hits"
+                            ]
+                        },
+                        "2B": {
+                            "fields": [
+                                "doubles"
+                            ]
+                        },
+                        "3B": {
+                            "fields": [
+                                "triples"
+                            ]
+                        },
+                        "HR": {
+                            "fields": [
+                                "home_runs"
+                            ]
+                        },
+                        "RBI": {
+                            "fields": [
+                                "runs_batted_in"
+                            ]
+                        },
+                        "SB": {
+                            "fields": [
+                                "stolen_bases"
+                            ]
+                        },
+                        "CS": {
+                            "fields": [
+                                "caught_stealing"
+                            ]
+                        },
+                        "BB": {
+                            "fields": [
+                                "walks"
+                            ]
+                        },
+                        "SO": {
+                            "fields": [
+                                "strikeouts"
+                            ]
+                        },
+                        "IBB": {
+                            "fields": [
+                                "intentional_walks"
+                            ]
+                        },
+                        "HBP": {
+                            "fields": [
+                                "hit_by_pitch"
+                            ]
+                        },
+                        "SH": {
+                            "fields": [
+                                "sacrifice_hits"
+                            ]
+                        },
+                        "SF": {
+                            "fields": [
+                                "sacrifice_flies"
+                            ]
+                        },
+                        "GIDP": {
+                            "fields": [
+                                "grounded_into_double_plays"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
