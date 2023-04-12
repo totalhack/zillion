@@ -51,7 +51,8 @@ extras_require = {
     "nlp": [
         "langchain==0.0.115",
         "openai==0.27.2",
-        "qdrant-client==0.11.0",
+        "tiktoken==0.3.3",
+        "qdrant-client==1.1.3",
     ],
     "dev": [
         "black",

@@ -45,10 +45,31 @@ GENERIC_NLP_QUERIES = [
 
 
 @pytest.mark.nlp
-def test_text_to_report():
+def test_text_to_report_v1():
     for query, expected in GENERIC_NLP_QUERIES:
         print(f"Testing query: {query}")
-        report = text_to_report_params(query)
+        report = text_to_report_params(query, prompt_version="v1")
+        print(f"Report: {report}")
+        assert report == expected
+
+
+V2_NLP_QUERIES = [
+    [
+        "show me revenue and sales for yesterday",
+        dict(
+            metrics=["revenue", "sales"],
+            criteria=[["date", "=", str(n_days_ago(1))]],
+        ),
+    ],
+]
+
+
+@pytest.mark.nlp
+def test_text_to_report_v2(config):
+    wh = Warehouse(config=config)
+    for query, expected in V2_NLP_QUERIES:
+        print(f"Testing query: {query}")
+        report = text_to_report_params(query, warehouse=wh, prompt_version="v2")
         print(f"Report: {report}")
         assert report == expected
 

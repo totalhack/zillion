@@ -26,7 +26,11 @@ from zillion.field import (
     FIELD_VALUE_CHECK_OPERATIONS,
 )
 from zillion.model import zillion_engine, ReportSpecs
-from zillion.nlp import text_to_report_params, map_warehouse_report_params
+from zillion.nlp import (
+    text_to_report_params,
+    MaxTokensException,
+    map_warehouse_report_params,
+)
 from zillion.sql_utils import (
     sqla_compile,
     get_sqla_criterion_expr,
@@ -2122,7 +2126,13 @@ class Report(ExecutionStateMixin):
         * **report** - (*Report*) A report object
 
         """
-        params = text_to_report_params(text)
+        try:
+            # Try the V2 prompt first which includes metrics/dimensions
+            # in the prompt. If that fails, try the V1 prompt.
+            params = text_to_report_params(text, warehouse, prompt_version="v2")
+        except MaxTokensException as e:
+            params = text_to_report_params(text, warehouse, prompt_version="v1")
+
         report_params = map_warehouse_report_params(warehouse, params)
         return Report(
             warehouse,

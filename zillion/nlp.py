@@ -23,6 +23,7 @@ from tlbx import raiseifnot, st, json
 from zillion.core import (
     info,
     warn,
+    error,
     zillion_config,
     nlp_installed,
     RollupTypes,
@@ -330,8 +331,17 @@ if nlp_installed:
         def connect(self):
             """Connect to Qdrant"""
             host = zillion_config["QDRANT_HOST"]
-            info(f"Connecting to Qdrant at {host}...")
-            self.client = QdrantClient(host=host, port=6333, prefer_grpc=True)
+            info(f"Connecting to Qdrant host: {host}...")
+            if host == ":memory:":
+                self.client = QdrantClient(location=host)
+            elif host.startswith("http") or host in [
+                "localhost",
+                "127.0.0.1",
+                "host.docker.internal",
+            ]:
+                self.client = QdrantClient(host=host, port=6333, prefer_grpc=True)
+            else:
+                self.client = QdrantClient(path=host)
 
         def ensure_client(self):
             """Make sure we have a client. If not, connect to Qdrant."""
@@ -379,7 +389,7 @@ if nlp_installed:
                     )
                     return collection
             except Exception as e:
-                if "Not found" not in str(e):
+                if "not found" not in str(e).lower():
                     raise e
 
             info(f"Creating collection {collection_name}...")
@@ -559,8 +569,66 @@ def init_warehouse_embeddings(warehouse):
     return collection_name
 
 
+def get_openai_class(model=None):
+    """Get the OpenAI class to use for a given model."""
+    model = model or zillion_config["OPENAI_MODEL"]
+    return OpenAI if model == OPENAI_DAVINCI_MODEL_NAME else OpenAIChat
+
+
+def get_openai_model_context_size(model):
+    """Logic copied from langchain since no util exposed"""
+    if model == "text-davinci-003":
+        return 4097
+    elif model == "text-curie-001":
+        return 2048
+    elif model == "text-babbage-001":
+        return 2048
+    elif model == "text-ada-001":
+        return 2048
+    elif model == "code-davinci-002":
+        return 8000
+    elif model == "code-cushman-001":
+        return 2048
+    else:
+        return 4097
+
+
+def build_llm(model=None, max_tokens=None, request_timeout=LLM_REQUEST_TIMEOUT):
+    """Build an LLM using langchain and the OpenAI API.
+
+    **Parameters:**
+
+    * **model** - (str, optional) The OpenAI model to use. Defaults to the model specified in the zillion config.
+    * **max_tokens** - (int) The maximum number of tokens to generate.
+    * **request_timeout** - (int) The maximum number of seconds to wait for a response from the OpenAI API.
+
+    **Returns:**
+
+    (*llm*) - A langchain OpenAI LLM
+
+    """
+    model = model or zillion_config["OPENAI_MODEL"]
+    key = zillion_config["OPENAI_API_KEY"]
+    raiseifnot(model and key, "Missing OpenAI API key or model name in zillion config")
+    max_tokens = max_tokens or LLM_MAX_TOKENS
+    info(f"Building OpenAI {model} chain with max_tokens={max_tokens}")
+    openai_class = get_openai_class(model)
+    return openai_class(
+        model_name=model,
+        temperature=0,
+        max_tokens=max_tokens,
+        request_timeout=request_timeout,
+        max_retries=1,
+        openai_api_key=key,
+    )
+
+
 def build_chain(
-    prompt, model=None, max_tokens=LLM_MAX_TOKENS, request_timeout=LLM_REQUEST_TIMEOUT
+    prompt,
+    model=None,
+    max_tokens=LLM_MAX_TOKENS,
+    request_timeout=LLM_REQUEST_TIMEOUT,
+    llm=None,
 ):
     """Build a chain using langchain and the OpenAI API.
 
@@ -570,25 +638,15 @@ def build_chain(
     * **model** - (str, optional) The OpenAI model to use. Defaults to the model specified in the zillion config.
     * **max_tokens** - (int) The maximum number of tokens to generate.
     * **request_timeout** - (int) The maximum number of seconds to wait for a response from the OpenAI API.
+    * **llm** - (llm, optional) The LLM to use. Defaults to a new LLM built using the OpenAI API.
 
     **Returns:**
 
     (*LLMChain*) - A langchain LLMChain object.
 
     """
-    model = model or zillion_config["OPENAI_MODEL"]
-    key = zillion_config["OPENAI_API_KEY"]
-    raiseifnot(model and key, "Missing OpenAI API key or model name in zillion config")
-    max_tokens = max_tokens or LLM_MAX_TOKENS
-    info(f"Building OpenAI {model} chain with max_tokens={max_tokens}")
-    openai_class = OpenAI if model == OPENAI_DAVINCI_MODEL_NAME else OpenAIChat
-    llm = openai_class(
-        model_name=model,
-        temperature=0,
-        max_tokens=max_tokens,
-        request_timeout=request_timeout,
-        max_retries=1,
-        openai_api_key=key,
+    llm = llm or build_llm(
+        model=model, max_tokens=max_tokens, request_timeout=request_timeout
     )
     return LLMChain(llm=llm, prompt=prompt)
 
@@ -596,7 +654,7 @@ def build_chain(
 TEXT_TO_REPORT_V1 = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
 If a relative date is specified, such as "yesterday", replace it with the actual date. The current date is: {current_date}
 
-Example inputs and outputs:
+Generic Example 1:
 
 Input: revenue and sales by date for the last 30 days. Rows with more than 5 sales.
 Output:
@@ -610,6 +668,8 @@ Output:
     ["sales", ">", 5]
 ]
 }}
+
+Generic Example 2:
 
 Input: show me the top 10 campaigns by revenue yesterday for ad engine Google. Include totals.
 Output:
@@ -628,79 +688,61 @@ Output:
 }}
 
 ----
+Complete the following. Use JSON format and include no other commentary.
 Input: {query}
 JSON Output:"""
 
-TEXT_TO_REPORT_V2 = """We are going to translate natural language queries into a reporting API call. The python function we will call has a signature and docstring as follows:
 
-```python
-def run_report(
-    metrics=None,
-    dimensions=None,
-    criteria=None,
-    row_filters=None,
-    rollup=None,
-    pivot=None,
-    order_by=None,
-    limit=None,
-):
-    * **metrics** - (*list, optional*) A list of metric names, or dicts in the
-    case of AdHocMetrics. These will be the measures of your report, or the
-    statistics you are interested in computing at the given dimension grain.
-    * **dimensions** - (*list, optional*) A list of dimension names to control
-    the grain of the report. You can think of dimensions similarly to the "group
-    by" in a SQL query.
-    * **criteria** - (*list, optional*) A list of criteria to be applied when
-    querying. Each criteria in the list is represented by a 3-item list or
-    tuple. See `core.CRITERIA_OPERATIONS` for all supported
-    operations. Note that some operations, such as "like", have varying
-    behavior by datasource dialect. Some examples:
-        * ["field_a", ">", 1]
-        * ["field_b", "=", "2020-04-01"]
-        * ["field_c", "like", "%example%"]
-        * ["field_d", "in", ["a", "b", "c"]]
-
-    * **row_filters** - (*list, optional*) A list of criteria to apply at the
-    final step (combined query layer) to filter which rows get returned. The
-    format here is the same as for the criteria arg, though the operations are
-    limited to the values of `core.ROW_FILTER_OPERATIONS`.
-    * **rollup** - (*str or int, optional*) Controls how metrics are rolled up
-    / aggregated by dimension depth. If not passed no rollup will be
-    computed. If the special value "totals" is passed, only a final tally
-    rollup row will be added. If an int, then it controls the maximum depth to
-    roll up the data, starting from the most granular (last) dimension of the
-    report. Note that the rollup=3 case is like adding a totals row to the
-    "=2" case, as a totals row is a rollup of all dimension levels. Setting
-    rollup=len(dims) is equivalent to rollup="all". For example, if you ran a
-    report with dimensions ["a", "b", "c"]:
-        * **rollup="totals"** - adds a single, final rollup row
-        * **rollup="all"** - rolls up all dimension levels
-        * **rollup=1** - rolls up the first dimension only
-        * **rollup=2** - rolls up the first two dimensions
-        * **rollup=3** - rolls up all three dimensions
-        * Any other non-None value would raise an error
-
-    * **pivot** - (*list, optional*) A list of dimensions to pivot to columns
-    * **order_by** - (*list, optional*) A list of (field, asc/desc) tuples that
-    control the ordering of the returned result
-    * **limit** - (*int, optional*) A limit on the number of rows returned
-```
-
+TEXT_TO_REPORT_V2 = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
 If a relative date is specified, such as "yesterday", replace it with the actual date. The current date is: {current_date}
 
-Query: {query}
-Python Arguments:"""
+Supported metrics:
+{metrics}
+
+Supported dimensions:
+{dimensions}
+
+Generic Example 1:
+
+Input: revenue and sales by date for the last 30 days. Rows with more than 5 sales.
+JSON Output:
+{{
+  "metrics": ["revenue", "sales"],
+  "dimensions": ["date"],
+  "criteria": [
+    ["date", ">=", "{thirty_days_ago}"]
+  ],
+  "row_filters": [
+    ["sales", ">", 5]
+]
+}}
+
+Generic Example 2:
+
+Input: show me the top 10 campaigns by revenue yesterday for ad engine Google. Include totals.
+JSON Output:
+{{
+  "metrics": ["revenue"],
+  "dimensions": ["campaign"],
+  "criteria": [
+    ["date", "=", "{yesterday}"],
+    ["ad_engine", "=", "Google"]
+  ],
+  "limit": 10,
+  "order_by": [
+    ["revenue", "desc"]
+  ],
+  "rollup": "totals"
+}}
+
+----
+Complete the following. Use JSON format and include no other commentary. Use only supported metrics and dimensions.
+Input: {query}
+JSON Output:"""
 
 
-TEXT_TO_REPORT_V3 = """We are going to translate natural language queries into a MySQL query. Assume all fields are in a single table called "mytable".
-If a relative date is specified, such as "yesterday", replace it with the actual date. The current date is: {current_date}
-
-Query: {query}
-SQL:"""
-
-
-def parse_text_to_report_v1_output(output):
-    """Parse the output of the TEXT_TO_REPORT_V1 chain
+def parse_text_to_report_json_output(output):
+    """Parse the output of a chain that produces Zillion args as JSON
 
     **Parameters:**
 
@@ -713,31 +755,42 @@ def parse_text_to_report_v1_output(output):
     """
     if not output:
         return None
-    return {k: v for k, v in json.loads(output).items() if v}
-
-
-def parse_text_to_report_v2_output(output):
-    """TODO Parse the output of the TEXT_TO_REPORT_V2 chain, which outputs python arguments"""
-    raise NotImplementedError
-
-
-def parse_text_to_report_v3_output(output):
-    """TODO Parse the output of the TEXT_TO_REPORT_V3 chain, would require sqlparse"""
-    raise NotImplementedError
+    try:
+        return {k: v for k, v in json.loads(output).items() if v}
+    except Exception as e:
+        error(f"Error parsing JSON:\n{output}")
+        raise
 
 
 PROMPT_CONFIGS = dict(
     v1=dict(
         prompt_text=TEXT_TO_REPORT_V1,
-        parser=parse_text_to_report_v1_output,
+        input_variables=["query", "current_date", "yesterday", "thirty_days_ago"],
+        context_func=lambda wh: dict(
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            yesterday=str(datetime.now().date() - timedelta(days=1)),
+            thirty_days_ago=str(datetime.now().date() - timedelta(days=30)),
+        ),
+        parser=parse_text_to_report_json_output,
     ),
     v2=dict(
         prompt_text=TEXT_TO_REPORT_V2,
-        parser=parse_text_to_report_v2_output,
-    ),
-    v3=dict(
-        prompt_text=TEXT_TO_REPORT_V3,
-        parser=parse_text_to_report_v3_output,
+        input_variables=[
+            "query",
+            "current_date",
+            "yesterday",
+            "thirty_days_ago",
+            "metrics",
+            "dimensions",
+        ],
+        context_func=lambda wh: dict(
+            metrics=get_metrics_prompt_str(wh),
+            dimensions=get_dimensions_prompt_str(wh),
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            yesterday=str(datetime.now().date() - timedelta(days=1)),
+            thirty_days_ago=str(datetime.now().date() - timedelta(days=30)),
+        ),
+        parser=parse_text_to_report_json_output,
     ),
 )
 
@@ -874,12 +927,34 @@ def map_warehouse_report_params(warehouse, report):
 text_to_report_chain = None
 
 
-def text_to_report_params(query, prompt_version="v1"):
+def get_fields_prompt_str(fields):
+    """Get a string representing names/types of given fields"""
+    res = []
+    for name, fdef in fields.items():
+        type_str = str(fdef.type).lower() if fdef.type else "unknown"
+        res.append(f"{name} ({type_str})")
+    return "\n".join(res)
+
+
+def get_metrics_prompt_str(warehouse):
+    return get_fields_prompt_str(warehouse.get_metrics())
+
+
+def get_dimensions_prompt_str(warehouse):
+    return get_fields_prompt_str(warehouse.get_dimensions())
+
+
+class MaxTokensException(Exception):
+    pass
+
+
+def text_to_report_params(query, warehouse=None, prompt_version="v1"):
     """Convert a natural language input to Zillion report params
 
     **Parameters:**
 
     * **query** - (str) The natural language query to convert.
+    * **warehouse** - (Warehouse, optional) The warehouse to map the report params to
     * **prompt_version** - (str) The version of the prompt to use
 
     **Returns:**
@@ -890,33 +965,27 @@ def text_to_report_params(query, prompt_version="v1"):
 
     """
     prompt_config = PROMPT_CONFIGS[prompt_version]
-    prompt_text = prompt_config["prompt_text"]
-    parser = prompt_config["parser"]
-
-    context = dict(
-        query=query,
-        current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        yesterday=str(datetime.now().date() - timedelta(days=1)),
-        thirty_days_ago=str(datetime.now().date() - timedelta(days=30)),
+    context = prompt_config["context_func"](warehouse)
+    context["query"] = query
+    prompt = PromptTemplate(
+        input_variables=prompt_config["input_variables"],
+        template=prompt_config["prompt_text"],
     )
 
     global text_to_report_chain
     if not text_to_report_chain:
-        prompt = PromptTemplate(
-            input_variables=["query", "current_date", "yesterday", "thirty_days_ago"],
-            template=prompt_text,
-        )
-        text_to_report_chain = build_chain(
-            prompt,
-            model=OPENAI_DAVINCI_MODEL_NAME,
-            max_tokens=1000,
-            request_timeout=LLM_REQUEST_TIMEOUT,
-        )
+        llm = build_llm(max_tokens=-1)
+        text_to_report_chain = build_chain(prompt, llm=llm)
+
+    prompt_tokens = text_to_report_chain.llm.get_num_tokens(prompt.format(**context))
+    max_tokens = get_openai_model_context_size(text_to_report_chain.llm.model_name)
+    if (prompt_tokens + 500) >= max_tokens:
+        raise MaxTokensException(f"Prompt is too long: {prompt_tokens} tokens")
 
     llm_start = time.time()
     output = text_to_report_chain.run(**context).strip(". -\n\r")
     info(f"LLM took {time.time() - llm_start:.3f}s")
-    return parser(output)
+    return prompt_config["parser"](output)
 
 
 NLP_TABLE_RELATIONSHIP_PROMPT = """Given the following tables, what are the suggested foreign key relationships starting from these tables?
