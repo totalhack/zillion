@@ -2135,12 +2135,17 @@ class Report(ExecutionStateMixin):
         * **report** - (*Report*) A report object
 
         """
-        try:
-            # Try the V2 prompt first which includes metrics/dimensions
-            # in the prompt. If that fails, try the V1 prompt.
-            params = text_to_report_params(text, warehouse, prompt_version="v2")
-        except MaxTokensException as e:
-            params = text_to_report_params(text, warehouse, prompt_version="v1")
+
+        params = None
+        prompts = ["all_fields", "dimension_fields", "no_fields"]
+        for prompt in prompts:
+            try:
+                params = text_to_report_params(text, warehouse, prompt_version=prompt)
+                break
+            except MaxTokensException as e:
+                warn(f"Max tokens exceeded, retrying with fallback prompt")
+
+        raiseifnot(params, "Could not parse report params from text: %s" % text)
 
         report_params = map_warehouse_report_params(warehouse, params)
         return Report(

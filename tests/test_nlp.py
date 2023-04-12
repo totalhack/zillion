@@ -45,15 +45,15 @@ GENERIC_NLP_QUERIES = [
 
 
 @pytest.mark.nlp
-def test_text_to_report_v1():
+def test_text_to_report_no_fields():
     for query, expected in GENERIC_NLP_QUERIES:
         print(f"Testing query: {query}")
-        report = text_to_report_params(query, prompt_version="v1")
+        report = text_to_report_params(query, prompt_version="no_fields")
         print(f"Report: {report}")
         assert report == expected
 
 
-V2_NLP_QUERIES = [
+ALL_FIELDS_NLP_QUERIES = [
     [
         "show me revenue and sales for yesterday",
         dict(
@@ -65,11 +65,34 @@ V2_NLP_QUERIES = [
 
 
 @pytest.mark.nlp
-def test_text_to_report_v2(config):
+def test_text_to_report_all_fields(config):
     wh = Warehouse(config=config)
-    for query, expected in V2_NLP_QUERIES:
+    for query, expected in ALL_FIELDS_NLP_QUERIES:
         print(f"Testing query: {query}")
-        report = text_to_report_params(query, warehouse=wh, prompt_version="v2")
+        report = text_to_report_params(query, warehouse=wh, prompt_version="all_fields")
+        print(f"Report: {report}")
+        assert report == expected
+
+
+DIMENSION_FIELDS_NLP_QUERIES = [
+    [
+        "show me revenue and sales for yesterday",
+        dict(
+            metrics=["revenue", "sales"],
+            criteria=[["date", "=", str(n_days_ago(1))]],
+        ),
+    ],
+]
+
+
+@pytest.mark.nlp
+def test_text_to_report_dimension_fields(config):
+    wh = Warehouse(config=config)
+    for query, expected in DIMENSION_FIELDS_NLP_QUERIES:
+        print(f"Testing query: {query}")
+        report = text_to_report_params(
+            query, warehouse=wh, prompt_version="dimension_fields"
+        )
         print(f"Report: {report}")
         assert report == expected
 

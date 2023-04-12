@@ -21,6 +21,7 @@ from sqlalchemy.schema import CreateTable
 from tlbx import raiseifnot, st, json
 
 from zillion.core import (
+    dbg,
     info,
     warn,
     error,
@@ -611,7 +612,7 @@ def build_llm(model=None, max_tokens=None, request_timeout=LLM_REQUEST_TIMEOUT):
     key = zillion_config["OPENAI_API_KEY"]
     raiseifnot(model and key, "Missing OpenAI API key or model name in zillion config")
     max_tokens = max_tokens or LLM_MAX_TOKENS
-    info(f"Building OpenAI {model} chain with max_tokens={max_tokens}")
+    dbg(f"Building OpenAI {model} chain with max_tokens={max_tokens}")
     openai_class = get_openai_class(model)
     return openai_class(
         model_name=model,
@@ -651,7 +652,7 @@ def build_chain(
     return LLMChain(llm=llm, prompt=prompt)
 
 
-TEXT_TO_REPORT_V1 = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
+TEXT_TO_REPORT_NO_FIELDS = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
 If a relative date is specified, such as "yesterday", replace it with the actual date. The current date is: {current_date}
 
 Generic Example 1:
@@ -693,7 +694,7 @@ Input: {query}
 JSON Output:"""
 
 
-TEXT_TO_REPORT_V2 = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
+TEXT_TO_REPORT_ALL_FIELDS = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
 If a relative date is specified, such as "yesterday", replace it with the actual date. The current date is: {current_date}
 
 Supported metrics:
@@ -740,6 +741,50 @@ Complete the following. Use JSON format and include no other commentary. Use onl
 Input: {query}
 JSON Output:"""
 
+TEXT_TO_REPORT_DIMENSION_FIELDS = """You are an expert SQL analyst that takes natural language input and outputs metrics, dimensions, criteria, ordering, and limit settings in JSON format.
+If a relative date is specified, such as "yesterday", replace it with the actual date. The current date is: {current_date}
+
+Supported dimensions:
+{dimensions}
+
+Generic Example 1:
+
+Input: revenue and sales by date for the last 30 days. Rows with more than 5 sales.
+JSON Output:
+{{
+  "metrics": ["revenue", "sales"],
+  "dimensions": ["date"],
+  "criteria": [
+    ["date", ">=", "{thirty_days_ago}"]
+  ],
+  "row_filters": [
+    ["sales", ">", 5]
+]
+}}
+
+Generic Example 2:
+
+Input: show me the top 10 campaigns by revenue yesterday for ad engine Google. Include totals.
+JSON Output:
+{{
+  "metrics": ["revenue"],
+  "dimensions": ["campaign"],
+  "criteria": [
+    ["date", "=", "{yesterday}"],
+    ["ad_engine", "=", "Google"]
+  ],
+  "limit": 10,
+  "order_by": [
+    ["revenue", "desc"]
+  ],
+  "rollup": "totals"
+}}
+
+----
+Complete the following. Use JSON format and include no other commentary.
+Input: {query}
+JSON Output:"""
+
 
 def parse_text_to_report_json_output(output):
     """Parse the output of a chain that produces Zillion args as JSON
@@ -762,9 +807,11 @@ def parse_text_to_report_json_output(output):
         raise
 
 
+# TODO - share code for configs below
+
 PROMPT_CONFIGS = dict(
-    v1=dict(
-        prompt_text=TEXT_TO_REPORT_V1,
+    no_fields=dict(
+        prompt_text=TEXT_TO_REPORT_NO_FIELDS,
         input_variables=["query", "current_date", "yesterday", "thirty_days_ago"],
         context_func=lambda wh: dict(
             current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -773,8 +820,8 @@ PROMPT_CONFIGS = dict(
         ),
         parser=parse_text_to_report_json_output,
     ),
-    v2=dict(
-        prompt_text=TEXT_TO_REPORT_V2,
+    all_fields=dict(
+        prompt_text=TEXT_TO_REPORT_ALL_FIELDS,
         input_variables=[
             "query",
             "current_date",
@@ -785,6 +832,23 @@ PROMPT_CONFIGS = dict(
         ],
         context_func=lambda wh: dict(
             metrics=get_metrics_prompt_str(wh),
+            dimensions=get_dimensions_prompt_str(wh),
+            current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            yesterday=str(datetime.now().date() - timedelta(days=1)),
+            thirty_days_ago=str(datetime.now().date() - timedelta(days=30)),
+        ),
+        parser=parse_text_to_report_json_output,
+    ),
+    dimension_fields=dict(
+        prompt_text=TEXT_TO_REPORT_DIMENSION_FIELDS,
+        input_variables=[
+            "query",
+            "current_date",
+            "yesterday",
+            "thirty_days_ago",
+            "dimensions",
+        ],
+        context_func=lambda wh: dict(
             dimensions=get_dimensions_prompt_str(wh),
             current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             yesterday=str(datetime.now().date() - timedelta(days=1)),
@@ -924,9 +988,6 @@ def map_warehouse_report_params(warehouse, report):
     return res
 
 
-text_to_report_chain = None
-
-
 def get_fields_prompt_str(fields):
     """Get a string representing names/types of given fields"""
     res = []
@@ -948,7 +1009,7 @@ class MaxTokensException(Exception):
     pass
 
 
-def text_to_report_params(query, warehouse=None, prompt_version="v1"):
+def text_to_report_params(query, warehouse=None, prompt_version="no_fields"):
     """Convert a natural language input to Zillion report params
 
     **Parameters:**
@@ -972,10 +1033,8 @@ def text_to_report_params(query, warehouse=None, prompt_version="v1"):
         template=prompt_config["prompt_text"],
     )
 
-    global text_to_report_chain
-    if not text_to_report_chain:
-        llm = build_llm(max_tokens=-1)
-        text_to_report_chain = build_chain(prompt, llm=llm)
+    llm = build_llm(max_tokens=-1)
+    text_to_report_chain = build_chain(prompt, llm=llm)
 
     prompt_tokens = text_to_report_chain.llm.get_num_tokens(prompt.format(**context))
     max_tokens = get_openai_model_context_size(text_to_report_chain.llm.model_name)
@@ -1028,9 +1087,6 @@ def parse_nlp_table_relationships(output):
     return child_parent
 
 
-relationship_chain = None
-
-
 def get_nlp_table_relationships(metadata, table_names):
     """
     Get the NLP table relationships for the given tables. Note: if a table has
@@ -1067,13 +1123,11 @@ def get_nlp_table_relationships(metadata, table_names):
 
     table_defs_str = "\n\n".join(table_defs)
 
-    global relationship_chain
-    if not relationship_chain:
-        prompt = PromptTemplate(
-            input_variables=["table_defs"],
-            template=NLP_TABLE_RELATIONSHIP_PROMPT,
-        )
-        relationship_chain = build_chain(prompt)
+    prompt = PromptTemplate(
+        input_variables=["table_defs"],
+        template=NLP_TABLE_RELATIONSHIP_PROMPT,
+    )
+    relationship_chain = build_chain(prompt)
 
     llm_start = time.time()
     output = relationship_chain.run(table_defs_str).strip(". -\n\r")
