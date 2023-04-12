@@ -15,7 +15,7 @@ from zillion.warehouse import Warehouse
     Arg("config", help="Path to warehouse config file"),
     Arg(
         "-ds",
-        "--ds_config",
+        "--ds-config",
         action="store_true",
         default=False,
         help="Interpret the config as a DataSource config and create a Warehouse from the DataSource",
@@ -23,8 +23,9 @@ from zillion.warehouse import Warehouse
     Arg("-m", "--metrics", nargs="+", help="Metrics to include in report"),
     Arg("-d", "--dimensions", nargs="+", help="Dimensions to include in report"),
     Arg("-c", "--criteria", help="String to be eval'd as criteria param"),
+    Arg("-o", "--order-by", help="String to be eval'd as order by param"),
     Arg("-r", "--rollup", help="Rollup setting"),
-    Arg("-rf", "--row_filters", help="String to be eval'd as row filter param"),
+    Arg("-rf", "--row-filters", help="String to be eval'd as row filter param"),
     Arg("-l", "--limit", type=int, help="Limit setting"),
     Arg(
         "-t",
@@ -32,7 +33,7 @@ from zillion.warehouse import Warehouse
         type=str,
         help="Execute a report from natural language text. Requires the NLP extension.",
     ),
-    Arg("-ll", "--log_level", type=int, default=logging.INFO, help="Set log level"),
+    Arg("-ll", "--log-level", type=int, default=logging.INFO, help="Set log level"),
 )
 def main(
     config=None,
@@ -40,6 +41,7 @@ def main(
     metrics=None,
     dimensions=None,
     criteria=None,
+    order_by=None,
     row_filters=None,
     rollup=None,
     limit=None,
@@ -66,6 +68,8 @@ def main(
     else:
         if criteria:
             criteria = ast.literal_eval(criteria)
+        if order_by:
+            order_by = ast.literal_eval(order_by)
         if row_filters:
             row_filters = ast.literal_eval(row_filters)
 
@@ -73,6 +77,7 @@ def main(
             metrics=metrics,
             dimensions=dimensions,
             criteria=criteria,
+            order_by=order_by,
             row_filters=row_filters,
             rollup=rollup,
             limit=limit,

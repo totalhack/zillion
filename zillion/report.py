@@ -1054,7 +1054,9 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
                 field, ob_type = row
                 ob_fields.append(field)
                 ascending.append(True if ob_type == OrderByTypes.ASC else False)
-            df = df.sort_values(by=ob_fields, ascending=ascending, key=self._sort)
+            df = df.sort_values(
+                by=ob_fields, ascending=ascending, key=lambda x: self._sort(x, rollup)
+            )
 
         if not limit_first:
             df = self._apply_limits(df, row_filters, limit, metrics, dimensions)
@@ -1073,11 +1075,18 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
         self.conn.commit()
         self.conn.close()
 
-    def _sort(self, series):
+    def _sort(self, series, rollup):
         """Apply custom sort logic to a pandas Series if possible"""
         field = self.warehouse.get_field(series.name)
         if not getattr(field, "sorter", None):
-            return series.fillna(float("-inf"))
+            # Try to sort null values to the start
+            series = series.fillna(float("-inf"))
+            if rollup:
+                py_type = type_string_to_sa_type(field.type).python_type
+                if py_type in [int, float]:
+                    # Convert rollups to inf so they sort to the bottom
+                    return series.replace(ROLLUP_INDEX_LABEL, float("inf"))
+            return series
         return field.sort(self.warehouse.id, series)
 
     def _wavg(self, d, w, raise_on_zero_div_error=False):
