@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urlunparse, parse_qs
 import pandas as pd
 from pandas.io.sql import SQLTable, pandasSQL_builder
 import networkx as nx
-from orderedset import OrderedSet
+from ordered_set import OrderedSet
 import sqlalchemy as sa
 
 from zillion.configs import (
