@@ -552,12 +552,21 @@ def init_warehouse_embeddings(warehouse):
     texts = []
     metadatas = []
     for name, fdef in fields.items():
-        emb_text = field_name_to_embedding_text(name)
-        if fdef.meta and fdef.meta.get("embedding_text", None):
+        settings = (fdef.meta or {}).get("nlp", {}) or {}
+        if settings.get("enabled", True) is False:
+            continue
+
+        if settings.get("embedding_text", None):
             # Allow overriding the default embedding text
-            emb_text = fdef.meta["embedding_text"]
-        texts.append(emb_text)
-        metadatas.append({"name": name, "field_type": fdef.field_type})
+            emb_texts = settings["embedding_text"]
+            if isinstance(emb_texts, str):
+                emb_texts = [emb_texts]
+        else:
+            emb_texts = [field_name_to_embedding_text(name)]
+
+        for emb_text in emb_texts:
+            texts.append(emb_text)
+            metadatas.append({"name": name, "field_type": fdef.field_type})
 
     start = time.time()
     info(

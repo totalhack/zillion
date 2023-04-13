@@ -187,6 +187,36 @@ Embeddings will be produced and stored in both Qdrant and a local cache. The
 vector database will be initialized the first time you try to use this by
 analyzing all fields in your warehouse. An example docker file to run Qdrant is provided in the root of this repo.
 
+You have some control over how fields get embedded. Namely in the configuration for any field you can choose whether to exclude a field from embeddings or override which embeddings map to that field. All fields are
+included by default. The following example would exclude the `net_revenue` field from being embedded and map `revenue` metric requests to the `gross_revenue` field. This type of control becomes useful as your data
+model gets more complex and you want to guide the NLP logic in cases where it could confuse similarly named fields.
+
+```javascript
+{
+    "name": "gross_revenue",
+    "type": "numeric(10,2)",
+    "aggregation": "sum",
+    "rounding": 2,
+    "meta": {
+        "nlp": {
+            // enabled defaults to true
+            "embedding_text": "revenue" // str or list of str
+        }
+    }
+},
+{
+    "name": "net_revenue",
+    "type": "numeric(10,2)",
+    "aggregation": "sum",
+    "rounding": 2,
+    "meta": {
+        "nlp": {
+            "enabled": false
+        }
+    }
+},
+```
+
 > *Note:* This feature is in its infancy. It's usefulness will depend on the
 quality of both the input query and your data model (i.e. good field names).
 

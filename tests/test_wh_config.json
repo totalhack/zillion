@@ -8,7 +8,11 @@
             "formula": "{revenue}/{leads}",
             "description": "Revenue per Lead",
             "meta": {
-                "metafield": "metavalue"
+                "metafield": "metavalue",
+                "nlp": {
+                    "enabled": true,
+                    "embedding_text": "Revenue per Lead Meta"
+                }
             }
         },
         {
@@ -16,14 +20,27 @@
             "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_metric": "main_sales_quantity"
+            "weighting_metric": "main_sales_quantity",
+            "meta": {
+                "nlp": {
+                    "enabled": false
+                }
+            }
         },
         {
             "name": "rpl_lead_weighted",
             "aggregation": "mean",
             "rounding": 2,
             "formula": "{revenue}/{leads}",
-            "weighting_metric": "leads"
+            "weighting_metric": "leads",
+            "meta": {
+                "nlp": {
+                    "embedding_text": [
+                        "rpl weighted 1",
+                        "rpl weighted 2"
+                    ]
+                }
+            }
         },
         {
             "name": "rpl_lead_formula_weighted",

@@ -102,6 +102,20 @@ def test_init_warehouse_embeddings(config):
     wh = Warehouse(config=config)
     wh.init_embeddings()
 
+    # Query the embeddings API to confirm that meta settings are honored
+    res = embeddings_api.get_embeddings(wh._get_embeddings_collection_name())
+    res = {row["payload"]["page_content"]: row for row in res}
+    info(res)
+    # These fields had embeddings set manually
+    assert res["Revenue per Lead Meta"]["payload"]["metadata"]["name"] == "rpl"
+    assert res["rpl weighted 2"]["payload"]["metadata"]["name"] == "rpl_lead_weighted"
+
+    # This has nlp disabled
+    assert "rpl weighted" not in res
+    # This got added in error at one point and may be a bug!
+    # Make sure it doesnt show up again.
+    assert "year2" not in res
+
 
 @pytest.mark.nlp
 def test_openai_embeddings_cached():

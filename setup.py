@@ -77,7 +77,7 @@ exec(open("zillion/version.py").read())
 
 setup(
     name="zillion",
-    description="Make sense of it all.",
+    description="Make sense of it all. Data modeling and analytics with a sprinkle of AI.",
     long_description=README,
     long_description_content_type="text/markdown",
     url="https://github.com/totalhack/zillion",
