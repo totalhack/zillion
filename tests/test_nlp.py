@@ -100,7 +100,7 @@ def test_text_to_report_dimension_fields(config):
 @pytest.mark.nlp
 def test_init_warehouse_embeddings(config):
     wh = Warehouse(config=config)
-    wh.init_embeddings()
+    wh.init_embeddings(force_recreate=True)
 
     # Query the embeddings API to confirm that meta settings are honored
     res = embeddings_api.get_embeddings(wh._get_embeddings_collection_name())

@@ -517,10 +517,17 @@ class Warehouse(FieldManagerMixin):
             )
         return table_set
 
-    def init_embeddings(self):
+    def init_embeddings(self, force_recreate=False):
         """Initialize the warehouse embeddings collection. This is necessary
-        to use natural language query to report features."""
-        collection_name = init_warehouse_embeddings(self)
+        to use natural language query to report features.
+
+        **Parameters:**
+
+        * **force_recreate** - (*bool, optional*) If True, force the embeddings
+        collection to be recreated from scratch.
+
+        """
+        collection_name = init_warehouse_embeddings(self, force_recreate=force_recreate)
         self._set_embeddings_collection_name(collection_name)
 
     def _get_embeddings_collection_name(self):

@@ -2,11 +2,11 @@
 # Module zillion.nlp
 
 
-## [EmbeddingsAPI](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L323-L512)
+## [EmbeddingsAPI](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L323-L550)
 
 ::: zillion.nlp.EmbeddingsAPI
     :docstring:
-    :members: add_texts connect create_collection_if_necessary delete_collection delete_embeddings embed_documents embed_query ensure_client get_collection get_embeddings similarity_search_with_score upsert_embedding
+    :members: add_texts connect create_collection_if_necessary delete_collection delete_embeddings embed_documents embed_query ensure_client get_collection get_embeddings recreate_collection similarity_search_with_score upsert_embedding
 
 
 ## [EmbeddingsCache](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L57-L205)
@@ -34,79 +34,79 @@
     :members: add_texts get_id similarity_search_with_score
 
 
-## [build_chain](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L664-L689)
+## [build_chain](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L707-L732)
 
 ::: zillion.nlp.build_chain
     :docstring:
 
 
-## [build_llm](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L634-L661)
+## [build_llm](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L677-L704)
 
 ::: zillion.nlp.build_llm
     :docstring:
 
 
-## [field_name_to_embedding_text](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L519-L521)
+## [field_name_to_embedding_text](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L557-L559)
 
 ::: zillion.nlp.field_name_to_embedding_text
     :docstring:
 
 
-## [get_dimensions_prompt_str](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1046-L1047)
+## [get_dimensions_prompt_str](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1089-L1090)
 
 ::: zillion.nlp.get_dimensions_prompt_str
     :docstring:
 
 
-## [get_field_fuzzy](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L928-L974)
+## [get_field_fuzzy](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L971-L1017)
 
 ::: zillion.nlp.get_field_fuzzy
     :docstring:
 
 
-## [get_field_name_variants](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L899-L920)
+## [get_field_name_variants](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L942-L963)
 
 ::: zillion.nlp.get_field_name_variants
     :docstring:
 
 
-## [get_fields_prompt_str](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1028-L1039)
+## [get_fields_prompt_str](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1071-L1082)
 
 ::: zillion.nlp.get_fields_prompt_str
     :docstring:
 
 
-## [get_metrics_prompt_str](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1042-L1043)
+## [get_metrics_prompt_str](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1085-L1086)
 
 ::: zillion.nlp.get_metrics_prompt_str
     :docstring:
 
 
-## [get_nlp_table_info](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1224-L1250)
+## [get_nlp_table_info](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1267-L1293)
 
 ::: zillion.nlp.get_nlp_table_info
     :docstring:
 
 
-## [get_nlp_table_relationships](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1132-L1178)
+## [get_nlp_table_relationships](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1175-L1221)
 
 ::: zillion.nlp.get_nlp_table_relationships
     :docstring:
 
 
-## [get_openai_class](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L610-L613)
+## [get_openai_class](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L653-L656)
 
 ::: zillion.nlp.get_openai_class
     :docstring:
 
 
-## [get_openai_model_context_size](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L616-L631)
+## [get_openai_model_context_size](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L659-L674)
 
 ::: zillion.nlp.get_openai_model_context_size
     :docstring:
 
 
-## [get_warehouse_collection_name](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L524-L536)
+## [get_warehouse_collection_name](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L562-L574)
 
 ::: zillion.nlp.get_warehouse_collection_name
     :docstring:
@@ -118,43 +118,43 @@
     :docstring:
 
 
-## [init_warehouse_embeddings](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L561-L607)
+## [init_warehouse_embeddings](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L599-L650)
 
 ::: zillion.nlp.init_warehouse_embeddings
     :docstring:
 
 
-## [map_warehouse_report_params](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L977-L1025)
+## [map_warehouse_report_params](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1020-L1068)
 
 ::: zillion.nlp.map_warehouse_report_params
     :docstring:
 
 
-## [parse_nlp_table_info](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1198-L1218)
+## [parse_nlp_table_info](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1241-L1261)
 
 ::: zillion.nlp.parse_nlp_table_info
     :docstring:
 
 
-## [parse_nlp_table_relationships](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1105-L1129)
+## [parse_nlp_table_relationships](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1148-L1172)
 
 ::: zillion.nlp.parse_nlp_table_relationships
     :docstring:
 
 
-## [parse_text_to_report_json_output](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L826-L844)
+## [parse_text_to_report_json_output](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L869-L887)
 
 ::: zillion.nlp.parse_text_to_report_json_output
     :docstring:
 
 
-## [text_to_report_params](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1054-L1089)
+## [text_to_report_params](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L1097-L1132)
 
 ::: zillion.nlp.text_to_report_params
     :docstring:
 
 
-## [warehouse_field_nlp_enabled](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L539-L558)
+## [warehouse_field_nlp_enabled](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L577-L596)
 
 ::: zillion.nlp.warehouse_field_nlp_enabled
     :docstring:

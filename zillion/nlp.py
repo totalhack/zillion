@@ -358,6 +358,43 @@ if nlp_installed:
             """Embed a query"""
             return self.embeddings.embed_query(query)
 
+        def recreate_collection(
+            self,
+            collection_name,
+            vector_size=None,
+            distance=Distance.COSINE,
+            sample=None,
+            **kwargs,
+        ):
+            """Create or recreate a collection in Qdrant
+
+            **Parameters:**
+
+            * **collection_name** - (*str*) Name of the collection
+            * **vector_size** - (*int, optional*) Size of the vector. If not provided, will be inferred
+            from the sample.
+            * **distance** - (*Distance, optional*) Distance metric to use. Defaults to cosine.
+            * **sample** - (*str, optional*) A sample text to use to infer the vector size.
+
+            **Returns:**
+
+            * **collection** - (*QdrantCollection*) The collection
+
+            """
+            info(f"Recreating collection {collection_name}...")
+            if sample and vector_size is None:
+                vector_size = len(self.embed_documents([sample])[0])
+            elif vector_size is None:
+                vector_size = DEFAULT_VECTOR_SIZE
+
+            self.ensure_client()
+            self.client.recreate_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=vector_size, distance=distance),
+                **kwargs,
+            )
+            return self.get_collection(collection_name)
+
         def create_collection_if_necessary(
             self,
             collection_name,
@@ -366,8 +403,7 @@ if nlp_installed:
             sample=None,
             **kwargs,
         ):
-            """
-            Create a collection if it doesn't already exist. If it does exist,
+            """Create a collection if it doesn't already exist. If it does exist,
             just return the collection.
 
             **Parameters:**
@@ -394,24 +430,26 @@ if nlp_installed:
                 if "not found" not in str(e).lower():
                     raise e
 
-            info(f"Creating collection {collection_name}...")
-            if sample and vector_size is None:
-                vector_size = len(self.embed_documents([sample])[0])
-            elif vector_size is None:
-                vector_size = DEFAULT_VECTOR_SIZE
-
-            self.ensure_client()
-            self.client.recreate_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=distance),
+            return self.recreate_collection(
+                collection_name,
+                vector_size=vector_size,
+                distance=distance,
+                sample=sample,
                 **kwargs,
             )
-            return self.get_collection(collection_name)
 
-        def add_texts(self, collection_name, texts, metadatas=None):
+        def add_texts(
+            self, collection_name, texts, metadatas=None, force_recreate=False
+        ):
             """Add texts to Qdrant. See QdrantCustom.add_texts for details."""
             self.ensure_client()
-            self.create_collection_if_necessary(collection_name, sample=texts[0])
+            if force_recreate:
+                self.recreate_collection(
+                    collection_name, sample=texts[0], metadatas=metadatas
+                )
+            else:
+                self.create_collection_if_necessary(collection_name, sample=texts[0])
+
             qdrant = QdrantCustom(
                 self.client, collection_name, self.embeddings.embed_query
             )
@@ -558,13 +596,15 @@ def warehouse_field_nlp_enabled(warehouse, field_def):
     return rgetkey(field_meta, "nlp.enabled", True) is not False
 
 
-def init_warehouse_embeddings(warehouse):
+def init_warehouse_embeddings(warehouse, force_recreate=False):
     """
     Initialize embeddings for the warehouse.
 
     **Parameters:**
 
     * **warehouse** - (Warehouse) The warehouse to initialize embeddings for.
+    * **force_recreate** - (*bool, optional*) If True, force the embeddings
+    collection to be recreated from scratch.
 
     **Returns:**
 
@@ -601,7 +641,10 @@ def init_warehouse_embeddings(warehouse):
         f"Initializing {count}/{len(fields)} fields in embedding collection {collection_name}..."
     )
     embeddings_api.add_texts(
-        collection_name=collection_name, texts=texts, metadatas=metadatas
+        collection_name=collection_name,
+        texts=texts,
+        metadatas=metadatas,
+        force_recreate=force_recreate,
     )
     info(f"Done in {time.time() - start:3f} seconds.")
     return collection_name
