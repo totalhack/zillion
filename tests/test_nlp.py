@@ -110,8 +110,13 @@ def test_init_warehouse_embeddings(config):
     assert res["Revenue per Lead Meta"]["payload"]["metadata"]["name"] == "rpl"
     assert res["rpl weighted 2"]["payload"]["metadata"]["name"] == "rpl_lead_weighted"
 
-    # This has nlp disabled
+    # This has nlp disabled at field level
     assert "rpl weighted" not in res
+    # This has nlp disabled via regex
+    assert "rpl_ma_5" not in res
+    # This has nlp disabled via group
+    assert "rpl_unsquared" not in res
+
     # This got added in error at one point and may be a bug!
     # Make sure it doesnt show up again.
     assert "year2" not in res

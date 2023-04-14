@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import hashlib
+import re
 import struct
 import time
 
@@ -18,7 +19,7 @@ except ImportError:
 
 from sqlalchemy import and_
 from sqlalchemy.schema import CreateTable
-from tlbx import raiseifnot, st, json
+from tlbx import raiseifnot, st, json, rgetkey
 
 from zillion.core import (
     dbg,
@@ -521,16 +522,40 @@ def field_name_to_embedding_text(name):
 
 
 def get_warehouse_collection_name(warehouse):
-    """Get the collection name for a warehouse's embeddings"""
+    """Get the collection name for a warehouse's embeddings. If it is set on
+    the config, use that. Otherwise try to use a warehouse name or fall back
+    to a default name."""
     meta = warehouse.meta or {}
-    if meta.get("embeddings", {}).get("collection_name", None):
-        return meta["embeddings"]["collection_name"]
+    if meta.get("nlp", {}).get("collection_name", None):
+        return meta["nlp"]["collection_name"]
     if not warehouse.name:
         warn(
             f"Warehouse has no name. Using default embeddings collection name: {DEFAULT_WAREHOUSE_COLLECTION_NAME}"
         )
         return DEFAULT_WAREHOUSE_COLLECTION_NAME
     return warehouse.name
+
+
+def warehouse_field_nlp_enabled(warehouse, field_def):
+    """Check if NLP is enabled for a field. If it is disabled at any level,
+    it will be considered disabled."""
+
+    wh_meta = warehouse.meta or {}
+    field_meta = field_def.meta or {}
+
+    # 1) Check disabled groups at warehouse level
+    if rgetkey(wh_meta, "nlp.field_disabled_groups", None) and "group" in field_meta:
+        if field_meta["group"] in wh_meta["nlp"]["field_disabled_groups"]:
+            return False
+
+    # 2) Check disabled fields by regex at warehouse level
+    if rgetkey(wh_meta, "nlp.field_disabled_patterns", None):
+        for pattern in wh_meta["nlp"]["field_disabled_patterns"]:
+            if re.match(pattern, field_def.name):
+                return False
+
+    # 3) Check field level settings
+    return rgetkey(field_meta, "nlp.enabled", True) is not False
 
 
 def init_warehouse_embeddings(warehouse):
@@ -551,10 +576,13 @@ def init_warehouse_embeddings(warehouse):
 
     texts = []
     metadatas = []
+    count = 0
     for name, fdef in fields.items():
-        settings = (fdef.meta or {}).get("nlp", {}) or {}
-        if settings.get("enabled", True) is False:
+        if not warehouse_field_nlp_enabled(warehouse, fdef):
             continue
+
+        count += 1
+        settings = (fdef.meta or {}).get("nlp", {}) or {}
 
         if settings.get("embedding_text", None):
             # Allow overriding the default embedding text
@@ -570,7 +598,7 @@ def init_warehouse_embeddings(warehouse):
 
     start = time.time()
     info(
-        f"Initializing {len(fields)} Warehouse embeddings in collection {collection_name}..."
+        f"Initializing {count}/{len(fields)} fields in embedding collection {collection_name}..."
     )
     embeddings_api.add_texts(
         collection_name=collection_name, texts=texts, metadatas=metadatas
@@ -997,21 +1025,26 @@ def map_warehouse_report_params(warehouse, report):
     return res
 
 
-def get_fields_prompt_str(fields):
+def get_fields_prompt_str(warehouse, fields):
     """Get a string representing names/types of given fields"""
     res = []
     for name, fdef in fields.items():
-        type_str = str(fdef.type).lower() if fdef.type else "unknown"
+        if not warehouse_field_nlp_enabled(warehouse, fdef):
+            continue
+        if getattr(fdef, "formula", None):
+            type_str = "numeric"
+        else:
+            type_str = str(fdef.type).lower() if fdef.type else "unknown"
         res.append(f"{name} ({type_str})")
     return "\n".join(res)
 
 
 def get_metrics_prompt_str(warehouse):
-    return get_fields_prompt_str(warehouse.get_metrics())
+    return get_fields_prompt_str(warehouse, warehouse.get_metrics())
 
 
 def get_dimensions_prompt_str(warehouse):
-    return get_fields_prompt_str(warehouse.get_dimensions())
+    return get_fields_prompt_str(warehouse, warehouse.get_dimensions())
 
 
 class MaxTokensException(Exception):

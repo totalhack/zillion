@@ -38,7 +38,7 @@ class Warehouse(FieldManagerMixin):
     """
 
     def __init__(self, config=None, datasources=None, ds_priority=None, nlp=False):
-        # Note: id/name/meta get updated on save/load
+        # Note: id/name get updated on save/load
         self.id = None
         self.name = None
         self.meta = None
@@ -184,7 +184,13 @@ class Warehouse(FieldManagerMixin):
             skip_integrity_checks=skip_integrity_checks,
             nlp=nlp,
         )
-        # TODO: this goes second in case any formula fields reference fields
+
+        if config.get("meta", None):
+            meta = self.meta or {}
+            # The config meta takes precedence over any existing meta settings
+            self.meta = dictmerge(meta, config["meta"], overwrite=True)
+
+        # NOTE: this goes second in case any formula fields reference fields
         # defined or created in the datasources. It may make more sense to
         # only defer population of formula fields.
         self._populate_global_fields(config, force=True)
@@ -300,7 +306,8 @@ class Warehouse(FieldManagerMixin):
         * **config_url** - (*str*) A URL pointing to a config file that can
         be used to recreate the warehouse
         * **meta** - (*object, optional*) A metadata object to be
-        serialized as JSON and stored with the warehouse
+        serialized as JSON and stored with the warehouse. This will be merged
+        into existing meta settings if present and take precedence.
 
         **Returns:**
 
@@ -316,20 +323,22 @@ class Warehouse(FieldManagerMixin):
 
         params = dict(ds_priority=self.ds_priority, config=config_url, nlp=self.nlp)
 
+        self.meta = dictmerge(self.meta or {}, meta or {}, overwrite=True)
+
         conn = zillion_engine.connect()
         try:
             result = conn.execute(
                 Warehouses.insert(),
                 name=name,
                 params=json.dumps(params),
-                meta=json.dumps(meta),
+                meta=json.dumps(self.meta),
             )
             wh_id = result.inserted_primary_key[0]
             raiseifnot(wh_id, "No warehouse ID found")
         finally:
             conn.close()
+
         self.id = wh_id
-        self.meta = meta
         self.name = name
         return wh_id
 
@@ -516,12 +525,12 @@ class Warehouse(FieldManagerMixin):
 
     def _get_embeddings_collection_name(self):
         """Get the name of the embeddings collection for this warehouse"""
-        return (self.meta or {}).get("embeddings", {}).get("collection_name", None)
+        return (self.meta or {}).get("nlp", {}).get("collection_name", None)
 
     def _set_embeddings_collection_name(self, name):
         """Set the name of the embeddings collection for this warehouse"""
         self.meta = self.meta or {}
-        self.meta["embeddings"] = dict(collection_name=name)
+        self.meta.setdefault("nlp", {})["collection_name"] = name
 
     def _create_or_update_datasources(
         self, ds_configs, skip_integrity_checks=False, nlp=False

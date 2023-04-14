@@ -1,4 +1,15 @@
 {
+    "meta": {
+        "nlp": {
+            "collection_name": null,
+            "field_disabled_patterns": [
+                "rpl_ma_5"
+            ],
+            "field_disabled_groups": [
+                "No NLP"
+            ]
+        }
+    },
     "metrics": [
         {
             "name": "rpl",
@@ -66,7 +77,10 @@
             "name": "rpl_unsquared",
             "aggregation": "mean",
             "rounding": 2,
-            "formula": "{rpl_squared}/{rpl}"
+            "formula": "{rpl_squared}/{rpl}",
+            "meta": {
+                "group": "No NLP"
+            }
         },
         {
             "name": "rpl_ma_5",
