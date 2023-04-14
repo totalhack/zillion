@@ -993,7 +993,9 @@ def get_field_fuzzy(warehouse, name, field_type=None):
     # Check ~exact matches
     alts = get_field_name_variants(name)
     for alt in alts:
-        if has_field_func(alt):
+        if has_field_func(alt) and warehouse_field_nlp_enabled(
+            warehouse, warehouse.get_field(alt)
+        ):
             return alt
 
     # Check embeddings
