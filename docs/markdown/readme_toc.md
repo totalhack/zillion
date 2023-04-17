@@ -27,6 +27,6 @@
     * [Technicals](#technicals)
 * [Supported DataSources](#supported-datasources)
 * [Multiprocess Considerations](#multiprocess-considerations)
-* [Related Projects](#related-projects)
+* [Demo UI / Web API](#demo-ui)
 * [Docs](#documentation)
 * [How to Contribute](#how-to-contribute)

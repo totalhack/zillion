@@ -771,9 +771,9 @@ ETL process that is better suited to manage those data flows in a scalable produ
 Note that you can still use the default SQLite in-memory Combined Layer DB without issues, as that is made on the fly with each report request and
 requires no coordination/communication with other processes or nodes.
 
-<a name="related-projects"></a>
+<a name="demo-ui"></a>
 
-**Related Projects**
+**Demo UI / Web API**
 --------------------
 
-* [Zillion Web UI](https://github.com/totalhack/zillion-web) - A demo UI and web API for Zillion
+[Zillion Web UI](https://github.com/totalhack/zillion-web) is a demo UI and web API for Zillion that also includes an experimental ChatGPT plugin. See the README there for more info on installation and project structure. Please note that the code is light on testing and polish, but is expected to work in modern browsers. Also ChatGPT plugins are quite slow at the moment, so currently that is mostly for fun and not that useful.
