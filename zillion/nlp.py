@@ -340,6 +340,7 @@ if nlp_installed:
                 "localhost",
                 "127.0.0.1",
                 "host.docker.internal",
+                "qdrant",  # Docker container name
             ]:
                 self.client = QdrantClient(host=host, port=6333, prefer_grpc=True)
             else:
