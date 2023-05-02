@@ -1,6 +1,6 @@
 [![Generic badge](https://img.shields.io/badge/Status-Alpha-yellow.svg)](https://shields.io/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![License: LGPLv3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](https://opensource.org/licenses/LGPL-3.0)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Python 3](https://img.shields.io/badge/python-3-blue.svg)
 [![Downloads](https://pepy.tech/badge/zillion)](https://pepy.tech/project/zillion)
 

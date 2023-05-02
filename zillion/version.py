@@ -1,2 +1,2 @@
 """Package version"""
-__version__ = "0.9.15"
+__version__ = "0.9.16"
