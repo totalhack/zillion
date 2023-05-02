@@ -1,4 +1,4 @@
-Zillion is written and maintained by totalhack. Contributors welcome!
+Zillion is written and maintained by [@totalhack](https://github.com/totalhack). Contributors welcome!
 
 # **Core Contributors**
 
