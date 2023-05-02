@@ -70,6 +70,8 @@ CRITERIA_OPERATIONS = set(
         "!=",
         "in",
         "not in",
+        "in report",
+        "not in report",
         "between",
         "not between",
         "like",

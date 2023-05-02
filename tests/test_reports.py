@@ -1301,6 +1301,117 @@ def test_report_load_invalid_id(saved_wh):
         result = saved_wh.execute_id(-1)
 
 
+def test_report_sub_report_by_id(saved_wh):
+    metrics = ["leads"]
+    dimensions = ["partner_name"]
+    row_filters = [("leads", ">", 2)]  # Should only leave Partner A
+    report = Report(
+        saved_wh, metrics=metrics, dimensions=dimensions, row_filters=row_filters
+    )
+    spec_id = report.save()
+    spec_id2 = None
+
+    try:
+        criteria = [("partner_name", "in report", spec_id)]
+        report = Report(
+            saved_wh,
+            metrics=["sales"],
+            dimensions=dimensions,
+            criteria=criteria,
+        )
+        # Save and load a report with a sub-report
+        spec_id2 = report.save()
+        report = saved_wh.load_report(spec_id2)
+        result = report.execute()
+        assert result.df.index.unique("partner_name").tolist() == ["Partner A"]
+        info(result.df)
+
+        criteria = [("partner_name", "not in report", spec_id)]
+        report = Report(
+            saved_wh,
+            metrics=["sales"],
+            dimensions=dimensions,
+            criteria=criteria,
+        )
+        result = report.execute()
+        assert set(result.df.index.unique("partner_name").tolist()) == set(
+            [
+                "Partner B",
+                "Partner C",
+            ]
+        )
+        info(result.df)
+
+        # Invalid sub report spec ID
+        with pytest.raises(InvalidReportIdException):
+            criteria = [("partner_name", "not in report", -1)]
+            report = Report(
+                saved_wh,
+                metrics=["sales"],
+                dimensions=dimensions,
+                criteria=criteria,
+            )
+
+    finally:
+        saved_wh.delete_report(spec_id)
+        if spec_id2:
+            saved_wh.delete_report(spec_id2)
+
+
+def test_report_sub_report_with_params(saved_wh):
+    report = Report(
+        saved_wh,
+        metrics=["sales"],
+        dimensions=["partner_name"],
+        criteria=[
+            (
+                "partner_name",
+                "in report",
+                dict(
+                    metrics=["leads"],
+                    dimensions=["partner_name"],
+                    row_filters=[("leads", ">", 2)],  # Should only leave Partner A
+                ),
+            )
+        ],
+    )
+    result = report.execute()
+    assert result.df.index.unique("partner_name").tolist() == ["Partner A"]
+    info(result.df)
+
+    # Invalid sub report field
+    with pytest.raises(InvalidFieldException):
+        Report(
+            saved_wh,
+            metrics=["sales"],
+            dimensions=["partner_name"],
+            criteria=[
+                (
+                    "partner_name",
+                    "in report",
+                    dict(metrics=["blabla"], dimensions=["partner_name"]),
+                )
+            ],
+        )
+
+    # Invalid sub report fields
+    with pytest.raises(TypeError):
+        Report(
+            saved_wh,
+            metrics=["sales"],
+            dimensions=["partner_name"],
+            criteria=[
+                (
+                    "partner_name",
+                    "in report",
+                    dict(
+                        foo=["blabla"],
+                    ),
+                )
+            ],
+        )
+
+
 def test_report_adhoc_datasource(wh, adhoc_ds):
     metrics = ["revenue", "adhoc_metric"]
     dimensions = ["partner_name"]

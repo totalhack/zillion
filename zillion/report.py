@@ -40,7 +40,7 @@ from zillion.sql_utils import (
 
 logging.getLogger(name="stopit").setLevel(logging.ERROR)
 
-
+MAX_REPORT_DEPTH = 3
 PANDAS_ROLLUP_AGGR_TRANSLATION = {
     AggregationTypes.COUNT: "sum",
     AggregationTypes.COUNT_DISTINCT: "sum",
@@ -1499,6 +1499,9 @@ class Report(ExecutionStateMixin):
     specific to this report
     * **allow_partial** - (*boolean, optional*) Allow reports where only some
     metrics can meet the requested grain.
+    * **report_depth** - (*int, optional*) The depth of subreport recursion
+    we are currently in. This is used to prevent infinite recursion when
+    building subreports.
 
     **Notes:**
 
@@ -1526,8 +1529,16 @@ class Report(ExecutionStateMixin):
         limit_first=False,
         adhoc_datasources=None,
         allow_partial=False,
+        report_depth=1,
     ):
         start = time.time()
+
+        raiseif(
+            report_depth > MAX_REPORT_DEPTH,
+            f"Max sub-report depth exceeded ({MAX_REPORT_DEPTH})",
+        )
+        self.report_depth = report_depth
+
         self.spec_id = None
         self.meta = None
         self.uuid = uuid.uuid1()
@@ -1554,6 +1565,10 @@ class Report(ExecutionStateMixin):
         raiseifnot(
             self.metrics or self.dimensions,
             "One of metrics or dimensions must be specified for Report",
+        )
+
+        criteria = self._process_subreports(
+            criteria, adhoc_datasources=adhoc_datasources
         )
 
         self.criteria = self._populate_criteria_fields(
@@ -1844,6 +1859,52 @@ class Report(ExecutionStateMixin):
             final_criteria.append(row)
         return final_criteria
 
+    def _process_subreports(self, criteria, adhoc_datasources=None):
+        """Process subreports in requested criteria and return an updated criteria object"""
+
+        if not criteria:
+            return criteria
+
+        final_criteria = []
+        for row in criteria:
+            field, op, value = row
+            if op not in ["in report", "not in report"]:
+                final_criteria.append(row)
+                continue
+
+            if is_int(value):
+                # The value is assumed to be a report spec ID
+                report = self.load(
+                    self.warehouse, value, adhoc_datasources=adhoc_datasources
+                )
+            elif isinstance(value, dict):
+                # The value is assumed to be a dict of report params
+                report = Report(
+                    self.warehouse,
+                    **value,
+                    adhoc_datasources=adhoc_datasources,
+                    report_depth=self.report_depth + 1,
+                )
+            else:
+                raise ReportException(f"Invalid {op} criteria value: {value}")
+
+            if field not in report.get_dimension_grain():
+                raise ReportException(
+                    f"Invalid subreport, missing required dimension: {field}"
+                )
+
+            res = report.execute()
+
+            # The field is a dimension so it will be part of the index
+            values = res.non_rollup_rows.index.unique(field).tolist()
+            info(f"Subreport has {len(values)} values for {field}")
+            if op == "in report":
+                final_criteria.append([field, "in", values])
+            else:
+                final_criteria.append([field, "not in", values])
+
+        return final_criteria
+
     def _check_order_by(self, order_by):
         """Validate the format of the order_by specification"""
         raiseifnot(
@@ -2097,7 +2158,7 @@ class Report(ExecutionStateMixin):
         return result
 
     @classmethod
-    def from_params(cls, warehouse, params, adhoc_datasources=None):
+    def from_params(cls, warehouse, params, adhoc_datasources=None, report_depth=1):
         """Build a report from a set of report params
 
         **Parameters:**
@@ -2105,6 +2166,8 @@ class Report(ExecutionStateMixin):
         * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **params** - (*dict*) A dict of Report params
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
+        * **report_depth** - (*int, optional*) The depth of the subreport,
+        used internally to prevent too much recursion.
 
         """
         used_dses = set(params.get("used_datasources", []))
@@ -2116,11 +2179,21 @@ class Report(ExecutionStateMixin):
                 % (used_dses - all_dses, all_dses)
             )
         return Report(
-            warehouse, **params["kwargs"], adhoc_datasources=adhoc_datasources
+            warehouse,
+            **params["kwargs"],
+            adhoc_datasources=adhoc_datasources,
+            report_depth=report_depth,
         )
 
     @classmethod
-    def from_text(cls, warehouse, text, adhoc_datasources=None, allow_partial=False):
+    def from_text(
+        cls,
+        warehouse,
+        text,
+        adhoc_datasources=None,
+        allow_partial=False,
+        report_depth=1,
+    ):
         """Build a report from a set of report params
 
         **Parameters:**
@@ -2129,6 +2202,8 @@ class Report(ExecutionStateMixin):
         * **text** - (*str*) A natural language query
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         * **allow_partial** - (*bool, optional*) Allow partial report results
+        * **report_depth** - (*int, optional*) The depth of the subreport,
+        used internally to prevent too much recursion.
 
         **Returns:**
 
@@ -2153,10 +2228,11 @@ class Report(ExecutionStateMixin):
             **report_params,
             adhoc_datasources=adhoc_datasources,
             allow_partial=allow_partial,
+            report_depth=report_depth,
         )
 
     @classmethod
-    def load(cls, warehouse, spec_id, adhoc_datasources=None):
+    def load(cls, warehouse, spec_id, adhoc_datasources=None, report_depth=1):
         """Load a report from a spec ID
 
         **Parameters:**
@@ -2164,6 +2240,8 @@ class Report(ExecutionStateMixin):
         * **warehouse** - (*Warehouse*) A zillion warehouse object
         * **spec_id** - (*int*) A ReportSpec ID
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
+        * **report_depth** - (*int, optional*) The depth of the subreport,
+        used internally to prevent too much recursion.
 
         """
         spec = cls._load_report_spec(warehouse, spec_id)
@@ -2173,7 +2251,12 @@ class Report(ExecutionStateMixin):
             )
         params = json.loads(spec["params"])
         meta = json.loads(spec["meta"]) if spec["meta"] else None
-        result = cls.from_params(warehouse, params, adhoc_datasources=adhoc_datasources)
+        result = cls.from_params(
+            warehouse,
+            params,
+            adhoc_datasources=adhoc_datasources,
+            report_depth=report_depth,
+        )
         result.meta = meta
         return result
 

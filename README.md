@@ -49,17 +49,18 @@ With `Zillion` you can:
     * [Warehouse Configuration](#example-warehouse-config)
     * [Reports](#example-reports)
 * [Advanced Topics](#advanced-topics)
+    * [Subreports](#subreports)
     * [FormulaMetrics](#formula-metrics)
     * [Divisor Metrics](#divisor-metrics)
     * [FormulaDimensions](#formula-dimensions)
     * [DataSource Formulas](#datasource-formulas)
     * [Type Conversions](#type-conversions)
-    * [Config Variables](#config-variables)
-    * [DataSource Priority](#datasource-priority)
     * [AdHocMetrics](#adhoc-metrics)
     * [AdHocDimensions](#adhoc-dimensions)
     * [AdHocDataTables](#adhoc-data-tables)
     * [Technicals](#technicals)
+    * [Config Variables](#config-variables)
+    * [DataSource Priority](#datasource-priority)
 * [Supported DataSources](#supported-datasources)
 * [Multiprocess Considerations](#multiprocess-considerations)
 * [Demo UI / Web API](#demo-ui)
@@ -555,6 +556,49 @@ result = wh.execute(
 **Advanced Topics**
 -------------------
 
+<a name="subreports"></a>
+
+### **Subreports**
+
+Sometimes you need subquery-like functionality in order to filter one
+report to the results of some other (that perhaps required a different grain).
+Zillion provides a simplistic way of doing that by using the `in report` or `not in report`
+criteria operations. There are two supported ways to specify the subreport: passing a
+report spec ID or passing a dict of report params.
+
+```python
+# Assuming you have saved report 1234 and it has "partner" as a dimension:
+
+result = warehouse.execute(
+    metrics=["revenue", "leads"],
+    dimensions=["date"],
+    criteria=[
+        ("date", ">", "2020-01-01"),
+        ("partner", "in report", 1234)
+    ]
+)
+
+# Or with a dict:
+
+result = warehouse.execute(
+    metrics=["revenue", "leads"],
+    dimensions=["date"],
+    criteria=[
+        ("date", ">", "2020-01-01"),
+        ("partner", "in report", dict(
+            metrics=[...],
+            dimension=["partner"],
+            criteria=[...]
+        ))
+    ]
+)
+```
+
+The criteria field used in `in report` or `not in report` must be a dimension
+in the subreport. Note that subreports are executed at `Report` object initialization
+time instead of during `execute` -- as such they can not be killed using `Report.kill`.
+This may change down the road.
+
 <a name="formula-metrics"></a>
 
 ### **Formula Metrics**
@@ -658,49 +702,6 @@ To prevent type conversions, set `skip_conversion_fields` to `true` on your
 See `zillion.field.TYPE_ALLOWED_CONVERSIONS` and `zillion.field.DIALECT_CONVERSIONS`
 for more details on currently supported conversions.
 
-<a name="config-variables"></a>
-
-### **Config Variables**
-
-If you'd like to avoid putting sensitive connection information directly in
-your `DataSource` configs you can leverage config variables. In your `Zillion`
-yaml config you can specify a `DATASOURCE_CONTEXTS` section as follows:
-
-```yaml
-DATASOURCE_CONTEXTS:
-  my_ds_name:
-    user: user123
-    pass: goodpassword
-    host: 127.0.0.1
-    schema: reporting
-```
-
-Then when your `DataSource` config for the datasource named "my_ds_name" is
-read, it can use this context to populate variables in your connection url:
-
-```json
-"datasources": {
-    "my_ds_name": {
-        "connect": "mysql+pymysql://{user}:{pass}@{host}/{schema}"
-        ...
-    }
-}
-```
-
-<a name="DataSource Priority"></a>
-
-### **DataSource Priority**
-
-On `Warehouse` init you can specify a default priority order for datasources
-by name. This will come into play when a report could be satisfied by multiple
-datasources. `DataSources` earlier in the list will be higher priority. This
-would be useful if you wanted to favor a set of faster, aggregate tables that
-are grouped in a `DataSource`.
-
-```python
-wh = Warehouse(config=config, ds_priority=["aggr_ds", "raw_ds", ...])
-```
-
 <a name="adhoc-metrics"></a>
 
 ### **Ad Hoc Metrics**
@@ -793,6 +794,49 @@ cumulative sum across every data row. You can be explicit about the mode by
 appending it to the technical string: i.e. "cumsum:all" or "mean(5):group"
 
 ---
+
+<a name="config-variables"></a>
+
+### **Config Variables**
+
+If you'd like to avoid putting sensitive connection information directly in
+your `DataSource` configs you can leverage config variables. In your `Zillion`
+yaml config you can specify a `DATASOURCE_CONTEXTS` section as follows:
+
+```yaml
+DATASOURCE_CONTEXTS:
+  my_ds_name:
+    user: user123
+    pass: goodpassword
+    host: 127.0.0.1
+    schema: reporting
+```
+
+Then when your `DataSource` config for the datasource named "my_ds_name" is
+read, it can use this context to populate variables in your connection url:
+
+```json
+"datasources": {
+    "my_ds_name": {
+        "connect": "mysql+pymysql://{user}:{pass}@{host}/{schema}"
+        ...
+    }
+}
+```
+
+<a name="datasource-priority"></a>
+
+### **DataSource Priority**
+
+On `Warehouse` init you can specify a default priority order for datasources
+by name. This will come into play when a report could be satisfied by multiple
+datasources. `DataSources` earlier in the list will be higher priority. This
+would be useful if you wanted to favor a set of faster, aggregate tables that
+are grouped in a `DataSource`.
+
+```python
+wh = Warehouse(config=config, ds_priority=["aggr_ds", "raw_ds", ...])
+```
 
 <a name="supported-datasources"></a>
 
