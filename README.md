@@ -10,11 +10,11 @@ Zillion: Make sense of it all
 **Introduction**
 ----------------
 
-`Zillion` is a data modeling and analytics tool that allows combining and 
-analyzing data from multiple datasources through a simple API. It writes SQL 
-so you don't have to, and it easily bolts onto existing database infrastructure 
-via SQLAlchemy. The `Zillion` NLP extension has experimental support for AI-powered 
-natural language querying and warehouse configuration.
+`Zillion` is a data modeling and analytics tool that allows combining and
+analyzing data from multiple datasources through a simple API. It acts as a semantic layer
+on top of your data, writes SQL so you don't have to, and easily bolts onto existing
+database infrastructure via SQLAlchemy Core. The `Zillion` NLP extension has experimental
+support for AI-powered natural language querying and warehouse configuration.
 
 With `Zillion` you can:
 
