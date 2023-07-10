@@ -247,7 +247,7 @@ result = warehouse.execute_text("revenue and leads by date last month")
 print(result.df) # Pandas DataFrame
 ```
 
-This NLP feature require a running instance of Qdrant (vector database) and the following values set in your `Zillion` config file:
+This NLP feature requires a running instance of Qdrant (vector database) and the following values set in your `Zillion` config file:
 
 * QDRANT_HOST
 * OPENAI_API_KEY
@@ -370,7 +370,7 @@ CREATE TABLE sales (
 
 ### **Warehouse Configuration**
 
-A `Warehouse` may be created from a from a JSON or YAML configuration that defines
+A `Warehouse` may be created from a JSON or YAML configuration that defines
 its fields, datasources, and tables. The code below shows how it can be done in as little as one line of code if you have a pointer to a JSON/YAML `Warehouse` config.
 
 ```python
