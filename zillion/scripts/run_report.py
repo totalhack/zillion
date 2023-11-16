@@ -33,7 +33,7 @@ from zillion.warehouse import Warehouse
         type=str,
         help="Execute a report from natural language text. Requires the NLP extension.",
     ),
-    Arg("-ll", "--log-level", type=int, default=logging.INFO, help="Set log level"),
+    Arg("-ll", "--log-level", type=int, default=None, help="Set log level"),
 )
 def main(
     config=None,

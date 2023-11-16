@@ -1,5 +1,6 @@
 # pylint: disable=unused-import,missing-class-docstring
 from collections.abc import MutableMapping
+from itertools import chain, combinations
 import logging
 import os
 import requests
@@ -34,7 +35,6 @@ from tlbx import (
     json,
     chunks,
     iter_or,
-    powerset,
     is_int,
     orderedsetify,
     initializer,
@@ -261,6 +261,14 @@ class IfFileExistsModes(IfExistsModes):
 # ---- TODO: move below to utils file
 
 
+def powerset(iterable, max_combo_len=None):
+    """powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"""
+    s = list(iterable)
+    if max_combo_len is None:
+        max_combo_len = len(s)
+    return chain.from_iterable(combinations(s, r) for r in range(max_combo_len + 1))
+
+
 def raiseif(cond, msg="", exc=ZillionException):
     """Convenience assert-like utility"""
     if cond:
@@ -434,6 +442,8 @@ def load_zillion_config():
             QDRANT_HOST=None,
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
             DATASOURCE_QUERY_TIMEOUT=None,
+            DATASOURCE_MAX_JOIN_CANDIDATES=100,
+            DATASOURCE_MAX_JOINS=None,
             DATASOURCE_CONTEXTS={},
         )
 
@@ -462,12 +472,12 @@ default_logger = logging.getLogger("zillion")
 def set_log_level_from_config(cfg):
     global default_logger
     if str(cfg.get("DEBUG", "false")).lower() in ("true", "1"):
-        default_logger.setLevel(logging.DEBUG)
         # Make sure logs can show up in testing
         handler = logging.StreamHandler(sys.stdout)
         default_logger.handlers = []
         default_logger.propagate = False
         default_logger.addHandler(handler)
+        default_logger.setLevel(logging.DEBUG)
         print("---- Zillion debug logging enabled ----")
     else:
         default_logger.setLevel(get_zillion_config_log_level())

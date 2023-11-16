@@ -22,6 +22,14 @@ DATASOURCE_QUERY_MODE: sequential
 DATASOURCE_QUERY_TIMEOUT: null
 # Max number of parallel query threads
 DATASOURCE_QUERY_WORKERS: 4
+# Limit the number of joins to consider in each possible combination of joins
+# when searching for combinations that satisfy the report grain. This is
+# necessary to prevent combinatorial explosion for larger schema with many
+# ways to satisfy a report, typically coming into play for many-dimensional
+# reports. This effectively limits the number of joins in a single query.
+DATASOURCE_MAX_JOINS: null
+# Once we reach N join combos that cover the grain we will stop searching
+DATASOURCE_MAX_JOIN_CANDIDATES: 100
 
 # These vars can be used to substitute values in connection URLs by datasource.
 DATASOURCE_CONTEXTS:

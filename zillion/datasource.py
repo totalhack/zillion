@@ -781,7 +781,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             possible_dim_joins[dimension] = dim_joins
 
-        possible_joins = self._consolidate_field_joins(grain, possible_dim_joins)
+        possible_joins = self._consolidate_field_joins(table, grain, possible_dim_joins)
         dbg("possible joins:")
         dbg(possible_joins)
         return possible_joins
@@ -1199,7 +1199,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 if field in all_covered_fields:
                     covered_fields.add(field)
 
-    def _eliminate_redundant_joins(self, sorted_join_fields):
+    def _eliminate_redundant_joins(self, sorted_join_fields, main_table):
         """Eliminate joins that aren't providing unique fields or are just table
         supersets of other joins"""
         joins_to_delete = set()
@@ -1225,6 +1225,31 @@ class DataSource(FieldManagerMixin, PrintMixin):
                     )
                     joins_to_delete.add(other_join)
 
+                # If this join goes through a table that contains the PK of the
+                # main table, remove joins that cover the same grain but don't
+                # have that PK. This is assumed to lead to more efficient joins
+                # and match the intent of the schema.
+                if (
+                    other_covered_fields == covered_fields
+                    and len(join) > 1
+                    and len(other_join) > 1
+                ):
+                    main_pk = main_table.zillion.primary_key
+                    join_table_two_pk = self.get_table(
+                        join.table_names[1]
+                    ).zillion.primary_key
+                    other_table_two_pk = self.get_table(
+                        other_join.table_names[1]
+                    ).zillion.primary_key
+                    if join_table_two_pk == main_pk and other_table_two_pk != main_pk:
+                        dbg(
+                            "Removing redundant join %s / %s"
+                            % (other_join.table_names, other_covered_fields),
+                            indent=4,
+                        )
+                        joins_to_delete.add(other_join)
+
+        dbg(f"Removing {len(joins_to_delete)} redundant joins")
         sorted_join_fields = [
             (join, fields)
             for join, fields in sorted_join_fields
@@ -1235,9 +1260,16 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def _find_join_combinations(self, sorted_join_fields, grain):
         """Find candidate joins that cover the entire grain"""
         candidates = []
-        for join_combo in powerset(sorted_join_fields):
+
+        max_joins = zillion_config.get("DATASOURCE_MAX_JOINS", None)
+        for i, join_combo in enumerate(
+            powerset(sorted_join_fields, max_combo_len=max_joins)
+        ):
             if not join_combo:
                 continue
+
+            if i % 10000 == 0:
+                warn(f"{i} join combos and counting, {len(candidates)} candidates...")
 
             dbg("---- join combo candidate ----")
             for row in join_combo:
@@ -1281,6 +1313,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             dbg("Adding join combo")
             candidates.append(join_combo)
+            max_candidates = zillion_config.get("DATASOURCE_MAX_JOIN_CANDIDATES", None)
+            if max_candidates and len(candidates) >= max_candidates:
+                warn(f"Hit max join candidates, returning {len(candidates)}")
+                break
 
         return candidates
 
@@ -1329,7 +1365,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             join.add_fields(covered_fields)
         return join_fields
 
-    def _consolidate_field_joins(self, grain, field_joins):
+    def _consolidate_field_joins(self, table, grain, field_joins):
         """This takes a mapping of fields to joins that satisfy each field and
         returns a minimized map of joins to fields satisfied by that join."""
 
@@ -1349,7 +1385,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
             join.add_fields(covered_fields)
             return {join: covered_fields}
 
-        sorted_join_fields = self._eliminate_redundant_joins(sorted_join_fields)
+        sorted_join_fields = self._eliminate_redundant_joins(sorted_join_fields, table)
         candidates = self._find_join_combinations(sorted_join_fields, grain)
         candidates = self._combine_orthogonal_joins(candidates)
         join_fields = self._choose_best_join_combination(candidates)
