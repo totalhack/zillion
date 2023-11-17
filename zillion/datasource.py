@@ -1260,20 +1260,36 @@ class DataSource(FieldManagerMixin, PrintMixin):
     def _find_join_combinations(self, sorted_join_fields, grain):
         """Find candidate joins that cover the entire grain"""
         candidates = []
-
+        required_joins = []
+        optional_joins = []
         max_joins = zillion_config.get("DATASOURCE_MAX_JOINS", None)
-        for i, join_combo in enumerate(
-            powerset(sorted_join_fields, max_combo_len=max_joins)
-        ):
+        max_candidates = zillion_config.get("DATASOURCE_MAX_JOIN_CANDIDATES", None)
+
+        # First find joins that provide unique components of the grain
+        # as they will be required. Do this by looking at the covered fields
+        # of the join to see if any are unique among all joins.
+        for join, covered_fields in sorted_join_fields:
+            unique_covered = covered_fields.copy()
+            for other_join, other_covered_fields in sorted_join_fields:
+                if join == other_join:
+                    continue
+                unique_covered -= other_covered_fields
+            if unique_covered:
+                required_joins.append((join, covered_fields))
+            else:
+                optional_joins.append((join, covered_fields))
+
+        dbg(f"{len(sorted_join_fields)} total joins, {len(required_joins)} required")
+        optional_powerset = powerset(optional_joins, max_combo_len=max_joins)
+
+        for i, optional_join_combo in enumerate(optional_powerset):
+            join_combo = list(optional_join_combo) + required_joins
+
             if not join_combo:
                 continue
 
-            if i % 10000 == 0:
+            if i > 0 and i % 10000 == 0:
                 warn(f"{i} join combos and counting, {len(candidates)} candidates...")
-
-            dbg("---- join combo candidate ----")
-            for row in join_combo:
-                dbg(row[0].table_names, indent=4)
 
             covered = set()
             has_subsets = False
@@ -1282,7 +1298,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 # If any of the other joins are a subset of this join we
                 # ignore it. The powerset has every combination so it will
                 # eventually hit the case where there are only distinct joins.
-                for other_join, other_covered_dims in join_combo:
+                for other_join, _ in join_combo:
                     if join == other_join:
                         continue
                     if other_join.table_names.issubset(join.table_names):
@@ -1295,11 +1311,11 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 continue
 
             if len(covered) != len(grain):
-                dbg(f"does not cover grain: {covered} / {grain}")
+                # dbg(f"does not cover grain: {covered} / {grain}")
                 continue
 
             # This combination of joins covers the entire grain. Add it as
-            # a candidate if there isn't an existing candidate that is a a
+            # a candidate if there isn't an existing candidate that is a
             # subset of these joins
             skip = False
             joins = {x[0] for x in join_combo}
@@ -1307,13 +1323,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 other_joins = {x[0] for x in other_join_combo}
                 if other_joins.issubset(joins):
                     skip = True
+                    break
+
             if skip:
-                dbg("Skipping subset join list combination")
+                # dbg("Skipping subset join list combination")
                 continue
 
-            dbg("Adding join combo")
+            # dbg("Adding join combo")
             candidates.append(join_combo)
-            max_candidates = zillion_config.get("DATASOURCE_MAX_JOIN_CANDIDATES", None)
             if max_candidates and len(candidates) >= max_candidates:
                 warn(f"Hit max join candidates, returning {len(candidates)}")
                 break
