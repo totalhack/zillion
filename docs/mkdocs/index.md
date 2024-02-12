@@ -607,6 +607,29 @@ rate variants of a core metric, you can specify a divisor metric configuration o
 
 See `zillion.configs.DivisorsConfigSchema` for more details on configuration options, such as overriding naming templates, formula templates, and rounding.
 
+<a name="aggregation-variants"></a>
+
+### **Aggregation Variants**
+
+Another minor convenience feature is the ability to automatically generate variants of metrics for different aggregation types in a single field configuration instead of across multiple fields in your config file. As an example, say you have a `sales` column in your data and want to create variants for `sales_mean` and `sales_sum`. You can define your metric as follows:
+
+```json
+{
+    "name": "sales",
+    "aggregation": {
+        "mean": {
+            "type": "numeric(10,2)",
+            "rounding": 2
+        },
+        "sum": {
+            "type": "integer"
+        }
+    }
+}
+```
+
+The final config would not have a `sales` metric, but would instead have `sales_mean` and `sales_sum`. Note that you can further customize the settings for the generated fields, such as getting a custom name, by specifying that in the nested settings for that aggregation type. In practice it's not a big savings over just defining the metrics separately, but some may prefer this approach.
+
 <a name="formula-dimensions"></a>
 
 ### **Formula Dimensions**

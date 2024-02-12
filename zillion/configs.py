@@ -270,7 +270,12 @@ def has_valid_sqlalchemy_type_values(val):
 
 def is_valid_aggregation(val):
     """Validate aggregation type"""
-    if val in AggregationTypes:
+    if isinstance(val, dict):
+        valid = all(v in AggregationTypes for v in val)
+    else:
+        valid = val in AggregationTypes
+
+    if valid:
         return True
     raise ValidationError("Invalid aggregation: %s" % val)
 
@@ -418,6 +423,11 @@ def get_divisor_metrics(metric):
     if not dconfig:
         return []
 
+    raiseif(
+        metric["aggregation"] == AggregationTypes.MEAN,
+        "Divisor metrics not supported for metrics with aggregation type 'mean'",
+    )
+
     for divisor in dconfig["metrics"]:
         new_metric = {}
 
@@ -449,6 +459,22 @@ def get_divisor_metrics(metric):
         new_metrics.append(new_metric)
 
     return new_metrics
+
+
+def get_aggregation_metrics(metric):
+    """Get the final metrics for a field that may have multiple aggregations"""
+    if not isinstance(metric.get("aggregation", None), dict):
+        return [metric]
+
+    final = []
+    for agg, cfg in metric["aggregation"].items():
+        m = metric.copy()
+        m["name"] = f"{metric['name']}_{agg}"
+        m.update(cfg)
+        m["aggregation"] = agg
+        final.append(m)
+
+    return final
 
 
 # Inspiration: https://gist.github.com/ramnes/89245fbd9f2dfff52a78
@@ -803,7 +829,7 @@ class MetricConfigSchemaMixin:
 
     """
 
-    aggregation = mfields.String(
+    aggregation = mfields.Field(
         default=AggregationTypes.SUM,
         missing=AggregationTypes.SUM,
         validate=is_valid_aggregation,
@@ -978,6 +1004,23 @@ class DataSourceConnectField(mfields.Field):
         super()._validate(value)
 
 
+def check_metric_configs(data):
+    """Create and augment metrics as needed"""
+    final = []
+    metrics = data.get("metrics", [])
+
+    for metric in metrics:
+        final.extend(get_aggregation_metrics(metric))
+
+    for metric in final[:]:
+        if metric["aggregation"] == AggregationTypes.MEAN:
+            continue
+        final.extend(get_divisor_metrics(metric))
+
+    data["metrics"] = final
+    return data
+
+
 class DataSourceConfigSchema(BaseSchema):
     """The schema of a datasource configuration
 
@@ -1027,14 +1070,10 @@ class DataSourceConfigSchema(BaseSchema):
         return data
 
     @pre_load
-    def _check_metric_divisors(self, data, **kwargs):
-        """Create formula metrics from metric divisor settings"""
+    def _check_metrics(self, data, **kwargs):
+        """Create and augment metrics as needed"""
 
-        metrics = data.get("metrics", [])
-        for metric in metrics[:]:
-            metrics.extend(get_divisor_metrics(metric))
-        data["metrics"] = metrics
-        return data
+        return check_metric_configs(data)
 
 
 class DataSourceConfigField(mfields.Field):
@@ -1135,14 +1174,10 @@ class WarehouseConfigSchema(BaseSchema):
         return data
 
     @pre_load
-    def _check_metric_divisors(self, data, **kwargs):
-        """Create formula metrics from metric divisor settings"""
+    def _check_metrics(self, data, **kwargs):
+        """Create and augment metrics as needed"""
 
-        metrics = data.get("metrics", [])
-        for metric in metrics[:]:
-            metrics.extend(get_divisor_metrics(metric))
-        data["metrics"] = metrics
-        return data
+        return check_metric_configs(data)
 
 
 class ConfigMixin:

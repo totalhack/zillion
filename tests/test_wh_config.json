@@ -167,6 +167,26 @@
             "aggregation": "sum"
         },
         {
+            "name": "sales_variant",
+            "aggregation": {
+                "mean": {
+                    "type": "numeric(10,2)",
+                    "rounding": 2
+                },
+                "sum": {
+                    "name": "sales_sum_custom_name",
+                    "type": "integer"
+                }
+            },
+            "divisors": {
+                "metrics": [
+                    "leads"
+                ],
+                "rounding": 2,
+                "formula": "1.0*IFNULL({metric},0)/{divisor}"
+            }
+        },
+        {
             "name": "revenue_required_grain",
             "type": "numeric(10,2)",
             "aggregation": "sum",

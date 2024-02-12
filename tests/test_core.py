@@ -380,6 +380,13 @@ def test_warehouse_metric_divisor(config):
     assert wh.has_metric("revenue_per_sale")
 
 
+def test_warehouse_metric_multiple_aggregations(config):
+    wh = Warehouse(config=config)
+    # These are dynamically generated for metrics that have multiple aggregations
+    assert wh.has_metric("sales_sum_custom_name")
+    assert wh.has_metric("sales_variant_mean")
+
+
 def test_warehouse_remote_datasource_config(config):
     config["datasources"][
         "testdb2"
