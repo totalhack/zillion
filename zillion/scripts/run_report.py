@@ -33,7 +33,14 @@ from zillion.warehouse import Warehouse
         type=str,
         help="Execute a report from natural language text. Requires the NLP extension.",
     ),
-    Arg("-ll", "--log-level", type=int, default=None, help="Set log level"),
+    Arg("-ll", "--log-level", type=int, default=20, help="Set log level"),
+    Arg(
+        "-s",
+        "--set-trace",
+        action="store_true",
+        default=False,
+        help="Drop into debugger to inspect the DataFrame",
+    ),
 )
 def main(
     config=None,
@@ -47,6 +54,7 @@ def main(
     limit=None,
     text=None,
     log_level=None,
+    set_trace=None,
 ):
     if log_level:
         set_log_level(log_level)
@@ -87,6 +95,9 @@ def main(
         result = wh.execute(**params)
 
     info(result.df_display)
+    if set_trace:
+        info("Dropping into debugger. The DataFrame is available as `result.df`")
+        st()
 
 
 if __name__ == "__main__":

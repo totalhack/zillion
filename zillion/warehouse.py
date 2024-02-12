@@ -965,7 +965,7 @@ class Warehouse(FieldManagerMixin):
                 if ds_name in ds_names:
                     return ds_name
 
-        info("No datasource priorities established, choosing first option")
+        dbg("No datasource priorities established, choosing first option")
         raiseifnot(ds_names, "No datasource names provided")
         return ds_names[0]
 
@@ -1001,12 +1001,12 @@ class Warehouse(FieldManagerMixin):
             else:
                 best_priority = min(priority, best_priority)
 
-        info(f"Best table set priority = {best_priority}")
+        dbg(f"Best table set priority = {best_priority}")
         top_table_sets = table_sets_by_priority[best_priority]
 
         if len(top_table_sets) > 1:
             # TODO: table set priorities based on expected query performance
-            info("Picking smallest of %d top table sets" % len(top_table_sets))
+            dbg("Picking smallest of %d top table sets" % len(top_table_sets))
 
         return sorted(top_table_sets, key=len)[0]
 

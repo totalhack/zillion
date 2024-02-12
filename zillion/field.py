@@ -285,7 +285,7 @@ class Metric(Field):
                     "Formula contains disallowed sql: %s" % ds_formula
                 )
             if contains_aggregation(ds_formula):
-                info("Datasource formula contains aggregation, skipping default logic")
+                dbg("Datasource formula contains aggregation, skipping default logic")
                 skip_aggr = True
             expr = sa.literal_column(ds_formula)
 
@@ -295,7 +295,7 @@ class Metric(Field):
                 AggregationTypes.COUNT_DISTINCT,
             ]:
                 if self.rounding:
-                    info("Ignoring rounding for count field: %s" % self.name)
+                    dbg("Ignoring rounding for count field: %s" % self.name)
                 if label:
                     return aggr(expr).label(self.name)
                 return aggr(expr)
@@ -304,7 +304,7 @@ class Metric(Field):
                 w_column = get_table_field_column(column.table, self.weighting_metric)
                 w_ds_formula = w_column.zillion.field_ds_formula(self.weighting_metric)
                 if w_ds_formula and contains_aggregation(w_ds_formula):
-                    info(
+                    dbg(
                         f"Weighting field {self.weighting_metric} contains aggregation, skipping ds-level weighting"
                     )
                     expr = aggr(expr)

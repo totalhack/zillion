@@ -1011,7 +1011,7 @@ def get_field_fuzzy(warehouse, name, field_type=None):
 
     best, score = res[0]
     if score >= MIN_FIELD_SIMILARITY_SCORE:
-        info(f"Found fuzzy match for {name}: {best.metadata['name']} / {score}")
+        dbg(f"Found fuzzy match for {name}: {best.metadata['name']} / {score}")
         return best.metadata["name"]
     else:
         warn(f"No good match found for '{name}': {res}")
@@ -1131,7 +1131,7 @@ def text_to_report_params(query, warehouse=None, prompt_version="no_fields"):
 
     llm_start = time.time()
     output = text_to_report_chain.run(**context).strip(". -\n\r")
-    info(f"LLM took {time.time() - llm_start:.3f}s")
+    dbg(f"LLM took {time.time() - llm_start:.3f}s")
     return prompt_config["parser"](output)
 
 
@@ -1219,8 +1219,8 @@ def get_nlp_table_relationships(metadata, table_names):
 
     llm_start = time.time()
     output = relationship_chain.run(table_defs_str).strip(". -\n\r")
-    info(output)
-    info(f"LLM took {time.time() - llm_start:.3f}s")
+    dbg(output)
+    dbg(f"LLM took {time.time() - llm_start:.3f}s")
     return parse_nlp_table_relationships(output)
 
 

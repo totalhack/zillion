@@ -290,7 +290,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                 self.select = self.select.comment(label)
 
             try:
-                info("\n" + self._format_query())
+                dbg("\n" + self._format_query())
 
                 def do_timeout(main_thread):
                     nonlocal is_timeout
@@ -325,7 +325,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                 self._conn = None
 
             diff = time.time() - start
-            info("Got %d rows in %.3fs" % (len(data), diff))
+            dbg("Got %d rows in %.3fs" % (len(data), diff))
             return DataSourceQueryResult(self, data, diff)
         finally:
             raise_if_killed = not is_timeout
@@ -363,7 +363,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         raw_conn = self._conn.connection
 
         dialect = self.get_dialect_name()
-        info("Attempting kill on %s conn: %s" % (dialect, self._conn))
+        dbg("Attempting kill on %s conn: %s" % (dialect, self._conn))
 
         if dialect == "mysql" and callable(getattr(raw_conn, "thread_id", None)):
             kill_conn = self.get_conn()
@@ -379,7 +379,7 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         elif main_thread:
             # This isn't guaranteed to work as the thread may be waiting for
             # an external resource to finish, but worth a shot.
-            info("Trying async raise for unsupported dialect=%s" % dialect)
+            warn("Trying async raise for unsupported dialect=%s" % dialect)
             async_raise(main_thread.ident, ExecutionKilledException)
         else:
             raise UnsupportedKillException("No kill support for dialect=%s" % dialect)
@@ -1137,7 +1137,7 @@ class SQLiteMemoryCombinedResult(BaseCombinedResult):
             group_by_clause,
             order_clause,
         )
-        info("\n" + sqlformat(sql))
+        dbg("\n" + sqlformat(sql))
         return sql
 
     def _get_bulk_insert_sql(self, rows):
@@ -1707,13 +1707,13 @@ class Report(ExecutionStateMixin):
                 used_metrics = OrderedDict()
                 for metric_name, metric in self.metrics.items():
                     if metric_name in self.unsupported_grain_metrics:
-                        info(f"skipping {metric_name} due to unsupported grain")
+                        dbg(f"skipping {metric_name} due to unsupported grain")
                         continue
                     metric_raw_fields = metric.get_all_raw_fields(
                         self.warehouse, adhoc_fms=self.adhoc_datasources
                     )
                     if metric_raw_fields & self.unsupported_grain_metrics.keys():
-                        info(
+                        dbg(
                             f"skipping {metric_name} due to unsupported formula/weighting metric grain"
                         )
                         continue
@@ -1762,7 +1762,7 @@ class Report(ExecutionStateMixin):
         datasource queries. Otherwise a warning will be emitted.
 
         """
-        info("killing report %s" % self.uuid)
+        dbg("killing report %s" % self.uuid)
 
         with self._get_lock():
             if self._ready:
@@ -1897,7 +1897,7 @@ class Report(ExecutionStateMixin):
 
             # The field is a dimension so it will be part of the index
             values = res.non_rollup_rows.index.unique(field).tolist()
-            info(f"Subreport has {len(values)} values for {field}")
+            dbg(f"Subreport has {len(values)} values for {field}")
             if op == "in report":
                 final_criteria.append([field, "in", values])
             else:

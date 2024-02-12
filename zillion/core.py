@@ -311,7 +311,7 @@ def download_file(url, outfile=None):
     """Utility to download a datafile"""
     if not outfile:
         outfile = url.split("/")[-1]
-    info("Downloading %s to %s" % (url, outfile))
+    dbg("Downloading %s to %s" % (url, outfile))
     with requests.get(url, stream=True) as r:
         r.raise_for_status()
         with open(outfile, "wb") as f:
