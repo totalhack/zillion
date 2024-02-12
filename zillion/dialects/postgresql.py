@@ -94,6 +94,7 @@ POSTGRESQL_DIALECT_CONVERSIONS = {
     },
     "month_name": "TO_CHAR({}, 'FMMonth')",
     "month_of_year": "EXTRACT(MONTH FROM {})",
+    "week": "TO_CHAR({}, 'FMYYYY-\"W\"IW')",
     "week_of_month": "EXTRACT(WEEK FROM {}) - EXTRACT(WEEK FROM CAST(DATE_TRUNC('month', {}) as date)) + 1",
     "week_of_year": "EXTRACT(WEEK FROM {})",  # HACK: attempt to get tests compatible with mysql and sqlite
     "period_of_month_7d": "FLOOR((EXTRACT(DAY FROM {}) - 1) / 7) + 1",

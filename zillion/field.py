@@ -1467,6 +1467,7 @@ DATETIME_CONVERSION_FIELDS = [
         "SmallInteger",
         description="Numeric calendar week of the month",
     ),
+    Dimension("week", "String(8)", description="Year and week (YYYY-WN)"),
     Dimension(
         "week_of_year", "SmallInteger", description="Numeric calendar week of the year"
     ),

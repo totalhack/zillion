@@ -307,6 +307,7 @@ EXPECTED_DATE_CONVERSION_VALUES = [
     ("campaign_month", "2019-03"),
     ("campaign_month_name", "March"),
     ("campaign_month_of_year", 3),
+    ("campaign_week", "2019-W13"),
     ("campaign_week_of_year", 13),
     ("campaign_week_of_month", 5),
     ("campaign_period_of_month_7d", 4),

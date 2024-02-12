@@ -83,6 +83,7 @@ SQLITE_DIALECT_CONVERSIONS = {
         "END"
     ),
     "month_of_year": "cast(strftime('%m', {}) as integer)",
+    "week": "strftime('%Y', {}) || '-W' || printf('%02d', cast(strftime('%W', {}) as integer) + 1)",
     "week_of_month": "cast(strftime('%W', {}) as integer) - cast(strftime('%W', strftime('%Y-%m-01', {})) as integer) + 1",
     "week_of_year": "cast(strftime('%W', {}) as integer)+1",
     "period_of_month_7d": "cast((cast(strftime('%d', {}) as integer) - 1) / 7 as integer) + 1",

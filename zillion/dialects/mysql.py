@@ -78,6 +78,7 @@ MYSQL_DIALECT_CONVERSIONS = {
     },
     "month_name": "MONTHNAME({})",
     "month_of_year": "EXTRACT(MONTH FROM {})",
+    "week": "CONCAT(YEAR({}), '-W', LPAD(WEEK({}, 1), 2, '0'))",
     "week_of_month": "WEEK({}, 1) - WEEK(DATE_FORMAT({},'%Y-%m-01'), 1) + 1",
     "week_of_year": "WEEK({}, 1)",  # Monday week start
     "period_of_month_7d": "FLOOR((DAYOFMONTH({}) - 1) / 7) + 1",
