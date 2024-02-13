@@ -52,7 +52,7 @@ With `Zillion` you can:
     * [Subreports](#subreports)
     * [FormulaMetrics](#formula-metrics)
     * [Divisor Metrics](#divisor-metrics)
-    * [Divisor Metrics](#aggregation-variants)
+    * [Aggregation Variants](#aggregation-variants)
     * [FormulaDimensions](#formula-dimensions)
     * [DataSource Formulas](#datasource-formulas)
     * [Type Conversions](#type-conversions)
