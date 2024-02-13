@@ -628,7 +628,7 @@ Another minor convenience feature is the ability to automatically generate varia
 }
 ```
 
-The final config would not have a `sales` metric, but would instead have `sales_mean` and `sales_sum`. Note that you can further customize the settings for the generated fields, such as getting a custom name, by specifying that in the nested settings for that aggregation type. In practice it's not a big savings over just defining the metrics separately, but some may prefer this approach.
+The resulting warehouse would not have a `sales` metric, but would instead have `sales_mean` and `sales_sum`. Note that you can further customize the settings for the generated fields, such as setting a custom name, by specifying that in the nested settings for that aggregation type. In practice this is not a big efficiency gain over just defining the metrics separately, but some may prefer this approach.
 
 <a name="formula-dimensions"></a>
 
