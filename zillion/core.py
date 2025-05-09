@@ -430,22 +430,34 @@ def load_zillion_config():
                 config[k.replace("ZILLION_", "")] = v
                 del config[k]
     else:
-        print("No ZILLION_CONFIG specified, using default settings")
-        config = dict(
-            DEBUG=False,
-            LOG_LEVEL="WARNING",
-            DB_URL="sqlite:////tmp/zillion.db",
-            ADHOC_DATASOURCE_DIRECTORY="/tmp",
-            LOAD_TABLE_CHUNK_SIZE=5000,
-            OPENAI_API_KEY=None,
-            OPENAI_MODEL="gpt-3.5-turbo",
-            QDRANT_HOST=None,
-            DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
-            DATASOURCE_QUERY_TIMEOUT=None,
-            DATASOURCE_MAX_JOIN_CANDIDATES=100,
-            DATASOURCE_MAX_JOINS=None,
-            DATASOURCE_CONTEXTS={},
-        )
+        # Check if dev_config.yml exists in the current or parent directory
+        dev_config_path = None
+        for path in [os.getcwd(), os.path.dirname(os.getcwd())]:
+            potential_path = os.path.join(path, "dev_config.yml")
+            if os.path.exists(potential_path):
+                dev_config_path = potential_path
+                break
+
+        if dev_config_path:
+            print(f"No ZILLION_CONFIG specified, using {dev_config_path}")
+            config = load_yaml(dev_config_path)
+        else:
+            print("No ZILLION_CONFIG specified, using default settings")
+            config = dict(
+                DEBUG=False,
+                LOG_LEVEL="WARNING",
+                DB_URL="sqlite:////tmp/zillion.db",
+                ADHOC_DATASOURCE_DIRECTORY="/tmp",
+                LOAD_TABLE_CHUNK_SIZE=5000,
+                OPENAI_API_KEY=None,
+                OPENAI_MODEL="gpt-3.5-turbo",
+                QDRANT_HOST=None,
+                DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
+                DATASOURCE_QUERY_TIMEOUT=None,
+                DATASOURCE_MAX_JOIN_CANDIDATES=100,
+                DATASOURCE_MAX_JOINS=None,
+                DATASOURCE_CONTEXTS={},
+            )
 
     for k, v in os.environ.items():
         if k.startswith("ZILLION_"):

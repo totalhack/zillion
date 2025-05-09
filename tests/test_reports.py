@@ -380,31 +380,33 @@ def test_report_custom_sort_no_order_by(wh):
     assert result.df.index[0][0] == "Partner C"
 
 
-def test_report_custom_sort_conversion_field():
-    # TODO: put together a smaller dataset to test this
-    config = "https://raw.githubusercontent.com/totalhack/zillion-covid-19/master/zillion_covid_19/covid_warehouse.json"
-    wh = Warehouse(config=config)
-    metrics = ["cases"]
-    dimensions = ["month_name"]
-    result = wh_execute(wh, locals())
-    info(result.df)
-    assert result.df.index[0] == "January"
+# TODO: this test data is no longer available!
+
+# def test_report_custom_sort_conversion_field():
+#     # TODO: put together a smaller dataset to test this
+#     config = "https://raw.githubusercontent.com/totalhack/zillion-covid-19/master/zillion_covid_19/covid_warehouse.json"
+#     wh = Warehouse(config=config)
+#     metrics = ["cases"]
+#     dimensions = ["month_name"]
+#     result = wh_execute(wh, locals())
+#     info(result.df)
+#     assert result.df.index[0] == "January"
 
 
-def test_report_custom_sort_rollups(wh):
-    config = "https://raw.githubusercontent.com/totalhack/zillion-covid-19/master/zillion_covid_19/covid_warehouse.json"
-    wh = Warehouse(config=config)
-    metrics = ["cases"]
-    dimensions = ["day_name", "date"]
-    criteria = [("date", "between", ["2020-07-01", "2020-08-01"])]
-    rollup = RollupTypes.ALL
-    result = wh_execute(wh, locals())
-    assert result
-    assert result.df.reset_index()["date"].values[-1] == ROLLUP_INDEX_LABEL
-    assert result.df.reset_index()["date"].values[-2] == ROLLUP_INDEX_LABEL
-    assert result.df.reset_index()["day_name"].values[-1] == ROLLUP_INDEX_LABEL
-    assert result.df.reset_index()["day_name"].values[-2] == "Sunday"
-    info(result.df)
+# def test_report_custom_sort_rollups(wh):
+#     config = "https://raw.githubusercontent.com/totalhack/zillion-covid-19/master/zillion_covid_19/covid_warehouse.json"
+#     wh = Warehouse(config=config)
+#     metrics = ["cases"]
+#     dimensions = ["day_name", "date"]
+#     criteria = [("date", "between", ["2020-07-01", "2020-08-01"])]
+#     rollup = RollupTypes.ALL
+#     result = wh_execute(wh, locals())
+#     assert result
+#     assert result.df.reset_index()["date"].values[-1] == ROLLUP_INDEX_LABEL
+#     assert result.df.reset_index()["date"].values[-2] == ROLLUP_INDEX_LABEL
+#     assert result.df.reset_index()["day_name"].values[-1] == ROLLUP_INDEX_LABEL
+#     assert result.df.reset_index()["day_name"].values[-2] == "Sunday"
+#     info(result.df)
 
 
 def test_report_limit(wh):

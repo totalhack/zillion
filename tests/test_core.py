@@ -16,12 +16,10 @@ from zillion.warehouse import Warehouse
 
 
 def test_zillion_config():
-    del os.environ["ZILLION_CONFIG"]
+    if "ZILLION_CONFIG" in os.environ:
+        del os.environ["ZILLION_CONFIG"]
     cfg = load_zillion_config()
-    assert cfg["DATASOURCE_CONTEXTS"] == {}
-
-    os.environ["ZILLION_CONFIG"] = "/etc/skeleton/config/zillion/config.yaml"
-    cfg = load_zillion_config()
+    # Should load the dev config
     assert cfg["DATASOURCE_CONTEXTS"] != {}
 
     os.environ["ZILLION_LOG_LEVEL"] = "INFO"

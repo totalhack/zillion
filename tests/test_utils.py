@@ -6,6 +6,7 @@ psql -h 127.0.0.1 -U postgres zillion_test < zillion_test.postgres.sql
 
 rm /tmp/adhoc_large_db.db (if it exists)
 """
+
 from collections import OrderedDict
 from contextlib import contextmanager
 import copy
@@ -46,10 +47,12 @@ DEFAULT_TEST_DB = "testdb1"
 TEST_WH_CONFIG = load_warehouse_config("test_wh_config.json")
 TEST_ADHOC_CONFIG = load_warehouse_config("test_adhoc_ds_config.json")
 REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_wh_config.json"
-test_config = zillion_config["TEST"]
 
 logging.getLogger().setLevel(logging.INFO)
 default_logger.setLevel(logging.INFO)
+
+logging.info(f"Config: {zillion_config}")
+test_config = zillion_config["TEST"]
 
 
 @contextmanager

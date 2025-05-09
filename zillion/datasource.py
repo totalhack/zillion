@@ -49,6 +49,9 @@ from zillion.sql_utils import (
     type_string_to_sa_type,
 )
 
+DEFAULT_DB_ENGINE_POOL_SIZE = 10
+DEFAULT_DB_ENGINE_MAX_OVERFLOW = 20
+
 
 def entity_name_from_file(filename):
     return os.path.basename(filename.split("?")[0]).split(".")[0]
@@ -67,6 +70,21 @@ def populate_url_context(url, ds_name):
     return url
 
 
+def get_engine_extra_kwargs(url):
+    """Get the extra kwargs for the SQLAlchemy engine based on the URL"""
+    if "sqlite" in url:
+        return {}
+
+    return {
+        "pool_size": zillion_config.get(
+            "DB_ENGINE_POOL_SIZE", DEFAULT_DB_ENGINE_POOL_SIZE
+        ),
+        "max_overflow": zillion_config.get(
+            "DB_ENGINE_MAX_OVERFLOW", DEFAULT_DB_ENGINE_MAX_OVERFLOW
+        ),
+    }
+
+
 def connect_url_to_metadata(url, ds_name=None):
     """Create a bound SQLAlchemy MetaData object from a database URL. The
     ds_name param is used to determine datasource config context for variable
@@ -75,7 +93,11 @@ def connect_url_to_metadata(url, ds_name=None):
         url = populate_url_context(url, ds_name)
     check_metadata_url(url)
     metadata = sa.MetaData()
-    metadata.bind = sa.create_engine(url, pool_pre_ping=True)
+    metadata.bind = sa.create_engine(
+        url,
+        pool_pre_ping=True,
+        **get_engine_extra_kwargs(url),
+    )
     return metadata
 
 
@@ -133,7 +155,12 @@ def data_url_to_metadata(
         f = download_file(data_url, outfile=dbfile)
 
     connect_url = get_adhoc_datasource_url(ds_name)
-    engine = sa.create_engine(connect_url, echo=False, pool_pre_ping=True)
+    engine = sa.create_engine(
+        connect_url,
+        echo=False,
+        pool_pre_ping=True,
+        **get_engine_extra_kwargs(connect_url),
+    )
     metadata = sa.MetaData()
     metadata.bind = engine
     return metadata
@@ -1534,7 +1561,12 @@ class DataSource(FieldManagerMixin, PrintMixin):
         else:
             # No connection URL specified, let's create an adhoc SQLite DB
             conn_url = get_adhoc_datasource_url(ds_name)
-            engine = sa.create_engine(conn_url, echo=False, pool_pre_ping=True)
+            engine = sa.create_engine(
+                conn_url,
+                echo=False,
+                pool_pre_ping=True,
+                **get_engine_extra_kwargs(conn_url),
+            )
             metadata = sa.MetaData()
             metadata.bind = engine
 

@@ -8,4 +8,5 @@ dist
 .idea/
 tests/test_wh_config.yaml
 volumes
+.python-version
 
