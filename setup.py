@@ -60,7 +60,7 @@ extras_require = {
         "pylint==2.4.4",
         "pytest==7.1.2",
         "pytest-xdist==3.1.0",
-        "twine==3.1.1",
+        "twine>=5",
         "wheel",
         "mkdocs==1.1.2",
         "mkdocs-material==5.2.1",
