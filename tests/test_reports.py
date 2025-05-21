@@ -1244,6 +1244,37 @@ def test_report_table_priority(config):
     assert report.queries[0].table_set.ds_table.name == "sales"
 
 
+def test_report_disabled_tables(wh):
+    metrics = ["revenue", "leads", "sales"]
+    dimensions = ["partner_name"]
+    disabled_tables = ["main.sales"]
+    report = Report(
+        wh, metrics=metrics, dimensions=dimensions, disabled_tables=disabled_tables
+    )
+    all_tables = set()
+    for query in report.queries:
+        tables = [x.fullname for x in query.get_tables()]
+        all_tables.update(tables)
+
+    # Should use the aggregated stats table instead
+    assert "main.sales" not in all_tables
+
+    disabled_tables = ["main.sales", "main.aggregated_stats"]
+    with pytest.raises(UnsupportedGrainException):
+        Report(
+            wh, metrics=metrics, dimensions=dimensions, disabled_tables=disabled_tables
+        )
+
+    # Test dim-only case
+    metrics = None
+    dimensions = ["partner_name"]
+    disabled_tables = ["main.partners"]
+    with pytest.raises(UnsupportedGrainException):
+        Report(
+            wh, metrics=metrics, dimensions=dimensions, disabled_tables=disabled_tables
+        )
+
+
 def test_report_multi_datasource(wh):
     metrics = ["revenue", "leads", "sales", "revenue_mean"]
     dimensions = ["partner_name"]
@@ -1649,9 +1680,9 @@ def test_dimension_name_sql_injection(config):
 
 def test_type_conversion_prefix_sql_injection(config):
     table_config = config["datasources"]["testdb1"]["tables"]["main.sales"]
-    table_config["columns"]["created_at"][
-        "type_conversion_prefix"
-    ] = "select * from sales;--"
+    table_config["columns"]["created_at"]["type_conversion_prefix"] = (
+        "select * from sales;--"
+    )
     metrics = ["sales"]
     dimensions = ["partner_name"]
     from marshmallow.exceptions import ValidationError

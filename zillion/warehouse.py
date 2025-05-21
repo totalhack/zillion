@@ -355,6 +355,7 @@ class Warehouse(FieldManagerMixin):
         limit_first=False,
         adhoc_datasources=None,
         allow_partial=False,
+        disabled_tables=None,
     ):
         """Build and execute a Report
 
@@ -378,6 +379,7 @@ class Warehouse(FieldManagerMixin):
             limit_first=limit_first,
             adhoc_datasources=adhoc_datasources,
             allow_partial=allow_partial,
+            disabled_tables=disabled_tables,
         )
         result = report.execute()
 
@@ -424,7 +426,7 @@ class Warehouse(FieldManagerMixin):
             raise WarehouseException("nlp extension is not installed")
 
         if not self._get_embeddings_collection_name():
-            info(f"Initializing Warehouse embeddings")
+            info("Initializing Warehouse embeddings")
             self.init_embeddings()
 
         start = time.time()
@@ -436,7 +438,12 @@ class Warehouse(FieldManagerMixin):
         return result
 
     def get_metric_table_set(
-        self, metric, grain, dimension_grain, adhoc_datasources=None
+        self,
+        metric,
+        grain,
+        dimension_grain,
+        adhoc_datasources=None,
+        disabled_tables=None,
     ):
         """Get a TableSet that can satisfy a metric at a given grain
 
@@ -449,6 +456,8 @@ class Warehouse(FieldManagerMixin):
         representing the requested dimensions for report grouping
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
+        * **disabled_tables** - (*list, optional*) A list of table names to disable
+        for this request.
 
         **Returns:**
 
@@ -457,7 +466,7 @@ class Warehouse(FieldManagerMixin):
         """
         dbg("metric:%s grain:%s" % (metric, grain))
         ds_metric_tables = self._get_ds_tables_with_metric(
-            metric, adhoc_datasources=adhoc_datasources
+            metric, adhoc_datasources=adhoc_datasources, disabled_tables=disabled_tables
         )
         ds_table_sets = self._get_ds_table_sets(
             ds_metric_tables,
@@ -468,13 +477,18 @@ class Warehouse(FieldManagerMixin):
         )
         if not ds_table_sets:
             msg = self._generate_unsupported_grain_msg(
-                grain, metric, adhoc_datasources=adhoc_datasources
+                grain,
+                metric,
+                adhoc_datasources=adhoc_datasources,
+                disabled_tables=disabled_tables,
             )
             raise UnsupportedGrainException(msg)
         table_set = self._choose_best_table_set(ds_table_sets)
         return table_set
 
-    def get_dimension_table_set(self, grain, dimension_grain, adhoc_datasources=None):
+    def get_dimension_table_set(
+        self, grain, dimension_grain, adhoc_datasources=None, disabled_tables=None
+    ):
         """Get a TableSet that can satisfy dimension table joins across this
         grain
 
@@ -486,6 +500,8 @@ class Warehouse(FieldManagerMixin):
         representing the requested dimensions for report grouping
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
+        * **disabled_tables** - (*list, optional*) A list of table names to disable
+        for this request.
 
         **Returns:**
 
@@ -497,7 +513,9 @@ class Warehouse(FieldManagerMixin):
         table_set = None
         for dim_name in grain:
             ds_dim_tables = self._get_ds_dim_tables_with_dim(
-                dim_name, adhoc_datasources=adhoc_datasources
+                dim_name,
+                adhoc_datasources=adhoc_datasources,
+                disabled_tables=disabled_tables,
             )
             ds_table_sets = self._get_ds_table_sets(
                 ds_dim_tables,
@@ -688,7 +706,7 @@ class Warehouse(FieldManagerMixin):
                     continue
 
                 for table in tables:
-                    if not metric.weighting_metric in get_table_fields(table):
+                    if metric.weighting_metric not in get_table_fields(table):
                         errors.append(
                             "Table %s->%s has metric %s but not weighting metric %s"
                             % (
@@ -785,7 +803,7 @@ class Warehouse(FieldManagerMixin):
         return errors
 
     def _get_supported_dimensions_for_metric(
-        self, metric, use_cache=True, adhoc_datasources=None
+        self, metric, use_cache=True, adhoc_datasources=None, disabled_tables=None
     ):
         """Get a set of all supported dimensions for a metric
 
@@ -796,6 +814,9 @@ class Warehouse(FieldManagerMixin):
         from the supported dimension cache
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
+        * **disabled_tables** - (*list, optional*) A list of table names to disable
+        for this request. Using this causes supported dimension cache logic to be
+        ignored.
 
         **Returns:**
 
@@ -805,7 +826,11 @@ class Warehouse(FieldManagerMixin):
         dims = set()
         metric = self.get_metric(metric, adhoc_fms=adhoc_datasources)
 
-        if use_cache and metric.name in self._supported_dimension_cache:
+        if (
+            (not disabled_tables)
+            and use_cache
+            and metric.name in self._supported_dimension_cache
+        ):
             return self._supported_dimension_cache[metric]
 
         for ds in self.datasources:
@@ -813,6 +838,10 @@ class Warehouse(FieldManagerMixin):
             used_tables = set()
 
             for ds_table in ds_tables:
+                if disabled_tables:
+                    if ds_table.fullname in disabled_tables:
+                        continue
+
                 if ds_table.fullname not in used_tables:
                     dims |= get_table_dimensions(
                         self, ds_table, adhoc_fms=adhoc_datasources
@@ -827,10 +856,13 @@ class Warehouse(FieldManagerMixin):
                         )
                         used_tables.add(desc_table)
 
-        self._supported_dimension_cache[metric] = dims
+        if not disabled_tables:
+            self._supported_dimension_cache[metric] = dims
         return dims
 
-    def _get_supported_dimensions(self, metrics, adhoc_datasources=None):
+    def _get_supported_dimensions(
+        self, metrics, adhoc_datasources=None, disabled_tables=None
+    ):
         """Get all of the supported dimensions shared among these metrics
 
         **Parameters:**
@@ -838,6 +870,9 @@ class Warehouse(FieldManagerMixin):
         * **metrics** - (*list*) A list of metric names or Metric objects
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
+        * **disabled_tables** - (*list, optional*) A list of table names to disable
+        for this request. Using this causes supported dimension cache logic to be
+        ignored.
 
         **Returns:**
 
@@ -847,12 +882,16 @@ class Warehouse(FieldManagerMixin):
         dims = set()
         for metric in metrics:
             supported_dims = self._get_supported_dimensions_for_metric(
-                metric, adhoc_datasources=adhoc_datasources
+                metric,
+                adhoc_datasources=adhoc_datasources,
+                disabled_tables=disabled_tables,
             )
             dims = (dims & supported_dims) if len(dims) > 0 else supported_dims
         return dims
 
-    def _get_ds_tables_with_metric(self, metric, adhoc_datasources=None):
+    def _get_ds_tables_with_metric(
+        self, metric, adhoc_datasources=None, disabled_tables=None
+    ):
         """Get a list of tables in each datasource that provide this metric
 
         **Parameters:**
@@ -873,6 +912,10 @@ class Warehouse(FieldManagerMixin):
             tables = ds.get_tables_with_field(metric)
             if not tables:
                 continue
+            if disabled_tables:
+                tables = [t for t in tables if t.fullname not in disabled_tables]
+                if not tables:
+                    continue
             ds_tables[ds.name] = tables
             count += 1
         dbg(
@@ -881,7 +924,9 @@ class Warehouse(FieldManagerMixin):
         )
         return ds_tables
 
-    def _get_ds_dim_tables_with_dim(self, dim, adhoc_datasources=None):
+    def _get_ds_dim_tables_with_dim(
+        self, dim, adhoc_datasources=None, disabled_tables=None
+    ):
         """Get a list of tables in each datasource that provide this dimension
 
         **Parameters:**
@@ -889,6 +934,8 @@ class Warehouse(FieldManagerMixin):
         * **dim** - (*str*) The name of a dimension
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
+        * **disabled_tables** - (*list, optional*) A list of table names to disable
+        for this request.
 
         **Returns:**
 
@@ -902,6 +949,8 @@ class Warehouse(FieldManagerMixin):
             tables = ds.get_dim_tables_with_dim(dim)
             if not tables:
                 continue
+            if disabled_tables:
+                tables = [t for t in tables if t.fullname not in disabled_tables]
             ds_tables[ds.name] = tables
             count += 1
         dbg(
@@ -1010,7 +1059,9 @@ class Warehouse(FieldManagerMixin):
 
         return sorted(top_table_sets, key=len)[0]
 
-    def _generate_unsupported_grain_msg(self, grain, metric, adhoc_datasources=None):
+    def _generate_unsupported_grain_msg(
+        self, grain, metric, adhoc_datasources=None, disabled_tables=None
+    ):
         """Generate a messaged that aims to help pinpoint why a metric can not
         meet a specific grain
 
@@ -1020,6 +1071,8 @@ class Warehouse(FieldManagerMixin):
         * **metric** - (*str*) A metric name
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this report
+        * **disabled_tables** - (*list, optional*) A list of table names to disable
+        for this request.
 
         **Returns:**
 
@@ -1028,7 +1081,7 @@ class Warehouse(FieldManagerMixin):
         """
         grain = grain or set()
         supported = self._get_supported_dimensions_for_metric(
-            metric, adhoc_datasources=adhoc_datasources
+            metric, adhoc_datasources=adhoc_datasources, disabled_tables=disabled_tables
         )
         unsupported = grain - supported
         if unsupported:

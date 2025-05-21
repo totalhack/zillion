@@ -1013,6 +1013,7 @@ def check_metric_configs(data):
         final.extend(get_aggregation_metrics(metric))
 
     for metric in final[:]:
+        # TODO: if "aggregation" is not present, fail integrity check!
         if metric["aggregation"] == AggregationTypes.MEAN:
             continue
         final.extend(get_divisor_metrics(metric))

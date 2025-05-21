@@ -222,9 +222,9 @@ def create_adhoc_data(column_types, size):
 
 
 def create_adhoc_datatable(name, table_config, primary_key, column_types, size):
-    assert (
-        table_config["columns"].keys() == column_types.keys()
-    ), "Mismatch between table_config columns and column_types"
+    assert table_config["columns"].keys() == column_types.keys(), (
+        "Mismatch between table_config columns and column_types"
+    )
 
     data = create_adhoc_data(column_types, size)
 
@@ -411,6 +411,7 @@ def wh_execute_args(d):
             "limit_first",
             "adhoc_datasources",
             "allow_partial",
+            "disabled_tables",
         ]
     )
     return {k: v for k, v in d.items() if k in exec_params}

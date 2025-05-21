@@ -1499,6 +1499,8 @@ class Report(ExecutionStateMixin):
     specific to this report
     * **allow_partial** - (*boolean, optional*) Allow reports where only some
     metrics can meet the requested grain.
+    * **disabled_tables** - (*list, optional*) A list of table names to disable
+    for this report.
     * **report_depth** - (*int, optional*) The depth of subreport recursion
     we are currently in. This is used to prevent infinite recursion when
     building subreports.
@@ -1529,6 +1531,7 @@ class Report(ExecutionStateMixin):
         limit_first=False,
         adhoc_datasources=None,
         allow_partial=False,
+        disabled_tables=None,
         report_depth=1,
     ):
         start = time.time()
@@ -1545,6 +1548,7 @@ class Report(ExecutionStateMixin):
         self.warehouse = warehouse
 
         self.allow_partial = allow_partial
+        self.disabled_tables = disabled_tables or []
         self.is_partial = False
         self.unsupported_grain_metrics = {}
 
@@ -1622,7 +1626,9 @@ class Report(ExecutionStateMixin):
             self._add_ds_fields(dim)
 
         self._check_required_grain()
-        self.queries = self._build_ds_queries(allow_partial=allow_partial)
+        self.queries = self._build_ds_queries(
+            allow_partial=allow_partial, disabled_tables=disabled_tables
+        )
         self.combined_query = None
         self.result = None
 
@@ -2070,7 +2076,7 @@ class Report(ExecutionStateMixin):
         if grain_errors:
             raise UnsupportedGrainException(grain_errors)
 
-    def _build_ds_queries(self, allow_partial=False):
+    def _build_ds_queries(self, allow_partial=False, disabled_tables=None):
         """Build all datasource-level queries needed for this report"""
         grain = self.get_grain()
         dim_grain = self.get_dimension_grain()
@@ -2096,6 +2102,7 @@ class Report(ExecutionStateMixin):
                     grain,
                     dimension_grain=dim_grain,
                     adhoc_datasources=self.adhoc_datasources,
+                    disabled_tables=disabled_tables,
                 )
             except UnsupportedGrainException as e:
                 # Gather all grain errors to be raised in one exception
@@ -2127,6 +2134,7 @@ class Report(ExecutionStateMixin):
                 grain,
                 dimension_grain=dim_grain,
                 adhoc_datasources=self.adhoc_datasources,
+                disabled_tables=disabled_tables,
             )
             query = DataSourceQuery(
                 self.warehouse, None, self.ds_dimensions, self.criteria, table_set
