@@ -1,448 +1,399 @@
 {
-    "meta": {
-        "nlp": {
-            "collection_name": null,
-            "field_disabled_patterns": [
-                "rpl_ma_5"
-            ],
-            "field_disabled_groups": [
-                "No NLP"
-            ]
-        }
-    },
-    "metrics": [
-        {
-            "name": "rpl",
-            "display_name": "Revenue/Lead",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{revenue}/{leads}",
-            "description": "Revenue per Lead",
-            "meta": {
-                "metafield": "metavalue",
-                "nlp": {
-                    "enabled": true,
-                    "embedding_text": "Revenue per Lead Meta"
-                }
-            }
-        },
-        {
-            "name": "rpl_weighted",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{revenue}/{leads}",
-            "weighting_metric": "main_sales_quantity",
-            "meta": {
-                "nlp": {
-                    "enabled": false
-                }
-            }
-        },
-        {
-            "name": "rpl_lead_weighted",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{revenue}/{leads}",
-            "weighting_metric": "leads",
-            "meta": {
-                "nlp": {
-                    "embedding_text": [
-                        "rpl weighted 1",
-                        "rpl weighted 2"
-                    ]
-                }
-            }
-        },
-        {
-            "name": "rpl_lead_formula_weighted",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{revenue}/{leads}",
-            "weighting_metric": "leads_formula"
-        },
-        {
-            "name": "rps_lead_weighted",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{revenue}/{sales}",
-            "weighting_metric": "leads"
-        },
-        {
-            "name": "rpl_squared",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{rpl}*{rpl}"
-        },
-        {
-            "name": "rpl_unsquared",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{rpl_squared}/{rpl}",
-            "meta": {
-                "group": "No NLP"
-            }
-        },
-        {
-            "name": "rpl_ma_5",
-            "aggregation": "mean",
-            "rounding": 2,
-            "formula": "{revenue}/{leads}",
-            "technical": "mean(5)"
-        },
-        {
-            "name": "revenue",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "divisors": {
-                "metrics": [
-                    "leads",
-                    "sales"
-                ],
-                "rounding": 2,
-                "formula": "1.0*IFNULL({metric},0)/{divisor}"
-            }
-        },
-        {
-            "name": "revenue_ma_5",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "technical": "mean(5)"
-        },
-        {
-            "name": "revenue_sum_5",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "technical": "sum(5)"
-        },
-        {
-            "name": "revenue_cumsum",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "technical": "cumsum"
-        },
-        {
-            "name": "revenue_boll_5",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "technical": "boll(5)"
-        },
-        {
-            "name": "revenue_diff",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "technical": "diff"
-        },
-        {
-            "name": "revenue_pct_diff",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2,
-            "technical": "pct_change"
-        },
-        {
-            "name": "revenue_ds",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "rounding": 2
-        },
-        {
-            "name": "leads",
-            "type": "integer",
-            "aggregation": "sum"
-        },
-        {
-            "name": "leads_formula",
-            "formula": "{leads}",
-            "aggregation": "sum"
-        },
-        {
-            "name": "sales",
-            "type": "integer",
-            "aggregation": "sum"
-        },
-        {
-            "name": "sales_variant",
-            "aggregation": {
-                "mean": {
-                    "type": "numeric(10,2)",
-                    "rounding": 2
-                },
-                "sum": {
-                    "name": "sales_sum_custom_name",
-                    "type": "integer"
-                }
-            },
-            "divisors": {
-                "metrics": [
-                    "leads"
-                ],
-                "rounding": 2,
-                "formula": "1.0*IFNULL({metric},0)/{divisor}"
-            }
-        },
-        {
-            "name": "revenue_required_grain",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "required_grain": [
-                "campaign_name"
-            ]
-        },
-        {
-            "name": "revenue_ifnull",
-            "type": "numeric(10,2)",
-            "aggregation": "sum",
-            "ifnull": 0
-        },
-        {
-            "name": "revenue_per_lead_required_grain",
-            "aggregation": "mean",
-            "formula": "1.0*{revenue}/{leads}",
-            "required_grain": [
-                "campaign_name"
-            ]
-        },
-        {
-            "name": "revenue_formula_required_grain",
-            "aggregation": "mean",
-            "formula": "1.0*{revenue_required_grain}"
-        },
-        {
-            "name": "repeated_metric",
-            "type": "integer",
-            "aggregation": "sum"
-        }
-    ],
-    "dimensions": [
-        {
-            "name": "partner_name",
-            "type": "string(32)",
-            "values": [
-                "Partner C",
-                "Partner B",
-                "Partner A"
-            ],
-            "sorter": "zillion.field.sort_by_value_order"
-        },
-        {
-            "name": "partner_name_formula",
-            "formula": "IFNULL({partner_name}, 'test')"
-        },
-        {
-            "name": "partner_name_formula_nested",
-            "formula": "{partner_name_formula}"
-        }
-    ],
-    "datasources": {
-        "testdb1": {
-            "connect": "sqlite:///testdb1",
-            "metrics": [
-                {
-                    "name": "lead_count",
-                    "type": "integer",
-                    "aggregation": "count"
-                },
-                {
-                    "name": "lead_count_distinct",
-                    "type": "integer",
-                    "aggregation": "count_distinct"
-                },
-                {
-                    "name": "ds_sales",
-                    "type": "integer",
-                    "aggregation": "sum"
-                },
-                {
-                    "name": "revenue_mean",
-                    "type": "numeric(10,2)",
-                    "aggregation": "mean",
-                    "rounding": 2,
-                    "weighting_metric": "main_sales_quantity"
-                },
-                {
-                    "name": "revenue_mean_ds_weighted",
-                    "type": "numeric(10,2)",
-                    "aggregation": "mean",
-                    "rounding": 2,
-                    "weighting_metric": "main_sales_quantity"
-                }
-            ],
-            "dimensions": [
-                {
-                    "name": "ds_partner_name",
-                    "type": "string(50)"
-                },
-                {
-                    "name": "campaign_name_length",
-                    "type": "integer"
-                },
-                {
-                    "name": "revenue_decile",
-                    "type": "integer"
-                }
-            ],
-            "tables": {
-                "main.partners": {
-                    "type": "dimension",
-                    "create_fields": true,
-                    "siblings": [
-                        "main.partner_sibling"
-                    ],
-                    "primary_key": [
-                        "partner_id"
-                    ],
-                    "columns": {
-                        "id": {
-                            "fields": [
-                                "partner_id"
-                            ]
-                        },
-                        "name": {
-                            "fields": [
-                                "partner_name",
-                                "ds_partner_name"
-                            ]
-                        }
-                    }
-                },
-                "main.partner_sibling": {
-                    "type": "dimension",
-                    "create_fields": true,
-                    "primary_key": [
-                        "partner_id"
-                    ],
-                    "columns": {
-                        "partner_id": {
-                            "fields": [
-                                "partner_id"
-                            ]
-                        },
-                        "sibling_dim": {
-                            "fields": [
-                                "partner_sibling_dim"
-                            ]
-                        }
-                    }
-                },
-                "main.campaigns": {
-                    "type": "dimension",
-                    "create_fields": true,
-                    "parent": "main.partners",
-                    "primary_key": [
-                        "campaign_id"
-                    ],
-                    "columns": {
-                        "id": {
-                            "fields": [
-                                "campaign_id"
-                            ]
-                        },
-                        "name": {
-                            "fields": [
-                                "campaign_name",
-                                {
-                                    "name": "campaign_name_length",
-                                    "ds_formula": "LENGTH(campaigns.name)"
-                                }
-                            ]
-                        },
-                        "partner_id": {
-                            "fields": [
-                                "partner_id"
-                            ]
-                        },
-                        "created_at": {
-                            "fields": [
-                                "campaign_created_at"
-                            ],
-                            "allow_type_conversions": true,
-                            "type_conversion_prefix": "campaign_"
-                        }
-                    }
-                },
-                "main.leads": "test_table_config.json",
-                "main.sales": {
-                    "type": "metric",
-                    "priority": 2,
-                    "create_fields": true,
-                    "parent": "main.leads",
-                    "primary_key": [
-                        "sale_id"
-                    ],
-                    "columns": {
-                        "id": {
-                            "fields": [
-                                "sale_id",
-                                {
-                                    "name": "sales",
-                                    "ds_formula": "COUNT(DISTINCT sales.id)"
-                                },
-                                {
-                                    "name": "ds_sales",
-                                    "ds_formula": "COUNT(DISTINCT sales.id)"
-                                },
-                                {
-                                    "name": "repeated_metric",
-                                    "ds_formula": "COUNT(DISTINCT sales.id)"
-                                }
-                            ]
-                        },
-                        "created_at": {
-                            "allow_type_conversions": true,
-                            "type_conversion_prefix": "sale_"
-                        },
-                        "lead_id": {
-                            "fields": [
-                                {
-                                    "name": "lead_id",
-                                    "ds_formula": "sales.lead_id",
-                                    "ds_criteria_conversions": {
-                                        "=": [
-                                            [
-                                                "=",
-                                                "{}"
-                                            ]
-                                        ]
-                                    }
-                                }
-                            ]
-                        },
-                        "revenue": {
-                            "fields": [
-                                "revenue",
-                                "revenue_ma_5",
-                                "revenue_sum_5",
-                                "revenue_boll_5",
-                                "revenue_cumsum",
-                                "revenue_diff",
-                                "revenue_pct_diff",
-                                "revenue_mean",
-                                "revenue_required_grain",
-                                "revenue_ifnull",
-                                {
-                                    "name": "revenue_ds",
-                                    "ds_formula": "IFNULL(sales.revenue, 0)"
-                                },
-                                {
-                                    "name": "revenue_mean_ds_weighted",
-                                    "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"
-                                },
-                                {
-                                    "name": "revenue_decile",
-                                    "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        "testdb2": "test_sqlite_ds_config.json"
+  "meta": {
+    "nlp": {
+      "collection_name": null,
+      "field_disabled_patterns": ["rpl_ma_5"],
+      "field_disabled_groups": ["No NLP"]
     }
+  },
+  "metrics": [
+    {
+      "name": "rpl",
+      "display_name": "Revenue/Lead",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{revenue}/{leads}",
+      "description": "Revenue per Lead",
+      "meta": {
+        "metafield": "metavalue",
+        "nlp": {
+          "enabled": true,
+          "embedding_text": "Revenue per Lead Meta"
+        }
+      }
+    },
+    {
+      "name": "rpl_weighted",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{revenue}/{leads}",
+      "weighting_metric": "main_sales_quantity",
+      "meta": {
+        "nlp": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "rpl_lead_weighted",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{revenue}/{leads}",
+      "weighting_metric": "leads",
+      "meta": {
+        "nlp": {
+          "embedding_text": ["rpl weighted 1", "rpl weighted 2"]
+        }
+      }
+    },
+    {
+      "name": "rpl_lead_formula_weighted",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{revenue}/{leads}",
+      "weighting_metric": "leads_formula"
+    },
+    {
+      "name": "rps_lead_weighted",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{revenue}/{sales}",
+      "weighting_metric": "leads"
+    },
+    {
+      "name": "rpl_squared",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{rpl}*{rpl}"
+    },
+    {
+      "name": "rpl_unsquared",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{rpl_squared}/{rpl}",
+      "meta": {
+        "group": "No NLP"
+      }
+    },
+    {
+      "name": "rpl_ma_5",
+      "aggregation": "mean",
+      "rounding": 2,
+      "formula": "{revenue}/{leads}",
+      "technical": "mean(5)"
+    },
+    {
+      "name": "revenue",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "divisors": {
+        "metrics": ["leads", "sales"],
+        "rounding": 2,
+        "formula": "1.0*IFNULL({metric},0)/{divisor}"
+      }
+    },
+    {
+      "name": "revenue_ma_5",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "technical": "mean(5)"
+    },
+    {
+      "name": "revenue_sum_5",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "technical": "sum(5)"
+    },
+    {
+      "name": "revenue_cumsum",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "technical": "cumsum"
+    },
+    {
+      "name": "revenue_boll_5",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "technical": "boll(5)"
+    },
+    {
+      "name": "revenue_diff",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "technical": "diff"
+    },
+    {
+      "name": "revenue_pct_diff",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2,
+      "technical": "pct_change"
+    },
+    {
+      "name": "revenue_ds",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "rounding": 2
+    },
+    {
+      "name": "leads",
+      "type": "integer",
+      "aggregation": "sum"
+    },
+    {
+      "name": "leads_formula",
+      "formula": "{leads}",
+      "aggregation": "sum"
+    },
+    {
+      "name": "sales",
+      "type": "integer",
+      "aggregation": "sum"
+    },
+    {
+      "name": "sales_variant",
+      "aggregation": {
+        "mean": {
+          "type": "numeric(10,2)",
+          "rounding": 2
+        },
+        "sum": {
+          "name": "sales_sum_custom_name",
+          "type": "integer"
+        }
+      },
+      "divisors": {
+        "metrics": ["leads"],
+        "rounding": 2,
+        "formula": "1.0*IFNULL({metric},0)/{divisor}"
+      }
+    },
+    {
+      "name": "revenue_required_grain",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "required_grain": ["campaign_name"]
+    },
+    {
+      "name": "revenue_ifnull",
+      "type": "numeric(10,2)",
+      "aggregation": "sum",
+      "ifnull": 0
+    },
+    {
+      "name": "revenue_per_lead_required_grain",
+      "aggregation": "mean",
+      "formula": "1.0*{revenue}/{leads}",
+      "required_grain": ["campaign_name"]
+    },
+    {
+      "name": "revenue_formula_required_grain",
+      "aggregation": "mean",
+      "formula": "1.0*{revenue_required_grain}"
+    },
+    {
+      "name": "repeated_metric",
+      "type": "integer",
+      "aggregation": "sum"
+    }
+  ],
+  "dimensions": [
+    {
+      "name": "partner_name",
+      "type": "string(32)",
+      "values": ["Partner C", "Partner B", "Partner A"],
+      "sorter": "zillion.field.sort_by_value_order"
+    },
+    {
+      "name": "partner_name_formula",
+      "formula": "IFNULL({partner_name}, 'test')"
+    },
+    {
+      "name": "partner_name_formula_nested",
+      "formula": "{partner_name_formula}"
+    }
+  ],
+  "datasources": {
+    "testdb1": {
+      "connect": "sqlite:///testdb1",
+      "metrics": [
+        {
+          "name": "lead_count",
+          "type": "integer",
+          "aggregation": "count"
+        },
+        {
+          "name": "lead_count_distinct",
+          "type": "integer",
+          "aggregation": "count_distinct"
+        },
+        {
+          "name": "ds_sales",
+          "type": "integer",
+          "aggregation": "sum"
+        },
+        {
+          "name": "revenue_mean",
+          "type": "numeric(10,2)",
+          "aggregation": "mean",
+          "rounding": 2,
+          "weighting_metric": "main_sales_quantity"
+        },
+        {
+          "name": "revenue_mean_ds_weighted",
+          "type": "numeric(10,2)",
+          "aggregation": "mean",
+          "rounding": 2,
+          "weighting_metric": "main_sales_quantity"
+        }
+      ],
+      "dimensions": [
+        {
+          "name": "ds_partner_name",
+          "type": "string(50)"
+        },
+        {
+          "name": "campaign_name_length",
+          "type": "integer"
+        },
+        {
+          "name": "revenue_decile",
+          "type": "integer"
+        }
+      ],
+      "tables": {
+        "main.partners": {
+          "type": "dimension",
+          "create_fields": true,
+          "siblings": ["main.partner_sibling"],
+          "primary_key": ["partner_id"],
+          "columns": {
+            "id": {
+              "fields": ["partner_id"]
+            },
+            "name": {
+              "fields": ["partner_name", "ds_partner_name"]
+            }
+          }
+        },
+        "main.partner_sibling": {
+          "type": "dimension",
+          "create_fields": true,
+          "primary_key": ["partner_id"],
+          "columns": {
+            "partner_id": {
+              "fields": ["partner_id"]
+            },
+            "sibling_dim": {
+              "fields": ["partner_sibling_dim"]
+            }
+          }
+        },
+        "main.campaigns": {
+          "type": "dimension",
+          "create_fields": true,
+          "parent": "main.partners",
+          "primary_key": ["campaign_id"],
+          "columns": {
+            "id": {
+              "fields": ["campaign_id"]
+            },
+            "name": {
+              "fields": [
+                "campaign_name",
+                {
+                  "name": "campaign_name_length",
+                  "ds_formula": "LENGTH(campaigns.name)"
+                }
+              ]
+            },
+            "partner_id": {
+              "fields": ["partner_id"]
+            },
+            "created_at": {
+              "fields": ["campaign_created_at"],
+              "allow_type_conversions": true,
+              "type_conversion_prefix": "campaign_",
+              "disabled_type_conversions": ["hour"]
+            }
+          }
+        },
+        "main.leads": "test_table_config.json",
+        "main.sales": {
+          "type": "metric",
+          "priority": 2,
+          "create_fields": true,
+          "parent": "main.leads",
+          "primary_key": ["sale_id"],
+          "columns": {
+            "id": {
+              "fields": [
+                "sale_id",
+                {
+                  "name": "sales",
+                  "ds_formula": "COUNT(DISTINCT sales.id)"
+                },
+                {
+                  "name": "ds_sales",
+                  "ds_formula": "COUNT(DISTINCT sales.id)"
+                },
+                {
+                  "name": "repeated_metric",
+                  "ds_formula": "COUNT(DISTINCT sales.id)"
+                }
+              ]
+            },
+            "created_at": {
+              "allow_type_conversions": true,
+              "type_conversion_prefix": "sale_"
+            },
+            "lead_id": {
+              "fields": [
+                {
+                  "name": "lead_id",
+                  "ds_formula": "sales.lead_id",
+                  "ds_criteria_conversions": {
+                    "=": [["=", "{}"]]
+                  }
+                }
+              ]
+            },
+            "revenue": {
+              "fields": [
+                "revenue",
+                "revenue_ma_5",
+                "revenue_sum_5",
+                "revenue_boll_5",
+                "revenue_cumsum",
+                "revenue_diff",
+                "revenue_pct_diff",
+                "revenue_mean",
+                "revenue_required_grain",
+                "revenue_ifnull",
+                {
+                  "name": "revenue_ds",
+                  "ds_formula": "IFNULL(sales.revenue, 0)"
+                },
+                {
+                  "name": "revenue_mean_ds_weighted",
+                  "ds_formula": "SUM(1.0*sales.revenue*sales.quantity)/SUM(sales.quantity)"
+                },
+                {
+                  "name": "revenue_decile",
+                  "ds_formula": "10*ROUND(sales.revenue/10.0, 0)"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "testdb2": "test_sqlite_ds_config.json"
+  }
 }

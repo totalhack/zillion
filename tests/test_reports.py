@@ -1198,7 +1198,12 @@ def test_report_formula_dimension(wh):
     info(result.df)
 
 
-def test_report_where_criteria_conversions(wh):
+def test_report_where_criteria_conversions(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.campaigns"]["columns"][
+        "created_at"
+    ]["disabled_type_conversions"] = []
+    wh = Warehouse(config=config)
     metrics = ["leads"]
     dimensions = ["campaign_created_at"]
     for field, op, val in CRITERIA_CONVERSION_TESTS:
@@ -1210,7 +1215,12 @@ def test_report_where_criteria_conversions(wh):
         assert result.df["leads"][0] == 1
 
 
-def test_report_sqlite_date_conversions(wh):
+def test_report_sqlite_date_conversions(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.campaigns"]["columns"][
+        "created_at"
+    ]["disabled_type_conversions"] = []
+    wh = Warehouse(config=config)
     params = get_date_conversion_test_params()
     result = wh.execute(**params)
     assert result

@@ -1048,6 +1048,14 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
                 for conv in convs:
                     field = conv["field"]
+
+                    if column.zillion.disabled_type_conversions:
+                        if field.name in column.zillion.disabled_type_conversions:
+                            dbg(
+                                f"Skipping conversion field {field.name} for column {column.name}"
+                            )
+                            continue
+
                     ds_formula = conv["ds_formula"]
                     ds_criteria_conversions = conv["ds_criteria_conversions"]
                     is_valid_datasource_criteria_conversions(ds_criteria_conversions)

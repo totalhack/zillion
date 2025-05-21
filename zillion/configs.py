@@ -590,6 +590,8 @@ class ColumnInfoSchema(BaseSchema):
     (such as deriving year from a date).
     * **type_conversion_prefix** - (*str, optional*) A prefix to apply to all
     fields defined through automated type conversions.
+    * **disabled_type_conversions** - (*list of str, optional*) A list of
+    type conversion names to disable.
     * **active** - (*bool, optional*) A flag denoting whether this column is
     active.
     * **required_grain** - (*list of str, optional*) If specified, a list of
@@ -601,6 +603,7 @@ class ColumnInfoSchema(BaseSchema):
     fields = mfields.List(ColumnFieldConfigField())
     allow_type_conversions = mfields.Boolean(default=False, missing=False)
     type_conversion_prefix = mfields.String(default=None, missing=None)
+    disabled_type_conversions = mfields.List(mfields.Str, default=None, missing=None)
     active = mfields.Boolean(default=True, missing=True)
     required_grain = mfields.List(mfields.Str, default=None, missing=None)
 
