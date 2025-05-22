@@ -81,13 +81,13 @@
     
 
 
-## [dbg](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L495-L499)
+## [dbg](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L507-L511)
 
 ::: zillion.core.dbg
     :docstring:
 
 
-## [dbgsql](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L502-L506)
+## [dbgsql](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L514-L518)
 
 ::: zillion.core.dbgsql
     :docstring:
@@ -105,7 +105,7 @@
     :docstring:
 
 
-## [error](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L523-L527)
+## [error](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L535-L539)
 
 ::: zillion.core.error
     :docstring:
@@ -123,7 +123,7 @@
     :docstring:
 
 
-## [get_zillion_config_log_level](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L465-L466)
+## [get_zillion_config_log_level](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L477-L478)
 
 ::: zillion.core.get_zillion_config_log_level
     :docstring:
@@ -135,7 +135,7 @@
     :docstring:
 
 
-## [info](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L509-L513)
+## [info](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L521-L525)
 
 ::: zillion.core.info
     :docstring:
@@ -153,7 +153,7 @@
     :docstring:
 
 
-## [load_zillion_config](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L410-L459)
+## [load_zillion_config](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L410-L471)
 
 ::: zillion.core.load_zillion_config
     :docstring:
@@ -183,19 +183,19 @@
     :docstring:
 
 
-## [set_log_level](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L489-L492)
+## [set_log_level](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L501-L504)
 
 ::: zillion.core.set_log_level
     :docstring:
 
 
-## [set_log_level_from_config](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L472-L483)
+## [set_log_level_from_config](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L484-L495)
 
 ::: zillion.core.set_log_level_from_config
     :docstring:
 
 
-## [warn](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L516-L520)
+## [warn](https://github.com/totalhack/zillion/blob/master/zillion/core.py#L528-L532)
 
 ::: zillion.core.warn
     :docstring:

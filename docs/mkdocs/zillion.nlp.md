@@ -2,38 +2,6 @@
 # Module zillion.nlp
 
 
-## [EmbeddingsAPI](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L323-L551)
-
-::: zillion.nlp.EmbeddingsAPI
-    :docstring:
-    :members: add_texts connect create_collection_if_necessary delete_collection delete_embeddings embed_documents embed_query ensure_client get_collection get_embeddings recreate_collection similarity_search_with_score upsert_embedding
-
-
-## [EmbeddingsCache](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L57-L205)
-
-::: zillion.nlp.EmbeddingsCache
-    :docstring:
-    :members: decode encode get_text_hash init_cache
-
-
-## [OpenAIEmbeddingsCached](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L207-L242)
-
-*Bases*: langchain.embeddings.openai.OpenAIEmbeddings
-
-::: zillion.nlp.OpenAIEmbeddingsCached
-    :docstring:
-    :members: embed_documents embed_query
-
-
-## [QdrantCustom](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L244-L321)
-
-*Bases*: langchain.vectorstores.qdrant.Qdrant
-
-::: zillion.nlp.QdrantCustom
-    :docstring:
-    :members: add_texts get_id similarity_search_with_score
-
-
 ## [build_chain](https://github.com/totalhack/zillion/blob/master/zillion/nlp.py#L708-L733)
 
 ::: zillion.nlp.build_chain

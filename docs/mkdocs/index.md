@@ -4,6 +4,7 @@
 ![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue)
 [![Downloads](https://static.pepy.tech/badge/zillion)](https://pepy.tech/project/zillion)
 
+
 **Introduction**
 ----------------
 
@@ -29,6 +30,7 @@ With `Zillion` you can:
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
 * Query your warehouse with natural language (NLP extension)
 * Leverage AI to bootstrap your warehouse configurations (NLP extension)
+
 
 ---
 

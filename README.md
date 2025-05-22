@@ -7,6 +7,7 @@ Zillion: Make sense of it all
 ![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue)
 [![Downloads](https://static.pepy.tech/badge/zillion)](https://pepy.tech/project/zillion)
 
+
 **Introduction**
 ----------------
 
@@ -32,6 +33,7 @@ With `Zillion` you can:
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
 * Query your warehouse with natural language (NLP extension)
 * Leverage AI to bootstrap your warehouse configurations (NLP extension)
+
 
 **Table of Contents**
 ---------------------
@@ -67,6 +69,7 @@ With `Zillion` you can:
 * [Demo UI / Web API](#demo-ui)
 * [Docs](#documentation)
 * [How to Contribute](#how-to-contribute)
+
 
 <a name="installation"></a>
 
@@ -925,6 +928,7 @@ More thorough documentation can be found [here](https://totalhack.github.io/zill
 You can supplement your knowledge by perusing the [tests](https://github.com/totalhack/zillion/tree/master/tests) directory
 or the [API reference](https://totalhack.github.io/zillion/).
 
+
 ---
 
 <a name="how-to-contribute"></a>
@@ -935,6 +939,7 @@ or the [API reference](https://totalhack.github.io/zillion/).
 Please See the
 [contributing](https://github.com/totalhack/zillion/blob/master/CONTRIBUTING.md)
 guide for more information. If you are looking for inspiration, adding support and tests for additional database technologies would be a great help.
+
 
 
 
