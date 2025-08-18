@@ -67,7 +67,7 @@ extras_require = {
         "mkdocs-material-extensions==1.0",
         "mkdocs-minify-plugin==0.3.0",
         "mkautodoc==0.2.0",
-        "psycopg2-binary==2.9.5",
+        "psycopg2-binary>=2.9.5",
         "jinja2<3.1.0",
     ],
 }

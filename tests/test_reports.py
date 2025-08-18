@@ -83,7 +83,7 @@ def test_report_criteria_values_from_callable(wh):
 def test_report_sequential_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    adhoc_ds = get_adhoc_datasource(size=1e6, name="adhoc_large_db", reuse=True)
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
@@ -99,7 +99,7 @@ def test_report_sequential_timeout(wh):
 def test_report_multithreaded_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    adhoc_ds = get_adhoc_datasource(size=1e6, name="adhoc_large_db", reuse=True)
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.MULTITHREAD,
@@ -128,7 +128,7 @@ def test_report_one_worker(wh):
 def test_report_reuse_after_timeout(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    adhoc_ds = get_adhoc_datasource(size=1e6, name="adhoc_large_db", reuse=True)
     with update_zillion_config(
         dict(
             DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
@@ -149,7 +149,7 @@ def test_report_reuse_after_timeout(wh):
 def test_report_kill(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    adhoc_ds = get_adhoc_datasource(size=1e6, name="adhoc_large_db", reuse=True)
     t = None
 
     try:
@@ -170,7 +170,7 @@ def test_report_reuse_after_kill(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
     criteria = [("partner_name", "like", "%zz%")]
-    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    adhoc_ds = get_adhoc_datasource(size=1e6, name="adhoc_large_db", reuse=True)
     t = None
 
     try:
@@ -198,7 +198,7 @@ def test_report_reuse_after_kill(wh):
 def test_report_timeout_then_kill(wh):
     metrics = ["adhoc_metric", "revenue"]
     dimensions = ["partner_name"]
-    adhoc_ds = get_adhoc_datasource(size=5e5, name="adhoc_large_db", reuse=True)
+    adhoc_ds = get_adhoc_datasource(size=1e6, name="adhoc_large_db", reuse=True)
     t = None
 
     with update_zillion_config(
