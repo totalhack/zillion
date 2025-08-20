@@ -1,6 +1,8 @@
 import pytest
 import threading
 
+import pandas as pd
+
 from .test_utils import *
 from zillion.configs import zillion_config
 from zillion.core import *
@@ -631,17 +633,49 @@ def test_report_technical_bollinger(wh):
     assert result
     info(result.df)
 
+    row = result.df.loc[("Partner A", "Campaign 2A")]
+    assert row["revenue_boll_5"] == pytest.approx(82.5, rel=1e-3)
+    assert row["revenue_boll_5_lower"] == pytest.approx(81.09, rel=1e-3)
+    assert row["revenue_boll_5_upper"] == pytest.approx(83.91, rel=1e-3)
 
-def test_report_technical_bollinger_display_name(wh):
-    metrics = ["revenue", "revenue_boll_5"]
-    # TODO: it doesnt make sense to use these dimensions, but no date/time
-    # dims have been added as of the time of creating this test.
-    dimensions = ["partner_name", "campaign_name"]
-    criteria = [("campaign_name", "!=", "Campaign 2B")]
-    result = wh_execute(wh, locals())
-    assert result
-    result = result.df_display
-    assert "Revenue Boll 5 Upper" in result.columns
+    result_display = result.df_display
+    assert "Revenue Boll 5 Upper" in result_display.columns
+
+    df = result.df
+
+    # Find bollinger-related columns (case-insensitive)
+    boll_cols = [c for c in df.columns if "boll" in str(c).lower()]
+    assert boll_cols, "No bollinger columns found in result.df"
+    assert len(boll_cols) >= 3
+
+    # Ensure bollinger columns are numeric
+    for c in boll_cols:
+        assert pd.api.types.is_numeric_dtype(df[c]), f"{c} is not numeric"
+
+    # For any row with at least three non-null boll values, validate ordering and symmetry
+    for _, row in df.iterrows():
+        vals = [(c, row[c]) for c in boll_cols if not pd.isna(row[c])]
+        if len(vals) >= 3:
+            # identify upper, middle, lower by value
+            vals_sorted = sorted(vals, key=lambda x: x[1], reverse=True)
+            upper_val = vals_sorted[0][1]
+            middle_val = vals_sorted[1][1]
+            lower_val = vals_sorted[2][1]
+
+            assert upper_val > middle_val
+            assert middle_val > lower_val
+
+            # upper-middle should be approximately equal to middle-lower (symmetry)
+            diff1 = upper_val - middle_val
+            diff2 = middle_val - lower_val
+            tol = max(1e-6, abs(middle_val) * 1e-6)
+            assert abs(diff1 - diff2) <= tol
+
+    # Also verify display DataFrame contains the human-friendly Bollinger column name
+    assert any(
+        "Revenue Boll" in str(c) and "Upper" in str(c)
+        for c in result.df_display.columns
+    )
 
 
 def test_report_no_dimensions(wh):

@@ -1637,7 +1637,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         """Validate the datasource name or create one if necessary"""
         if not name:
             datestr = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
-            name = "zillion_ds_%s_%s" % (datestr, random.randint(0, 1e9))
+            name = "zillion_ds_%s_%s" % (datestr, random.randint(0, int(1e9)))
             return name
         raiseifnot(
             set(name) <= DATASOURCE_NAME_ALLOWED_CHARS,

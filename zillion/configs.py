@@ -1,15 +1,54 @@
+import sys
 from collections import OrderedDict, defaultdict
 import os
 import string
 
 from marshmallow import (
     Schema,
-    fields as mfields,
+    fields as original_mfields,
     ValidationError,
     pre_load,
     EXCLUDE,
     RAISE,
 )
+import pandas as pd
+
+# Monkey-patching for marshmallow.fields
+if sys.version_info >= (3, 12):
+    # No patching needed for Python 3.12+, use load_default directly
+    mfields = original_mfields
+else:
+    # Patch marshmallow.fields for older Python versions
+    class PatchedField(original_mfields.Field):
+        def __init__(self, *args, **kwargs):
+            if "load_default" in kwargs:
+                kwargs["missing"] = kwargs.pop("load_default")
+                kwargs["default"] = kwargs["missing"]
+            elif "missing" in kwargs or "default" in kwargs:
+                if "missing" in kwargs:
+                    kwargs["load_default"] = kwargs.pop("missing")
+                if "default" in kwargs:
+                    kwargs["load_default"] = kwargs.pop("default")
+            super().__init__(*args, **kwargs)
+
+    # Replace specific fields that use 'missing' or 'default'
+    original_mfields.Dict = type("Dict", (PatchedField, original_mfields.Dict), {})
+    original_mfields.List = type("List", (PatchedField, original_mfields.List), {})
+    original_mfields.Str = type("Str", (PatchedField, original_mfields.Str), {})
+    original_mfields.String = type(
+        "String", (PatchedField, original_mfields.String), {}
+    )
+    original_mfields.Boolean = type(
+        "Boolean", (PatchedField, original_mfields.Boolean), {}
+    )
+    original_mfields.Integer = type(
+        "Integer", (PatchedField, original_mfields.Integer), {}
+    )
+    original_mfields.Float = type("Float", (PatchedField, original_mfields.Float), {})
+    original_mfields.Field = type("Field", (PatchedField, original_mfields.Field), {})
+
+    # Re-assign mfields to the patched version
+    mfields = original_mfields
 
 from zillion.core import *
 from zillion.sql_utils import (
@@ -509,7 +548,7 @@ class BaseSchema(Schema):
 
     """
 
-    meta = mfields.Dict(keys=mfields.Str(), missing=None, required=False)
+    meta = mfields.Dict(keys=mfields.Str(), load_default=None, required=False)
 
     class Meta:
         """Use the json module as imported from tlbx"""
@@ -521,8 +560,8 @@ class TechnicalInfoSchema(BaseSchema):
     """The schema of a technical configuration"""
 
     type = mfields.String(required=True, validate=is_valid_technical_type)
-    params = mfields.Dict(keys=mfields.Str(), default=None, missing=None)
-    mode = mfields.String(validate=is_valid_technical_mode, default=None, missing=None)
+    params = mfields.Dict(keys=mfields.Str(), load_default=None)
+    mode = mfields.String(validate=is_valid_technical_mode, load_default=None)
 
 
 class TechnicalField(mfields.Field):
@@ -565,9 +604,7 @@ class ColumnFieldConfigSchema(BaseSchema):
 
     name = mfields.Str(required=True, validate=is_valid_field_name)
     ds_formula = mfields.Str(required=True)
-    ds_criteria_conversions = DataSourceCriteriaConversionsField(
-        default=None, missing=None
-    )
+    ds_criteria_conversions = DataSourceCriteriaConversionsField(load_default=None)
 
 
 class ColumnFieldConfigField(mfields.Field):
@@ -601,11 +638,11 @@ class ColumnInfoSchema(BaseSchema):
     """
 
     fields = mfields.List(ColumnFieldConfigField())
-    allow_type_conversions = mfields.Boolean(default=False, missing=False)
-    type_conversion_prefix = mfields.String(default=None, missing=None)
-    disabled_type_conversions = mfields.List(mfields.Str, default=None, missing=None)
-    active = mfields.Boolean(default=True, missing=True)
-    required_grain = mfields.List(mfields.Str, default=None, missing=None)
+    allow_type_conversions = mfields.Boolean(load_default=False)
+    type_conversion_prefix = mfields.String(load_default=None)
+    disabled_type_conversions = mfields.List(mfields.Str, load_default=None)
+    active = mfields.Boolean(load_default=True)
+    required_grain = mfields.List(mfields.Str, load_default=None)
 
 
 class ColumnConfigSchema(ColumnInfoSchema):
@@ -664,15 +701,15 @@ class TableInfoSchema(BaseSchema):
     """
 
     type = TableTypeField(required=True)
-    active = mfields.Boolean(default=True, missing=True)
-    parent = mfields.Str(default=None, missing=None)
-    siblings = mfields.List(mfields.Str, default=None, missing=None)
-    create_fields = mfields.Boolean(default=False, missing=False)
-    use_full_column_names = mfields.Boolean(default=True, missing=True)
+    active = mfields.Boolean(load_default=True)
+    parent = mfields.Str(load_default=None)
+    siblings = mfields.List(mfields.Str, load_default=None)
+    create_fields = mfields.Boolean(load_default=False)
+    use_full_column_names = mfields.Boolean(load_default=True)
     primary_key = mfields.List(mfields.Str, required=True)
-    incomplete_dimensions = mfields.List(mfields.Str, default=None, missing=None)
-    priority = mfields.Integer(default=1, missing=1)
-    prefix_with = mfields.Str(default=None, missing=None)
+    incomplete_dimensions = mfields.List(mfields.Str, load_default=None)
+    priority = mfields.Integer(load_default=1)
+    prefix_with = mfields.Str(load_default=None)
 
 
 class TableConfigSchema(TableInfoSchema):
@@ -701,16 +738,16 @@ class TableConfigSchema(TableInfoSchema):
     columns = mfields.Dict(
         keys=mfields.Str(),
         values=mfields.Nested(ColumnConfigSchema),
-        missing=None,
+        load_default=None,
         required=False,
     )
     data_url = mfields.String()
     if_exists = mfields.String(validate=is_valid_if_exists)
-    drop_dupes = mfields.Boolean(default=False, missing=False)
+    drop_dupes = mfields.Boolean(load_default=False)
     convert_types = mfields.Dict(
         keys=mfields.Str(),
         values=mfields.Str(),
-        missing=None,
+        load_default=None,
         validate=has_valid_sqlalchemy_type_values,
     )
     primary_key = mfields.List(mfields.String())
@@ -738,8 +775,8 @@ class FieldMetaNLPConfigSchema(BaseSchema):
 
     """
 
-    enabled = mfields.Boolean(default=True, missing=True)
-    embedding_text = NLPEmbeddingTextField(default=None, missing=None)
+    enabled = mfields.Boolean(load_default=True)
+    embedding_text = NLPEmbeddingTextField(load_default=None)
 
 
 def check_field_meta_nlp_config(data):
@@ -770,11 +807,11 @@ class FieldConfigSchema(BaseSchema):
     """
 
     name = mfields.String(required=True, validate=is_valid_field_name)
-    type = mfields.String(default=None, missing=None, validate=is_valid_sqlalchemy_type)
+    type = mfields.String(load_default=None, validate=is_valid_sqlalchemy_type)
     display_name = mfields.String(
-        default=None, missing=None, validate=is_valid_field_display_name
+        load_default=None, validate=is_valid_field_display_name
     )
-    description = mfields.String(default=None, missing=None)
+    description = mfields.String(load_default=None)
 
     @pre_load
     def _check_meta(self, data, **kwargs):
@@ -800,9 +837,9 @@ class FormulaFieldConfigSchema(BaseSchema):
     name = mfields.String(required=True, validate=is_valid_field_name)
     formula = mfields.String(required=True)
     display_name = mfields.String(
-        default=None, missing=None, validate=is_valid_field_display_name
+        load_default=None, validate=is_valid_field_display_name
     )
-    description = mfields.String(default=None, missing=None)
+    description = mfields.String(load_default=None)
 
     @pre_load
     def _check_meta(self, data, **kwargs):
@@ -833,14 +870,13 @@ class MetricConfigSchemaMixin:
     """
 
     aggregation = mfields.Field(
-        default=AggregationTypes.SUM,
-        missing=AggregationTypes.SUM,
+        load_default=AggregationTypes.SUM,
         validate=is_valid_aggregation,
     )
-    rounding = mfields.Integer(default=None, missing=None)
-    weighting_metric = mfields.Str(default=None, missing=None)
-    technical = TechnicalField(default=None, missing=None)
-    required_grain = mfields.List(mfields.Str, default=None, missing=None)
+    rounding = mfields.Integer(load_default=None)
+    weighting_metric = mfields.Str(load_default=None)
+    technical = TechnicalField(load_default=None)
+    required_grain = mfields.List(mfields.Str, load_default=None)
 
     def _validate_weighting_aggregation(self, data):
         if (
@@ -870,9 +906,9 @@ class DivisorsConfigSchema(BaseSchema):
     """
 
     metrics = mfields.List(mfields.Str, required=True)
-    rounding = mfields.Integer(default=None, missing=None)
-    name = mfields.String(default=None, missing=None)
-    formula = mfields.String(default=None, missing=None)
+    rounding = mfields.Integer(load_default=None)
+    name = mfields.String(load_default=None)
+    formula = mfields.String(load_default=None)
 
 
 class DivisorsConfigField(mfields.Field):
@@ -896,8 +932,8 @@ class MetricConfigSchema(FieldConfigSchema, MetricConfigSchemaMixin):
 
     """
 
-    ifnull = mfields.Float(default=None, missing=None)
-    divisors = DivisorsConfigField(default=None, missing=None)
+    ifnull = mfields.Float(load_default=None)
+    divisors = DivisorsConfigField(load_default=None)
 
 
 class FormulaMetricConfigSchema(FormulaFieldConfigSchema, MetricConfigSchemaMixin):
@@ -925,8 +961,8 @@ class DimensionConfigSchemaMixin:
 
     """
 
-    values = DimensionValuesField(default=None, missing=None)
-    sorter = mfields.Str(default=None, missing=None)
+    values = DimensionValuesField(load_default=None)
+    sorter = mfields.Str(load_default=None)
 
 
 class DimensionConfigSchema(FieldConfigSchema, DimensionConfigSchemaMixin):
@@ -970,14 +1006,13 @@ class AdHocMetricSchema(AdHocFieldSchema):
     """
 
     aggregation = mfields.String(
-        default=AggregationTypes.SUM,
-        missing=AggregationTypes.SUM,
+        load_default=AggregationTypes.SUM,
         validate=is_valid_aggregation,
     )
-    technical = TechnicalField(default=None, missing=None)
-    rounding = mfields.Integer(default=None, missing=None)
-    weighting_metric = mfields.Str(default=None, missing=None)
-    required_grain = mfields.List(mfields.Str, default=None, missing=None)
+    technical = TechnicalField(load_default=None)
+    rounding = mfields.Integer(load_default=None)
+    weighting_metric = mfields.Str(load_default=None)
+    required_grain = mfields.List(mfields.Str, load_default=None)
 
 
 class TableNameField(mfields.Str):
@@ -993,10 +1028,9 @@ class DataSourceConnectSchema(BaseSchema):
 
     func = mfields.String(
         validate=is_valid_connect_type,
-        default=DATASOURCE_CONNECT_FUNC_DEFAULT,
-        missing=DATASOURCE_CONNECT_FUNC_DEFAULT,
+        load_default=DATASOURCE_CONNECT_FUNC_DEFAULT,
     )
-    params = mfields.Dict(keys=mfields.Str(), default=None, missing=None)
+    params = mfields.Dict(keys=mfields.Str(), load_default=None)
 
 
 class DataSourceConnectField(mfields.Field):
@@ -1016,8 +1050,15 @@ def check_metric_configs(data):
         final.extend(get_aggregation_metrics(metric))
 
     for metric in final[:]:
+        # If a metric has a technical, its aggregation might be implicit or not directly defined.
+        # We should skip the aggregation check for technical metrics.
+        if "technical" in metric:
+            continue
+
         # TODO: if "aggregation" is not present, fail integrity check!
-        if metric["aggregation"] == AggregationTypes.MEAN:
+        if (
+            metric.get("aggregation") == AggregationTypes.MEAN
+        ):  # Use .get to avoid KeyError
             continue
         final.extend(get_divisor_metrics(metric))
 
@@ -1047,9 +1088,9 @@ class DataSourceConfigSchema(BaseSchema):
 
     """
 
-    connect = DataSourceConnectField(default=None, missing=None)
-    skip_conversion_fields = mfields.Boolean(default=False, missing=False)
-    prefix_with = mfields.Str(default=None, missing=None)
+    connect = DataSourceConnectField(load_default=None)
+    skip_conversion_fields = mfields.Boolean(load_default=False)
+    prefix_with = mfields.Str(load_default=None)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(
         PolyNested([DimensionConfigSchema, FormulaDimensionConfigSchema])
@@ -1105,9 +1146,9 @@ class WarehouseMetaNLPConfigSchema(BaseSchema):
 
     """
 
-    collection_name = mfields.Str(default=None, missing=None)
-    field_disabled_patterns = mfields.List(mfields.Str(), default=None, missing=None)
-    field_disabled_groups = mfields.List(mfields.Str(), default=None, missing=None)
+    collection_name = mfields.Str(load_default=None)
+    field_disabled_patterns = mfields.List(mfields.Str(), load_default=None)
+    field_disabled_groups = mfields.List(mfields.Str(), load_default=None)
 
 
 class WarehouseConfigSchema(BaseSchema):
@@ -1126,7 +1167,7 @@ class WarehouseConfigSchema(BaseSchema):
 
     """
 
-    includes = mfields.List(mfields.Str(), default=None, missing=None)
+    includes = mfields.List(mfields.Str(), load_default=None)
     metrics = mfields.List(PolyNested([MetricConfigSchema, FormulaMetricConfigSchema]))
     dimensions = mfields.List(
         PolyNested([DimensionConfigSchema, FormulaDimensionConfigSchema])
@@ -1425,7 +1466,7 @@ class Technical(MappingMixin, PrintMixin):
         """Get the default mode for applying the technical calculation"""
         return TechnicalModes.GROUP
 
-    def _apply(self, df, column, indexer, rounding=None):
+    def _apply(self, df_slice, column, rounding=None):
         """Apply the technical computation along a target slice of a
         dataframe"""
         raise NotImplementedError
@@ -1449,45 +1490,72 @@ class Technical(MappingMixin, PrintMixin):
         if df.empty:
             return
 
-        if self.mode == TechnicalModes.GROUP and hasattr(df.index, "levels"):
-            raiseif(df.index.empty, "Need support for empty index")
-            index_len = len(df.index.levels)
-            level = max(index_len - 2, 0)
-            index_vals = df.index.levels[level]
+        if self.type == TechnicalTypes.BOLL:  # Special handling for BollingerTechnical
+            if self.mode == TechnicalModes.GROUP and hasattr(df.index, "levels"):
+                group_by_level = list(range(df.index.nlevels - 1))
+                if not group_by_level:
+                    df_result = self._apply(df, column, rounding=rounding)
+                    df.loc[:, df_result.columns] = (
+                        df_result  # Assign back to original df
+                    )
+                    return
 
-            for val in index_vals:
-                slice_parts = []
-                for i in range(index_len):
-                    if i != level:
-                        slice_parts.append(slice(None))
-                    else:
-                        slice_parts.append(val)
+                # Collect modified groups
+                modified_groups = []
+                for name, group in df.groupby(level=group_by_level):
+                    modified_groups.append(
+                        self._apply(group, column, rounding=rounding)
+                    )
 
-                indexer = tuple(slice_parts)
-                self._apply(df, column, indexer, rounding=rounding)
-        else:
-            indexer = slice(None)
-            self._apply(df, column, indexer, rounding=rounding)
+                # Concatenate modified groups and assign back to original df
+                df_result = pd.concat(modified_groups)
+                df.loc[:, df_result.columns] = df_result.reindex(df.index)
+            else:
+                df_result = self._apply(df, column, rounding=rounding)
+                df.loc[:, df_result.columns] = df_result
+        else:  # For other technicals, use transform
+            if self.mode == TechnicalModes.GROUP and hasattr(df.index, "levels"):
+                group_by_level = list(range(df.index.nlevels - 1))
+                if not group_by_level:
+                    df[column] = self._apply(df, column, rounding=rounding)
+                    return
+
+                df[column] = df.groupby(level=group_by_level)[column].transform(
+                    lambda x: self._apply(x, column, rounding=rounding)
+                )
+            else:
+                df[column] = self._apply(df[column], column, rounding=rounding)
 
 
 class PandasTechnical(Technical):
     """A generic Technical runs a pandas method"""
 
-    def _apply(self, df, column, indexer, **kwargs):
+    def _apply(self, df_or_series_slice, column, rounding=None):
         """This assumes the Technical type string matches the pandas method
         name"""
-        method = getattr(df.loc[indexer, column], self.type.lower())
-        df.loc[indexer, column] = method(**self.params)
+        if isinstance(df_or_series_slice, pd.DataFrame):
+            series_to_operate_on = df_or_series_slice[df_or_series_slice.columns[0]]
+        else:  # It's a Series
+            series_to_operate_on = df_or_series_slice
+
+        method = getattr(series_to_operate_on, self.type.lower())
+        return method(**self.params)
 
 
 class RankTechnical(PandasTechnical):
     """A Technical specific to the pandas rank function"""
 
-    def _apply(self, df, column, indexer, **kwargs):
+    def _apply(self, df_or_series_slice, column, rounding=None):
         params = {}
         if self.type == TechnicalTypes.PCT_RANK:
             params = {"pct": True}
-        df.loc[indexer, column] = df.loc[indexer, column].rank(**params)
+
+        if isinstance(df_or_series_slice, pd.DataFrame):
+            series_to_operate_on = df_or_series_slice[df_or_series_slice.columns[0]]
+        else:  # It's a Series
+            series_to_operate_on = df_or_series_slice
+
+        return series_to_operate_on.rank(**params)
 
 
 class DiffTechnical(PandasTechnical):
@@ -1513,11 +1581,16 @@ class RollingTechnical(Technical):
 
     allowed_params = set(["window", "min_periods", "center"])
 
-    def _apply(self, df, column, indexer, rounding=None):
+    def _apply(self, df_or_series_slice, column, rounding=None):
         """Apply a rolling function to a column of a DataFrame"""
-        rolling = df.loc[indexer, column].rolling(**self.params)
+        if isinstance(df_or_series_slice, pd.DataFrame):
+            series_to_operate_on = df_or_series_slice[df_or_series_slice.columns[0]]
+        else:  # It's a Series
+            series_to_operate_on = df_or_series_slice
+
+        rolling = series_to_operate_on.rolling(**self.params)
         method = getattr(rolling, self.type.lower())
-        df.loc[indexer, column] = method()
+        return method()
 
     @classmethod
     def parse_technical_string_params(cls, val):
@@ -1537,8 +1610,13 @@ class BollingerTechnical(RollingTechnical):
     """Compute a rolling average and bollinger bands for a column. This adds
     additional columns to the input dataframe."""
 
-    def _apply(self, df, column, indexer, rounding=None):
-        rolling = df.loc[indexer, column].rolling(**self.params)
+    def _apply(self, df_slice, column, rounding=None):
+        # df_slice is now a DataFrame (either the whole df or a group)
+        # We need to operate on the column within this df_slice
+        original_column_name = df_slice.columns[0]
+        series_to_operate_on = df_slice[original_column_name]
+
+        rolling = series_to_operate_on.rolling(**self.params)
         ma = rolling.mean()
         std = rolling.std()
         lower = ma - 2 * std
@@ -1546,15 +1624,17 @@ class BollingerTechnical(RollingTechnical):
         col_lower = column + "_lower"
         col_upper = column + "_upper"
 
-        df.loc[indexer, column] = ma
-        if rounding and column in rounding:
-            # This adds some extra columns for the bounds, so we use
-            # the same rounding as the root column if applicable.
-            df.loc[indexer, col_lower] = round(lower, rounding[column])
-            df.loc[indexer, col_upper] = round(upper, rounding[column])
+        # Modify df_slice in place
+        df_slice[column] = ma
+        if (
+            rounding and original_column_name in rounding
+        ):  # Use original_column_name for rounding key
+            df_slice[col_lower] = round(lower, rounding[original_column_name])
+            df_slice[col_upper] = round(upper, rounding[original_column_name])
         else:
-            df.loc[indexer, col_lower] = lower
-            df.loc[indexer, col_upper] = upper
+            df_slice[col_lower] = lower
+            df_slice[col_upper] = upper
+        return df_slice
 
 
 ROLLING_TECHNICALS = set(

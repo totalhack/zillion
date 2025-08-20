@@ -728,7 +728,7 @@ class BaseCombinedResult:
         self.adhoc_datasources = adhoc_datasources or []
         self.table_name = "zillion_%s_%s" % (
             str(time.time()).replace(".", "_"),
-            random.randint(0, 1e9),
+            random.randint(0, int(1e9)),
         )
         self.primary_ds_dimensions = (
             orderedsetify(primary_ds_dimensions) if primary_ds_dimensions else []

@@ -82,7 +82,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/totalhack/zillion",
     maintainer="totalhack",
-    version=__version__,
+    version=__version__,  # noqa: F821
     license="MIT",
     classifiers=[
         "Development Status :: 3 - Alpha",
