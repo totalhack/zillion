@@ -1,34 +1,32 @@
 {
-    "datasources": {
-        "test_adhoc_db": {
-            "connect": "sqlite:////tmp/test_adhoc_db",
-            "tables": {
-                "main.dma_zip": {
-                    "type": "dimension",
-                    "data_url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
-                    "if_exists": "replace",
-                    "drop_dupes": true,
-                    "convert_types": {
-                        "DMA_Code": "text"
-                    },
-                    "create_fields": true,
-                    "primary_key": [
-                        "Zip_Code"
-                    ],
-                    "columns": {
-                        "Zip_Code": {
-                            "fields": [
-                                "Zip_Code"
-                            ]
-                        },
-                        "DMA_Code": {
-                            "fields": [
-                                "DMA_Code"
-                            ]
-                        }
-                    }
-                }
+  "datasources": {
+    "test_adhoc_db": {
+      "connect": "sqlite:////tmp/test_adhoc_db",
+      "tables": {
+        "main.dma_zip": {
+          "type": "dimension",
+          "data_url": "https://raw.githubusercontent.com/totalhack/zillion/master/tests/dma_zip.csv",
+          "if_exists": "replace",
+          "drop_dupes": true,
+          "convert_types": {
+            "DMA_Code": "text",
+            "DMA_Description": "text"
+          },
+          "create_fields": true,
+          "primary_key": ["Zip_Code"],
+          "columns": {
+            "Zip_Code": {
+              "fields": ["Zip_Code"]
+            },
+            "DMA_Code": {
+              "fields": ["DMA_Code"]
+            },
+            "DMA_Description": {
+              "fields": ["DMA_Description"]
             }
+          }
         }
+      }
     }
+  }
 }

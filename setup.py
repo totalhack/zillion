@@ -57,7 +57,7 @@ extras_require = {
     "dev": [
         "black",
         "pre-commit",
-        "pylint==2.4.4",
+        "pylint>=3.0",
         "pytest==7.1.2",
         "pytest-xdist==3.1.0",
         "twine>=5",
@@ -65,7 +65,6 @@ extras_require = {
         "mkdocs==1.1.2",
         "mkdocs-material==5.2.1",
         "mkdocs-material-extensions==1.0",
-        "mkdocs-minify-plugin==0.3.0",
         "mkautodoc==0.2.0",
         "psycopg2-binary>=2.9.5",
         "jinja2<3.1.0",

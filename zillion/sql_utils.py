@@ -157,6 +157,19 @@ def type_string_to_sa_type(type_string):
     (*SQLAlchemy type object*) - An init'd SQLAlchemy type object
 
     """
+    PANDAS_TYPE_MAP = {
+        "int": "Integer",
+        "int64": "BigInteger",
+        "float": "Float",
+        "float64": "Float",
+        "object": "String",
+        "bool": "Boolean",
+        "datetime": "DateTime",
+        "datetime64[ns]": "DateTime",
+    }
+
+    type_string = PANDAS_TYPE_MAP.get(type_string, type_string)
+
     try:
         tree = ast.parse(type_string)
         ast_obj = tree.body[0].value

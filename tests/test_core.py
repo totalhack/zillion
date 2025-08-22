@@ -386,9 +386,9 @@ def test_warehouse_metric_multiple_aggregations(config):
 
 
 def test_warehouse_remote_datasource_config(config):
-    config["datasources"][
-        "testdb2"
-    ] = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_sqlite_ds_config.json"
+    config["datasources"]["testdb2"] = (
+        "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_sqlite_ds_config.json"
+    )
     wh = Warehouse(config=config)
     assert wh.has_metric("aggr_sales")
 

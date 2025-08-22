@@ -1772,12 +1772,15 @@ class AdHocDataTable(PrintMixin):
 
         """
         if_exists = self.if_exists
-        if if_exists == IfExistsModes.IGNORE:
-            if self.table_exists(engine):
+        if sa.inspect(engine).has_table(self.name, schema=self.schema):
+            if if_exists == IfExistsModes.FAIL:
+                raise ValueError(f"Table {self.fullname} already exists.")
+            if if_exists == IfExistsModes.IGNORE:
                 return
-            # Pandas doesn't actually have an "ignore" option, but switching
-            # to fail will work because the table *should* not exist.
-            if_exists = IfExistsModes.FAIL
+            if if_exists == IfExistsModes.REPLACE:
+                meta = sa.MetaData(bind=engine)
+                table = sa.Table(self.name, meta, schema=self.schema)
+                table.drop(engine, checkfirst=True)
 
         df = self.get_dataframe()
 
@@ -1798,29 +1801,76 @@ class AdHocDataTable(PrintMixin):
                     % (orig_len, len(df))
                 )
 
-        dtype = None
-        if self.convert_types:
-            dtype = {
-                k: type_string_to_sa_type(v) for k, v in self.convert_types.items()
-            }
+        columns = []
+        # Handle columns from DataFrame
+        for c in df.columns:
+            col_type = (
+                self.convert_types.get(c)
+                if self.convert_types and c in self.convert_types
+                else str(df.dtypes[c])
+            )
+            columns.append(sa.Column(c, type_string_to_sa_type(col_type)))
+        # Handle index columns
+        if df.index.names[0] is not None:
+            for name, series in df.index.to_frame().items():
+                col_type = (
+                    self.convert_types.get(name)
+                    if self.convert_types and name in self.convert_types
+                    else str(series.dtype)
+                )
+                columns.append(sa.Column(name, type_string_to_sa_type(col_type)))
 
-        # Note: we are doing this instead of df.to_sql since to_sql doesn't
-        # support creating primary keys on table creation via the keys= param.
-        # To prevent unnecessary indexes from being created we also reset_index
-        # and set index=False.
-        table = SQLTable(
+        meta = sa.MetaData(bind=engine)
+        table = sa.Table(
             self.name,
-            pandasSQL_builder(engine, schema=self.schema),
-            frame=df.reset_index(),
-            index=False,
-            keys=df.index.names,
-            if_exists=if_exists,
+            meta,
+            *columns,
+            sa.PrimaryKeyConstraint(*df.index.names, name=f"pk_{self.name}"),
             schema=self.schema,
-            dtype=dtype,
         )
-        table.create()
-        # Note: this hits limits in allowed sqlite params if chunks are too large
-        table.insert(chunksize, method=method)
+
+        meta.create_all(engine, tables=[table], checkfirst=True)
+
+        # Insert the data into the table
+        with engine.connect() as connection:
+            raw_connection = connection.connection
+            cursor = raw_connection.cursor()
+
+            # Use backticks for MySQL, double quotes for SQLite
+            dialect_name = engine.dialect.name
+            if dialect_name == "mysql":
+                col_quote = lambda x: f"`{x}`"
+            else:
+                col_quote = lambda x: f'"{x}"'
+
+            cols = ",".join([col_quote(c) for c in df.columns])
+            ix_cols = ",".join([col_quote(i) for i in df.index.names if i is not None])
+            if ix_cols and cols:
+                cols = f"{ix_cols},{cols}"
+            elif ix_cols:
+                cols = f"{ix_cols}"
+            elif not cols:
+                raise ValueError("No columns found for SQL insert.")
+
+            # Determine placeholder style based on dialect
+            dialect_name = engine.dialect.name
+            if dialect_name == "sqlite":
+                placeholder = "?"
+            else:
+                placeholder = "%s"
+            placeholders = ",".join(
+                [placeholder] * (len(df.columns) + len(df.index.names))
+            )
+
+            sql = f"INSERT INTO {self.fullname} ({cols}) VALUES ({placeholders})"
+
+            data = [
+                tuple(row)
+                for row in df.reset_index().itertuples(index=False, name=None)
+            ]
+
+            cursor.executemany(sql, data)
+            raw_connection.commit()
 
 
 class SQLiteDataTable(AdHocDataTable):
