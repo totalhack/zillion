@@ -39,4 +39,4 @@ TEST:
   PostgreSQLPort: 5432
   PostgreSQLUser: postgres
   PostgreSQLTestSchema: zillion_test
-  DuckDBTestSchema: zillion_test
+  DuckDBTestSchemaBase: zillion_test

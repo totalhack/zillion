@@ -679,6 +679,17 @@ class DataSource(FieldManagerMixin, PrintMixin):
             reflect_metadata(self.metadata, reflect_only=reflect_only)
 
         if config.get("tables", None):
+            # HACK: Backup in case the engine in use does not support reflection,
+            # such as certain versions of duckdb_engine
+            for table_name in config["tables"].keys():
+                if table_name not in self.metadata.tables:
+                    schema, name = get_schema_and_table_name(table_name)
+                    sa.Table(
+                        name,
+                        self.metadata,
+                        schema=schema,
+                        autoload_with=self.metadata.bind,
+                    )
             self._apply_table_configs(config["tables"])
 
         self._ensure_metadata_info()
@@ -1103,8 +1114,10 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 % (field, self.name, column_fullname(column))
             )
             _aggregation, _rounding = infer_aggregation_and_rounding(column)
-            aggregation = aggregation.lower() if aggregation != None else _aggregation
-            rounding = int(rounding) if rounding != None else _rounding
+            aggregation = (
+                aggregation.lower() if aggregation is not None else _aggregation
+            )
+            rounding = int(rounding) if rounding is not None else _rounding
             metric = Metric(
                 field, column.type, aggregation=aggregation, rounding=rounding
             )
@@ -1385,7 +1398,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             for join, covered_fields in join_combo:
                 root_table = join.table_names[0]
-                if not root_table in root_joins:
+                if root_table not in root_joins:
                     root_joins[root_table] = (join, covered_fields)
                 else:
                     existing_join, existing_fields = root_joins[root_table]

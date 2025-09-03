@@ -8,7 +8,7 @@ OPENAI_MODEL: gpt-3.5-turbo
 QDRANT_HOST: localhost
 
 ADHOC_DATASOURCE_DIRECTORY: /tmp
-DATASOURCE_QUERY_MODE: 'sequential'
+DATASOURCE_QUERY_MODE: sequential
 DATASOURCE_QUERY_TIMEOUT: null
 DATASOURCE_QUERY_WORKERS: 4
 
@@ -33,8 +33,8 @@ TEST:
   MySQLPort: 3306
   MySQLUser: root
   MySQLTestSchema: zillion_test
-  PostgreSQLHost: 127.0.0.1  
+  PostgreSQLHost: 127.0.0.1
   PostgreSQLPort: 5432
   PostgreSQLUser: postgres
   PostgreSQLTestSchema: zillion_test
-  DuckDBTestSchema: zillion_test
+  DuckDBTestSchemaBase: zillion_test

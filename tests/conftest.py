@@ -1,5 +1,9 @@
 import pytest
+import sys
 import time
+
+from tlbx import json
+from zillion.core import zillion_config
 
 from .test_utils import *
 
@@ -37,7 +41,7 @@ def mysql_setup():
     try:
         conn.execute("select 1 from zillion_test.partners")
     except Exception as e:
-        if not "doesn't exist" in str(e):
+        if "doesn't exist" not in str(e):
             raise
         print("Doing MySQL database setup...")
         mysql_data_init()
@@ -58,7 +62,7 @@ def postgresql_setup():
         ")"
     )
     res = res.fetchone()
-    if not res or res[0] == False:
+    if not res or res[0] is False:
         print("Doing PostgreSQL database setup...")
         postgresql_data_init()
 
@@ -69,7 +73,7 @@ def duckdb_setup():
     try:
         conn.execute("select 1 from zillion_test.partners")
     except Exception as e:
-        if not "does not exist" in str(e):
+        if "does not exist" not in str(e):
             raise
         print("Doing DuckDB database setup...")
         duckdb_data_init(conn)
@@ -107,7 +111,7 @@ def saved_wh():
     yield wh
     try:
         Warehouse.delete(wh_id)
-    except:
+    except:  # noqa: E722
         pass
 
 
@@ -148,7 +152,16 @@ def postgresql_wh(postgresql_ds):
 
 @pytest.fixture(scope="function")
 def duckdb_wh():
-    config = load_warehouse_config("test_duckdb_wh_config.json")
+    with open("test_duckdb_wh_config.json") as f:
+        cfg = json.load(f)
+    test_config = zillion_config["TEST"]
+    schema_base = test_config["DuckDBTestSchemaBase"]
+    if sys.version_info >= (3, 12):
+        schema = f"{schema_base}_1.x.duckdb"
+    else:
+        schema = f"{schema_base}_0.7.duckdb"
+    cfg["datasources"]["zillion_test"]["connect"] = f"duckdb:///{schema}"
+    config = load_warehouse_config(cfg)
     return Warehouse(config=config)
 
 
@@ -158,7 +171,7 @@ def pymysql_conn():
     yield conn
     try:
         conn.close()
-    except:
+    except:  # noqa: E722
         pass
 
 
@@ -168,5 +181,5 @@ def sqlalchemy_mysql_conn():
     yield conn
     try:
         conn.close()
-    except:
+    except:  # noqa: E722
         pass

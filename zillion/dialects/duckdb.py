@@ -1,3 +1,4 @@
+import sys
 import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import DATE, TIMESTAMP
@@ -31,10 +32,16 @@ class DuckDBDialectDateConversions(DialectDateConversions):
 
     @classmethod
     def date_month_start(cls, x):
+        if sys.version_info >= (3, 12):
+            return func.CAST(sa.literal(str(x) + "-01"), DATE)
         return func.strftime(func.CAST(sa.literal(str(x) + "-01"), DATE), "%Y-%m")
 
     @classmethod
     def date_month_plus_month(cls, x):
+        if sys.version_info >= (3, 12):
+            return Grouping(
+                func.CAST(sa.literal(str(x) + "-01"), DATE) + func.to_months(1)
+            )
         return func.strftime(
             func.CAST(sa.literal(str(x) + "-01"), DATE) + func.to_months(1), "%Y-%m"
         )

@@ -151,7 +151,11 @@ def get_sqlalchemy_postgresql_conn():
 
 
 def get_sqlalchemy_duckdb_engine():
-    schema = test_config["DuckDBTestSchema"]
+    schema_base = test_config["DuckDBTestSchemaBase"]
+    if sys.version_info >= (3, 12):
+        schema = f"{schema_base}_1.x.duckdb"
+    else:
+        schema = f"{schema_base}_0.7.duckdb"
     conn_str = f"duckdb:///{schema}"
     engine = sa.create_engine(conn_str)
     return engine
