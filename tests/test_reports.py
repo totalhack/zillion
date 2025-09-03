@@ -1750,8 +1750,6 @@ def test_table_name_sql_injection(config):
             "lead_id": {"fields": ["lead_id"]},
         },
     }
-    metrics = ["sales"]
-    dimensions = ["lead_id"]
-    wh = Warehouse(config=config)
-    with pytest.raises(UnsupportedGrainException):
-        result = wh_execute(wh, locals())
+
+    with pytest.raises(DisallowedSQLException):
+        Warehouse(config=config)

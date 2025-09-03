@@ -40,6 +40,7 @@ from zillion.field import (
 from zillion.nlp import get_nlp_table_info
 from zillion.sql_utils import (
     column_fullname,
+    contains_sql_keywords,
     infer_aggregation_and_rounding,
     is_probably_metric,
     get_schema_and_table_name,
@@ -677,19 +678,25 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
         if reflect:
             reflect_metadata(self.metadata, reflect_only=reflect_only)
+            if config.get("tables", None):
+                # HACK: Backup in case the engine in use does not support reflection,
+                # such as certain versions of duckdb_engine
+                for table_name in config["tables"].keys():
+                    if contains_sql_keywords(table_name):
+                        raise DisallowedSQLException(
+                            f"Table name %s contains SQL keywords: {table_name}"
+                        )
+                    if table_name not in self.metadata.tables:
+                        dbg(f"Manually reflecting missing table: {table_name}")
+                        schema, name = get_schema_and_table_name(table_name)
+                        sa.Table(
+                            name,
+                            self.metadata,
+                            schema=schema,
+                            autoload_with=self.metadata.bind,
+                        )
 
         if config.get("tables", None):
-            # HACK: Backup in case the engine in use does not support reflection,
-            # such as certain versions of duckdb_engine
-            for table_name in config["tables"].keys():
-                if table_name not in self.metadata.tables:
-                    schema, name = get_schema_and_table_name(table_name)
-                    sa.Table(
-                        name,
-                        self.metadata,
-                        schema=schema,
-                        autoload_with=self.metadata.bind,
-                    )
             self._apply_table_configs(config["tables"])
 
         self._ensure_metadata_info()
@@ -1852,9 +1859,9 @@ class AdHocDataTable(PrintMixin):
             # Use backticks for MySQL, double quotes for SQLite
             dialect_name = engine.dialect.name
             if dialect_name == "mysql":
-                col_quote = lambda x: f"`{x}`"
+                col_quote = lambda x: f"`{x}`"  # noqa: E731
             else:
-                col_quote = lambda x: f'"{x}"'
+                col_quote = lambda x: f'"{x}"'  # noqa: E731
 
             cols = ",".join([col_quote(c) for c in df.columns])
             ix_cols = ",".join([col_quote(i) for i in df.index.names if i is not None])

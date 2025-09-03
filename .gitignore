@@ -10,3 +10,4 @@ tests/test_wh_config.yaml
 volumes
 .python-version
 GEMINI.md
+test-all.sh
