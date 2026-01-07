@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
   "climax~=0.4.0",
   "lxml>=4.9.3",
-  "marshmallow==3.21.0; python_version >= \"3.12\"",
+  "marshmallow==3.26.2; python_version >= \"3.12\"",
   "marshmallow==3.20.1; python_version < \"3.12\"",
   "networkx>=3.0",
   "ordered-set~=4.1.0",
