@@ -49,6 +49,42 @@ def test_wh_config_include(config):
     assert not ds.metadata.tables["main.partners"].zillion.active
 
 
+def test_wh_config_include_relative_to_loaded_file(tmp_path, monkeypatch):
+    config_dir = tmp_path / "warehouse_configs"
+    config_dir.mkdir()
+
+    include_path = config_dir / "include.json"
+    include_path.write_text(
+        json.dumps(
+            {
+                "metrics": [{"name": "included_metric"}],
+                "datasources": {"testdb1": {}},
+            },
+            indent=2,
+        )
+    )
+
+    warehouse_path = config_dir / "warehouse.json"
+    warehouse_path.write_text(
+        json.dumps(
+            {
+                "includes": ["include.json"],
+                "metrics": [{"name": "parent_metric"}],
+            },
+            indent=2,
+        )
+    )
+
+    monkeypatch.chdir(tmp_path)
+    cfg = load_warehouse_config(os.path.join("warehouse_configs", "warehouse.json"))
+
+    assert [metric["name"] for metric in cfg["metrics"]] == [
+        "included_metric",
+        "parent_metric",
+    ]
+    assert "testdb1" in cfg["datasources"]
+
+
 def test_datasource_config_init(ds_config):
     ds = DataSource("testdb1", config=ds_config)
     print()  # Format test output

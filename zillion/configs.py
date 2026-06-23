@@ -2,6 +2,7 @@ import sys
 from collections import OrderedDict, defaultdict
 import os
 import string
+from urllib.parse import urlparse
 
 from marshmallow import (
     Schema,
@@ -83,6 +84,30 @@ DATASOURCE_NAME_ALLOWED_CHARS = set(DATASOURCE_NAME_ALLOWED_CHARS_STR)
 DATASOURCE_CONNECT_FUNC_DEFAULT = "zillion.datasource.url_connect"
 
 
+def _is_local_config_path(path):
+    """True when path should be resolved from the local filesystem."""
+    if not isinstance(path, str):
+        return False
+    parsed = urlparse(path)
+    return not parsed.scheme or parsed.scheme == "file"
+
+
+def _get_config_base_dir(path):
+    """Get the base directory for a local config path."""
+    if not _is_local_config_path(path):
+        return None
+    if path.startswith("file://"):
+        path = path[7:]
+    return os.path.dirname(os.path.abspath(path))
+
+
+def _resolve_config_path(path, base_dir=None):
+    """Resolve a config path relative to a parent config when needed."""
+    if not base_dir or not _is_local_config_path(path) or os.path.isabs(path):
+        return path
+    return os.path.join(base_dir, path)
+
+
 def parse_schema_file(f, schema):
     """Parse a marshmallow schema file
 
@@ -124,7 +149,9 @@ def load_warehouse_config(cfg):
     if isinstance(cfg, dict):
         return WarehouseConfigSchema().load(cfg)
 
-    return parse_schema_file(cfg, WarehouseConfigSchema())
+    schema = WarehouseConfigSchema()
+    schema.context["config_base_dir"] = _get_config_base_dir(cfg)
+    return parse_schema_file(cfg, schema)
 
 
 def load_warehouse_config_from_env(var):
@@ -1197,9 +1224,10 @@ class WarehouseConfigSchema(BaseSchema):
         includes = data.get("includes", [])
         if not includes:
             return data
+        base_dir = self.context.get("config_base_dir", None)
         for fname in includes.copy():
-            raw = read_filepath_or_buffer(fname)
-            config = load_json_or_yaml_from_str(raw, f=fname)
+            include_path = _resolve_config_path(fname, base_dir)
+            config = load_warehouse_config(include_path)
             data = dictmerge(config, data, overwrite=True, extend=True)
         return data
 
