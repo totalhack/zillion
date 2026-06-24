@@ -3134,11 +3134,9 @@ duckdb = [
 mysql = [
     { name = "pymysql" },
 ]
-nlp = [
-    { name = "langchain" },
+agent = [
     { name = "openai" },
-    { name = "qdrant-client" },
-    { name = "tiktoken" },
+    { name = "openai-agents" },
 ]
 postgres = [
     { name = "psycopg2-binary" },
@@ -3155,7 +3153,6 @@ requires-dist = [
     { name = "duckdb-engine", marker = "python_full_version >= '3.10' and python_full_version < '3.12' and extra == 'duckdb'", specifier = ">=0.7,<0.10" },
     { name = "duckdb-engine", marker = "python_full_version >= '3.12' and extra == 'duckdb'", specifier = ">=0.10,<1.0" },
     { name = "jinja2", marker = "extra == 'dev'", specifier = "<3.1.0" },
-    { name = "langchain", marker = "extra == 'nlp'", specifier = "==0.0.115" },
     { name = "lxml", specifier = ">=4.9.3" },
     { name = "marshmallow", marker = "python_full_version < '3.12'", specifier = "==3.20.1" },
     { name = "marshmallow", marker = "python_full_version >= '3.12'", specifier = "==3.21.0" },
@@ -3165,7 +3162,8 @@ requires-dist = [
     { name = "mkdocs-material-extensions", marker = "extra == 'dev'", specifier = "==1.0" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=1.26,<2" },
-    { name = "openai", marker = "extra == 'nlp'", specifier = "==0.27.2" },
+    { name = "openai", marker = "extra == 'agent'", specifier = ">=1.96.0" },
+    { name = "openai-agents", marker = "extra == 'agent'", specifier = ">=0.17.7" },
     { name = "openpyxl", specifier = ">=3.0.7,<3.1.1" },
     { name = "ordered-set", specifier = "~=4.1.0" },
     { name = "pandas", marker = "python_full_version < '3.13'", specifier = ">=1.1,<3" },
@@ -3179,7 +3177,6 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = "==7.1.2" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = "==3.1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "qdrant-client", marker = "extra == 'nlp'", specifier = "==1.1.3" },
     { name = "setuptools", specifier = ">=65" },
     { name = "simplejson", specifier = "~=3.17.0" },
     { name = "sqlalchemy", marker = "python_full_version < '3.12'", specifier = ">=1.3,<2" },
@@ -3187,13 +3184,12 @@ requires-dist = [
     { name = "sqlparse", specifier = "~=0.3.1" },
     { name = "stopit", specifier = "~=1.1.2" },
     { name = "tabulate", specifier = "~=0.8.7" },
-    { name = "tiktoken", marker = "extra == 'nlp'", specifier = "==0.3.3" },
     { name = "tlbx", specifier = "~=0.1.22" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=5" },
     { name = "wheel", marker = "extra == 'dev'" },
     { name = "xlrd", specifier = "~=1.2.0" },
 ]
-provides-extras = ["mysql", "postgres", "duckdb", "nlp", "dev"]
+provides-extras = ["mysql", "postgres", "duckdb", "agent", "dev"]
 
 [[package]]
 name = "zipp"

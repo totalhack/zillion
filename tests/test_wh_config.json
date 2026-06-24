@@ -1,11 +1,4 @@
 {
-  "meta": {
-    "nlp": {
-      "collection_name": null,
-      "field_disabled_patterns": ["rpl_ma_5"],
-      "field_disabled_groups": ["No NLP"]
-    }
-  },
   "metrics": [
     {
       "name": "rpl",
@@ -15,11 +8,7 @@
       "formula": "{revenue}/{leads}",
       "description": "Revenue per Lead",
       "meta": {
-        "metafield": "metavalue",
-        "nlp": {
-          "enabled": true,
-          "embedding_text": "Revenue per Lead Meta"
-        }
+        "metafield": "metavalue"
       }
     },
     {
@@ -28,11 +17,7 @@
       "rounding": 2,
       "formula": "{revenue}/{leads}",
       "weighting_metric": "main_sales_quantity",
-      "meta": {
-        "nlp": {
-          "enabled": false
-        }
-      }
+      "meta": null
     },
     {
       "name": "rpl_lead_weighted",
@@ -40,11 +25,7 @@
       "rounding": 2,
       "formula": "{revenue}/{leads}",
       "weighting_metric": "leads",
-      "meta": {
-        "nlp": {
-          "embedding_text": ["rpl weighted 1", "rpl weighted 2"]
-        }
-      }
+      "meta": null
     },
     {
       "name": "rpl_lead_formula_weighted",
@@ -70,10 +51,7 @@
       "name": "rpl_unsquared",
       "aggregation": "mean",
       "rounding": 2,
-      "formula": "{rpl_squared}/{rpl}",
-      "meta": {
-        "group": "No NLP"
-      }
+      "formula": "{rpl_squared}/{rpl}"
     },
     {
       "name": "rpl_ma_5",

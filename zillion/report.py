@@ -26,11 +26,6 @@ from zillion.field import (
     FIELD_VALUE_CHECK_OPERATIONS,
 )
 from zillion.model import zillion_engine, ReportSpecs
-from zillion.nlp import (
-    text_to_report_params,
-    MaxTokensException,
-    map_warehouse_report_params,
-)
 from zillion.sql_utils import (
     sqla_compile,
     get_sqla_criterion_expr,
@@ -2192,52 +2187,6 @@ class Report(ExecutionStateMixin):
             warehouse,
             **params["kwargs"],
             adhoc_datasources=adhoc_datasources,
-            report_depth=report_depth,
-        )
-
-    @classmethod
-    def from_text(
-        cls,
-        warehouse,
-        text,
-        adhoc_datasources=None,
-        allow_partial=False,
-        report_depth=1,
-    ):
-        """Build a report from a set of report params
-
-        **Parameters:**
-
-        * **warehouse** - (*Warehouse*) A zillion warehouse object
-        * **text** - (*str*) A natural language query
-        * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
-        * **allow_partial** - (*bool, optional*) Allow partial report results
-        * **report_depth** - (*int, optional*) The depth of the subreport,
-        used internally to prevent too much recursion.
-
-        **Returns:**
-
-        * **report** - (*Report*) A report object
-
-        """
-
-        params = None
-        prompts = ["all_fields", "dimension_fields", "no_fields"]
-        for prompt in prompts:
-            try:
-                params = text_to_report_params(text, warehouse, prompt_version=prompt)
-                break
-            except MaxTokensException as e:
-                warn(f"Max tokens exceeded, retrying with fallback prompt")
-
-        raiseifnot(params, "Could not parse report params from text: %s" % text)
-
-        report_params = map_warehouse_report_params(warehouse, params)
-        return Report(
-            warehouse,
-            **report_params,
-            adhoc_datasources=adhoc_datasources,
-            allow_partial=allow_partial,
             report_depth=report_depth,
         )
 

@@ -4,8 +4,7 @@ LOAD_TABLE_CHUNK_SIZE: 5000
 ZILLION_DB_URL: sqlite:////tmp/zillion.db
 
 # OPENAI_API_KEY: <key>
-OPENAI_MODEL: gpt-3.5-turbo
-QDRANT_HOST: localhost
+OPENAI_MODEL: gpt-5.4
 
 ADHOC_DATASOURCE_DIRECTORY: /tmp
 DATASOURCE_QUERY_MODE: sequential

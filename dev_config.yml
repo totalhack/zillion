@@ -5,8 +5,9 @@ DB_URL: sqlite:////tmp/zillion.db
 ADHOC_DATASOURCE_DIRECTORY: /tmp
 
 # OPENAI_API_KEY: xyz
-OPENAI_MODEL: gpt-3.5-turbo
-QDRANT_HOST: localhost
+OPENAI_MODEL: gpt-5.4
+# AGENT_BASE_PROMPT_FILE: /path/to/planner_prompt.txt
+# AGENT_CUSTOM_RULES_FILE: /path/to/planner_rules.txt
 
 DATASOURCE_QUERY_MODE: "sequential"
 DATASOURCE_QUERY_TIMEOUT: null

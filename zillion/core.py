@@ -7,16 +7,6 @@ import requests
 import sys
 import time
 
-nlp_installed = False
-
-try:
-    import langchain
-    import qdrant_client
-
-    nlp_installed = True
-except ImportError:
-    pass
-
 from tlbx import (
     st,
     dbg as _dbg,
@@ -450,8 +440,10 @@ def load_zillion_config():
                 ADHOC_DATASOURCE_DIRECTORY="/tmp",
                 LOAD_TABLE_CHUNK_SIZE=5000,
                 OPENAI_API_KEY=None,
-                OPENAI_MODEL="gpt-3.5-turbo",
-                QDRANT_HOST=None,
+                OPENAI_MODEL="gpt-5.4",
+                AGENT_MAX_REPORTS=8,
+                AGENT_BASE_PROMPT_FILE=None,
+                AGENT_CUSTOM_RULES_FILE=None,
                 DATASOURCE_QUERY_MODE=DataSourceQueryModes.SEQUENTIAL,
                 DATASOURCE_QUERY_TIMEOUT=None,
                 DATASOURCE_MAX_JOIN_CANDIDATES=100,

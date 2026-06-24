@@ -2,6 +2,7 @@ from collections import OrderedDict
 import os
 import pytest
 import time
+from unittest.mock import patch
 
 from marshmallow import ValidationError
 from tlbx import json
@@ -125,6 +126,27 @@ def test_wh_save_and_load():
     wh = Warehouse.load(wh_id)
     assert wh.name == name
     Warehouse.delete(wh_id)
+
+
+def test_wh_load_allows_known_legacy_params(saved_wh):
+    wh_id = saved_wh.id
+    conn = zillion_engine.connect()
+    try:
+        params = json.loads(saved_wh._load_warehouse(wh_id)["params"])
+        params["nlp"] = True
+        conn.execute(
+            Warehouses.update()
+            .where(Warehouses.c.id == wh_id)
+            .values(params=json.dumps(params))
+        )
+    finally:
+        conn.close()
+
+    with patch("zillion.warehouse.warn") as warn_mock:
+        loaded = Warehouse.load(wh_id)
+
+    assert loaded.id == wh_id
+    warn_mock.assert_called_once()
 
 
 def test_datasource_metadata_init(ds_config):

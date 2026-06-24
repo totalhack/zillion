@@ -4,7 +4,7 @@ Zillion: Make sense of it all
 [![Generic badge](https://img.shields.io/badge/Status-Alpha-yellow.svg)](https://shields.io/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
-![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 [![Downloads](https://static.pepy.tech/badge/zillion)](https://pepy.tech/project/zillion)
 
 
@@ -14,8 +14,9 @@ Zillion: Make sense of it all
 `Zillion` is a data modeling and analytics tool that allows combining and
 analyzing data from multiple datasources through a simple API. It acts as a semantic layer
 on top of your data, writes SQL so you don't have to, and easily bolts onto existing
-database infrastructure via SQLAlchemy Core. The `Zillion` NLP extension has experimental
-support for AI-powered natural language querying and warehouse configuration.
+database infrastructure via SQLAlchemy Core. `Zillion` also includes an agentic
+question-answering workflow for planning and executing one or more reports from
+natural language.
 
 With `Zillion` you can:
 
@@ -31,8 +32,7 @@ With `Zillion` you can:
   from a "date" column
 * Save and share report specifications
 * Utilize ad hoc or public datasources, tables, and fields to enrich reports
-* Query your warehouse with natural language (NLP extension)
-* Leverage AI to bootstrap your warehouse configurations (NLP extension)
+* Plan and answer warehouse questions with a natural language agent
 
 
 **Table of Contents**
@@ -83,7 +83,7 @@ $ pip install zillion
 
 or
 
-$ pip install zillion[nlp]
+$ pip install zillion[agent]
 ```
 
 ---
@@ -197,10 +197,7 @@ config = "https://raw.githubusercontent.com/totalhack/zillion/master/examples/ex
 wh = Warehouse(config=config)
 ```
 
-Zillion also provides a helper script to boostrap a DataSource configuration file for an existing database. See `zillion.scripts.bootstrap_datasource_config.py`. The bootstrap script requires a connection/database url and output file as arguments. See `--help` output for more options, including the optional `--nlp` flag that leverages OpenAI to infer configuration information such as column types, table types, and table relationships. The NLP feature requires the NLP extension to be installed as well as the following set in your `Zillion` config file:
-
-* OPENAI_MODEL
-* OPENAI_API_KEY
+Zillion also provides a helper script to boostrap a DataSource configuration file for an existing database. See `zillion.scripts.bootstrap_datasource_config.py`. The bootstrap script requires a connection/database url and output file as arguments. See `--help` output for more options.
 
 <a name="executing-reports"></a>
 
@@ -244,76 +241,21 @@ putting together reports against your data warehouses.
 
 ### **Natural Language Querying**
 
-With the NLP extension `Zillion` has experimental support for natural language querying of your data warehouse. For example:
+`Zillion` can plan and answer natural language analytics questions by inspecting
+warehouse fields, proposing one or more report specs, executing the needed
+reports, combining their data, and returning both the resulting data and an
+analysis summary.
 
 ```python
-result = warehouse.execute_text("revenue and leads by date last month")
-print(result.df) # Pandas DataFrame
+plan = warehouse.plan_question("compare revenue and sales by date last month")
+answer = warehouse.answer_question("compare revenue and sales by date last month")
+
+print(answer.data)
+print(answer.summary)
 ```
 
-This NLP feature requires a running instance of Qdrant (vector database) and the following values set in your `Zillion` config file:
-
-* QDRANT_HOST
-* OPENAI_API_KEY
-
-Embeddings will be produced and stored in both Qdrant and a local cache. The
-vector database will be initialized the first time you try to use this by
-analyzing all fields in your warehouse. An example docker file to run Qdrant is provided in the root of this repo.
-
-You have some control over how fields get embedded. Namely in the configuration for any field you can choose whether to exclude a field from embeddings or override which embeddings map to that field. All fields are
-included by default. The following example would exclude the `net_revenue` field from being embedded and map `revenue` metric requests to the `gross_revenue` field.
-
-```javascript
-{
-    "name": "gross_revenue",
-    "type": "numeric(10,2)",
-    "aggregation": "sum",
-    "rounding": 2,
-    "meta": {
-        "nlp": {
-            // enabled defaults to true
-            "embedding_text": "revenue" // str or list of str
-        }
-    }
-},
-{
-    "name": "net_revenue",
-    "type": "numeric(10,2)",
-    "aggregation": "sum",
-    "rounding": 2,
-    "meta": {
-        "nlp": {
-            "enabled": false
-        }
-    }
-},
-```
-
-Additionally you may also exclude fields via the following warehouse-level configuration settings:
-
-```javascript
-{
-    "meta": {
-        "nlp": {
-            "field_disabled_patterns": [
-                // list of regex patterns to exclude
-                "rpl_ma_5"
-            ],
-            "field_disabled_groups": [
-                // list of "groups" to exclude, assuming you have
-                // set group value in the field's meta dict.
-                "No NLP"
-            ]
-        }
-    },
-    ...
-}
-```
-
-If a field is disabled at any of the aforementioned levels it will be ignored. This type of control becomes useful as your data model gets more complex and you want to guide the NLP logic in cases where it could confuse similarly named fields. Any time you adjust which fields are excluded you will want to force recreation of your embeddings collection using the `force_recreate` flag on `Warehouse.init_embeddings`.
-
-> *Note:* This feature is in its infancy. It's usefulness will depend on the
-quality of both the input query and your data model (i.e. good field names)!
+The agentic question workflow requires the `agent` extra and an OpenAI API key.
+By default `Zillion` uses `gpt-5.4`.
 
 <a name="zillion-configuration"></a>
 

@@ -6,7 +6,7 @@ import logging
 
 from tlbx import Script, Arg, raiseif, st
 
-from zillion.core import info, set_log_level, nlp_installed
+from zillion.core import info, set_log_level
 from zillion.datasource import DataSource
 from zillion.warehouse import Warehouse
 
@@ -31,7 +31,13 @@ from zillion.warehouse import Warehouse
         "-t",
         "--text",
         type=str,
-        help="Execute a report from natural language text. Requires the NLP extension.",
+        help="Answer a natural language analytics question using the agentic planner.",
+    ),
+    Arg(
+        "--plan-only",
+        action="store_true",
+        default=False,
+        help="Return the question plan without executing it.",
     ),
     Arg("-ll", "--log-level", type=int, default=20, help="Set log level"),
     Arg(
@@ -53,16 +59,12 @@ def main(
     rollup=None,
     limit=None,
     text=None,
+    plan_only=False,
     log_level=None,
     set_trace=None,
 ):
     if log_level:
         set_log_level(log_level)
-
-    raiseif(
-        text and not nlp_installed,
-        "The NLP extension is not installed. Please install it with `pip install zillion[nlp]` to use the --text option.",
-    )
 
     if ds_config:
         ds = DataSource("bootstrap", config=config)
@@ -71,8 +73,14 @@ def main(
         wh = Warehouse(config=config)
 
     if text:
-        info(f"Executing report from text: {text}")
-        result = wh.execute_text(text)
+        if plan_only:
+            info(f"Planning question from text: {text}")
+            result = wh.plan_question(text)
+            info(result)
+            return
+
+        info(f"Answering question from text: {text}")
+        result = wh.answer_question(text)
     else:
         if criteria:
             criteria = ast.literal_eval(criteria)
@@ -94,9 +102,13 @@ def main(
         info(params)
         result = wh.execute(**params)
 
-    info(result.df_display)
+    if text:
+        info(result.summary)
+        info(result.data)
+    else:
+        info(result.df_display)
     if set_trace:
-        info("Dropping into debugger. The DataFrame is available as `result.df`")
+        info("Dropping into debugger.")
         st()
 
 

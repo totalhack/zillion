@@ -9,10 +9,11 @@ LOAD_TABLE_CHUNK_SIZE: 5000
 # Connection string for Zillion metadata DB
 DB_URL: sqlite:////tmp/zillion.db
 
-# If NLP extras are installed:
+# If agent extras are installed:
 # OPENAI_API_KEY: <key>
-# OPENAI_MODEL: gpt-3.5-turbo
-# QDRANT_HOST: localhost
+# OPENAI_MODEL: gpt-5.4
+# AGENT_BASE_PROMPT_FILE: /path/to/planner_prompt.txt
+# AGENT_CUSTOM_RULES_FILE: /path/to/planner_rules.txt
 
 # Where to store adhoc SQLite databases
 ADHOC_DATASOURCE_DIRECTORY: /tmp

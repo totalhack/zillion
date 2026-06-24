@@ -508,15 +508,6 @@ def is_valid_datasource_config(val):
     return True
 
 
-def is_valid_field_nlp_embedding_text_config(val):
-    """Validate field nlp embedding text config"""
-    if isinstance(val, str):
-        return True
-    if isinstance(val, list) and all(isinstance(x, str) for x in val):
-        return True
-    raise ValidationError("Invalid nlp embedding_text field config: %s" % val)
-
-
 def is_valid_divisors_config(val):
     """Validate metric divisors"""
     if isinstance(val, dict):
@@ -835,45 +826,6 @@ class TableConfigSchema(TableInfoSchema):
     adhoc_table_options = mfields.Dict(keys=mfields.Str())
 
 
-class NLPEmbeddingTextField(mfields.Field):
-    """A marshmallow field for the field's NLP embedding text setting"""
-
-    def _validate(self, value):
-        is_valid_field_nlp_embedding_text_config(value)
-        super()._validate(value)
-
-
-class FieldMetaNLPConfigSchema(BaseSchema):
-    """The schema of a warehouse's NLP settings in the meta dict
-
-    **Attributes:**
-
-    * **enabled** - (*bool, optional*) A flag denoting whether this field should
-    be included in NLP embeddings.
-    * **embedding_text** - (*str or list, optional*) A string or list of texts to use
-    when creating embeddings for this field. If not specified, the field's name will
-    be used.
-
-    """
-
-    enabled = mfields.Boolean(load_default=True)
-    embedding_text = NLPEmbeddingTextField(load_default=None)
-
-
-def check_field_meta_nlp_config(data):
-    """Validate the NLP settings in the meta dict of a field config"""
-    meta = data.get("meta", [])
-    if not meta:
-        return data
-    nlp = meta.get("nlp", None)
-    if not nlp:
-        return data
-
-    schema = FieldMetaNLPConfigSchema()
-    schema.load(nlp)
-    return data
-
-
 class FieldConfigSchema(BaseSchema):
     """The base schema of a field configuration
 
@@ -896,8 +848,16 @@ class FieldConfigSchema(BaseSchema):
 
     @pre_load
     def _check_meta(self, data, **kwargs):
-        """Validate some particular keys in the meta field if present"""
-        return check_field_meta_nlp_config(data)
+        """Validate agent settings in field meta if present."""
+        meta = data.get("meta", [])
+        if not meta:
+            return data
+        agent = meta.get("agent", None)
+        if not agent:
+            return data
+
+        FieldMetaAgentConfigSchema().load(agent)
+        return data
 
 
 class FormulaFieldConfigSchema(BaseSchema):
@@ -924,8 +884,22 @@ class FormulaFieldConfigSchema(BaseSchema):
 
     @pre_load
     def _check_meta(self, data, **kwargs):
-        """Validate some particular keys in the meta field if present"""
-        return check_field_meta_nlp_config(data)
+        """Validate agent settings in field meta if present."""
+        meta = data.get("meta", [])
+        if not meta:
+            return data
+        agent = meta.get("agent", None)
+        if not agent:
+            return data
+
+        FieldMetaAgentConfigSchema().load(agent)
+        return data
+
+
+class FieldMetaAgentConfigSchema(BaseSchema):
+    """Field-level agent visibility settings."""
+
+    enabled = mfields.Boolean(load_default=True)
 
 
 class MetricConfigSchemaMixin:
@@ -1211,27 +1185,6 @@ class DataSourceConfigField(mfields.Field):
         super()._validate(value)
 
 
-class WarehouseMetaNLPConfigSchema(BaseSchema):
-    """The schema of a warehouse's NLP settings in the meta dict
-
-    **Attributes:**
-
-    * **collection_name** - (*str, optional*) The name of the field embedding collection. If
-    not provided the collection name will be set based on the warehouse name or as
-    a fallback name if no warehouse name has been set.
-    * **field_disabled_patterns** - (*list of str, optional*) A list of regex
-    patterns to control which fields to exclude from NLP processing.
-    * **field_disabled_groups** - (*list of str, optional*) A list of group
-    names to control which fields to exclude from NLP processing based on
-    the field's `meta["group"]` setting if present.
-
-    """
-
-    collection_name = mfields.Str(load_default=None)
-    field_disabled_patterns = mfields.List(mfields.Str(), load_default=None)
-    field_disabled_groups = mfields.List(mfields.Str(), load_default=None)
-
-
 class WarehouseConfigSchema(BaseSchema):
     """The schema of a warehouse configuration.
 
@@ -1259,16 +1212,15 @@ class WarehouseConfigSchema(BaseSchema):
 
     @pre_load
     def _check_meta(self, data, **kwargs):
-        """Validate some particular keys in the meta field if present"""
+        """Validate agent settings in warehouse meta if present."""
         meta = data.get("meta", [])
         if not meta:
             return data
-        nlp = meta.get("nlp", None)
-        if not nlp:
+        agent = meta.get("agent", None)
+        if not agent:
             return data
 
-        schema = WarehouseMetaNLPConfigSchema()
-        schema.load(nlp)
+        WarehouseMetaAgentConfigSchema().load(agent)
         return data
 
     @pre_load
@@ -1305,6 +1257,13 @@ class WarehouseConfigSchema(BaseSchema):
         """Create and augment metrics as needed"""
 
         return check_metric_configs(data)
+
+
+class WarehouseMetaAgentConfigSchema(BaseSchema):
+    """Warehouse-level agent visibility settings."""
+
+    field_disabled_patterns = mfields.List(mfields.Str(), load_default=None)
+    field_disabled_groups = mfields.List(mfields.Str(), load_default=None)
 
 
 class ConfigMixin:

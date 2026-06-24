@@ -48,10 +48,29 @@ TEST_WH_CONFIG = load_warehouse_config("test_wh_config.json")
 TEST_ADHOC_CONFIG = load_warehouse_config("test_adhoc_ds_config.json")
 REMOTE_CONFIG_URL = "https://raw.githubusercontent.com/totalhack/zillion/master/tests/test_wh_config.json"
 
+
+def _redact_sensitive_config(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            key_upper = str(key).upper()
+            if any(
+                token in key_upper
+                for token in ("API_KEY", "PASSWORD", "SECRET", "TOKEN", "PRIVATE")
+            ):
+                redacted[key] = "<redacted>"
+            else:
+                redacted[key] = _redact_sensitive_config(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_sensitive_config(item) for item in value]
+    return value
+
+
 logging.getLogger().setLevel(logging.INFO)
 default_logger.setLevel(logging.INFO)
 
-logging.info(f"Config: {zillion_config}")
+logging.info("Config: %s", _redact_sensitive_config(zillion_config))
 test_config = zillion_config["TEST"]
 
 

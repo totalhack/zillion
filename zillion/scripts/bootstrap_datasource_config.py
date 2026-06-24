@@ -1,19 +1,19 @@
 """
 This is a helper script to bootstrap the creation of a config for a datasource.
-This is useful when you have an existing database that you want to create a 
-DataSource or Warehouse for, but would like to save some time on the boilerplate 
+This is useful when you have an existing database that you want to create a
+DataSource or Warehouse for, but would like to save some time on the boilerplate
 work that goes into creating and structuring the config file. This script will reflect
 the database schema and do its best to infer the metric, dimension, and table
-configurations. 
+configurations.
 
 Note that this does not produce a full Warehouse config -- you'll still need to
 add the datasource config to a warehouse config.
 
-WARNING: Any secret information (e.g. passwords) in the given connection url will 
+WARNING: Any secret information (e.g. passwords) in the given connection url will
 be stored in plaintext in the output file. See https://totalhack.github.io/zillion/#config-variables
 for more information on how to use config variables as secret placeholders.
 
-WARNING: This is not intended to produce a production-ready config output! It is strongly 
+WARNING: This is not intended to produce a production-ready config output! It is strongly
 recommended that you review the output and customize to your needs.
 
 """
@@ -45,7 +45,6 @@ from zillion.datasource import (
     reflect_metadata,
     DataSource,
 )
-from zillion.nlp import get_nlp_table_info, get_nlp_table_relationships
 from zillion.sql_utils import (
     column_fullname,
     is_probably_metric,
@@ -108,38 +107,18 @@ def get_foreign_key_relationships(metadata, table_configs):
     return metric_rel, dim_rel
 
 
-def infer_table_relationships(metadata, table_configs, nlp=False):
+def infer_table_relationships(metadata, table_configs):
     """Infer table relationships from the database schema and modify
     the table configs in place. Foreign key relationships defined in the
-    metadata take precedence over relationships inferred from NLP.
+    metadata take precedence over inferred parent-child relationships.
 
     **Parameters:**
 
     * **metadata** - (*SQLAlchemy metadata*) The SQLAlchemy metadata object
     * **table_configs** - (*list of dicts*) The table configs to use
-    * **nlp** - (*bool, optional*) Whether to use NLP to infer relationships. Requires
-    the NLP extension to be installed.
 
     """
     metric_rel, dim_rel = get_foreign_key_relationships(metadata, table_configs)
-
-    if nlp:
-        info(f"---- Inferring metric table relationships from NLP")
-        # Metric tables can join to either type, so include all configs
-        nlp_metric_rel = get_nlp_table_relationships(metadata, table_configs)
-        # FK relationships take precedence over NLP
-        nlp_metric_rel.update(metric_rel)
-        metric_rel = nlp_metric_rel
-
-        dim_tables = {
-            k for k, v in table_configs.items() if v["type"] == TableTypes.DIMENSION
-        }
-
-        info(f"---- Inferring dimension relationships from NLP")
-        nlp_dim_rel = get_nlp_table_relationships(metadata, dim_tables)
-        # FK relationships take precedence over NLP
-        nlp_dim_rel.update(dim_rel)
-        dim_rel = nlp_dim_rel
 
     all_rel = {**metric_rel, **dim_rel}
 
@@ -211,7 +190,6 @@ def get_configs(
     ignore_tables=None,
     manual_table_types=False,
     full_names=False,
-    nlp=False,
 ):
     """Get the fields and table configs for a database schema
 
@@ -222,8 +200,6 @@ def get_configs(
     * **ignore_tables** - (list of str) The tables to ignore, if None ignore none
     * **manual_table_types** - (bool) Whether to prompt the user for table types
     * **full_names** - (bool) Whether to use fully qualified names for fields
-    * **nlp** - (bool) Whether to use NLP to infer relationships. Requires
-    the NLP extension to be installed.
 
     **Returns:**
 
@@ -253,8 +229,6 @@ def get_configs(
         table_columns = {}
         primary_key = get_primary_key(table, full_names=full_names)
 
-        nlp_table_info = get_nlp_table_info(table) if nlp else {}
-
         if manual_table_types:
             type_prompt = prompt_user(
                 "Metric table (m), Dimension table (d), or skip (s)?", ["m", "d", "s"]
@@ -270,28 +244,22 @@ def get_configs(
             field_name = get_field_name(table, column, full_names=full_names)
             table_columns[str(column.name)] = dict(fields=[field_name])
             coltype = str(to_generic_sa_type(column.type)).lower()
-            nlp_column_info = nlp_table_info.get(column.name, {})
-
             if (
                 table_type == TableTypes.METRIC or (not manual_table_types)
-            ) and is_probably_metric(column, nlp_column_info=nlp_column_info):
+            ) and is_probably_metric(column):
                 if table_type is None:
                     info(f"{table_name} inferred as metric table")
                     table_type = TableTypes.METRIC
 
                 field_type = FieldTypes.METRIC
-                aggregation = nlp_column_info.get("aggregation", None)
-                rounding = nlp_column_info.get("rounding", None)
-                _aggregation, _rounding = infer_aggregation_and_rounding(column)
+                aggregation, rounding = infer_aggregation_and_rounding(column)
                 table_metrics.append(
                     dict(
                         name=field_name,
                         display_name=default_field_display_name(field_name),
                         type=coltype,
-                        aggregation=(
-                            aggregation.lower() if aggregation != None else _aggregation
-                        ),
-                        rounding=int(rounding) if rounding != None else _rounding,
+                        aggregation=aggregation,
+                        rounding=rounding,
                     )
                 )
             else:
@@ -373,12 +341,6 @@ class SecureAction(argparse.Action):
         help="Output config as YAML instead of JSON",
     ),
     Arg("--indent", type=int, default=4, help="Config file indentation"),
-    Arg(
-        "--nlp",
-        action="store_true",
-        default=False,
-        help="Leverage NLP/AI to bootstrap the configuration. Requires OpenAI settings in your zillion config file.",
-    ),
 )
 def main(
     url,
@@ -391,7 +353,6 @@ def main(
     manual_table_types=False,
     use_yaml=False,
     indent=None,
-    nlp=False,
 ):
     connect_params = {}
 
@@ -413,10 +374,9 @@ def main(
         ignore_tables=ignore_tables,
         manual_table_types=manual_table_types,
         full_names=full_names,
-        nlp=nlp,
     )
 
-    infer_table_relationships(metadata, table_configs, nlp=nlp)
+    infer_table_relationships(metadata, table_configs)
 
     res = dict(
         connect=dict(params=connect_params),

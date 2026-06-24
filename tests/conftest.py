@@ -10,11 +10,11 @@ from .test_utils import *
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--nlp",
+        "--agent",
         action="store_true",
-        dest="nlp",
+        dest="agent",
         default=False,
-        help="enable nlp decorated tests",
+        help="enable tests that hit the live OpenAI agent stack",
     )
     parser.addoption(
         "--longrun",
@@ -29,8 +29,8 @@ def pytest_configure(config):
     markexprs = []
     if not config.option.longrun:
         markexprs.append("not longrun")
-    if not config.option.nlp:
-        markexprs.append("not nlp")
+    if not config.option.agent:
+        markexprs.append("not agent")
     if markexprs:
         setattr(config.option, "markexpr", " and ".join(markexprs))
 

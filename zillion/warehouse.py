@@ -4,11 +4,15 @@ import time
 import sqlalchemy as sa
 
 from zillion.configs import load_warehouse_config, is_active
+from zillion.agent import (
+    answer_warehouse_question,
+    execute_question_plan as execute_warehouse_question_plan,
+    plan_warehouse_question,
+)
 from zillion.core import *
 from zillion.datasource import DataSource
 from zillion.field import get_table_dimensions, get_table_fields, FieldManagerMixin
 from zillion.model import zillion_engine, Warehouses
-from zillion.nlp import init_warehouse_embeddings
 from zillion.report import Report
 from zillion.sql_utils import is_numeric_type, column_fullname
 
@@ -32,17 +36,14 @@ class Warehouse(FieldManagerMixin):
     establishing querying priority. This comes into play when part of a report
     may be satisfied by multiple datasources. Datasources earlier in this list
     will be higher priority.
-    * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
-    fields
 
     """
 
-    def __init__(self, config=None, datasources=None, ds_priority=None, nlp=False):
+    def __init__(self, config=None, datasources=None, ds_priority=None):
         # Note: id/name get updated on save/load
         self.id = None
         self.name = None
         self.meta = None
-        self.nlp = nlp
         self._datasources = OrderedDict()
         self._metrics = {}
         self._dimensions = {}
@@ -53,7 +54,7 @@ class Warehouse(FieldManagerMixin):
 
         if config:
             config = load_warehouse_config(config)
-            self.apply_config(config, skip_integrity_checks=True, nlp=nlp)
+            self.apply_config(config, skip_integrity_checks=True)
 
         raiseifnot(self._datasources, "No datasources provided or found in config")
 
@@ -167,7 +168,7 @@ class Warehouse(FieldManagerMixin):
         if not skip_integrity_checks:
             self.run_integrity_checks()
 
-    def apply_config(self, config, skip_integrity_checks=False, nlp=False):
+    def apply_config(self, config, skip_integrity_checks=False):
         """Apply a warehouse config
 
         **Parameters:**
@@ -175,14 +176,11 @@ class Warehouse(FieldManagerMixin):
         * **config** - (*dict*) A dict adhering to the WarehouseConfigSchema
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
-         * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
-        fields
 
         """
         self._create_or_update_datasources(
             config.get("datasources", {}),
             skip_integrity_checks=skip_integrity_checks,
-            nlp=nlp,
         )
 
         if config.get("meta", None):
@@ -322,7 +320,7 @@ class Warehouse(FieldManagerMixin):
             "A config URL must be specified to save a Warehouse",
         )
 
-        params = dict(ds_priority=self.ds_priority, config=config_url, nlp=self.nlp)
+        params = dict(ds_priority=self.ds_priority, config=config_url)
 
         self.meta = dictmerge(self.meta or {}, meta or {}, overwrite=True)
 
@@ -407,34 +405,69 @@ class Warehouse(FieldManagerMixin):
         dbg("warehouse report took %.3fs" % (time.time() - start))
         return result
 
+    def plan_question(
+        self, question, adhoc_datasources=None, allow_partial=False, model=None
+    ):
+        """Build a plan for answering a natural language analytics question."""
+        return plan_warehouse_question(
+            self,
+            question,
+            adhoc_datasources=adhoc_datasources,
+            allow_partial=allow_partial,
+            model=model,
+        )
+
+    def answer_question(
+        self,
+        question,
+        adhoc_datasources=None,
+        allow_partial=False,
+        model=None,
+        require_confirmation=False,
+    ):
+        """Plan and answer a natural language analytics question."""
+        return answer_warehouse_question(
+            self,
+            question,
+            adhoc_datasources=adhoc_datasources,
+            allow_partial=allow_partial,
+            model=model,
+            require_confirmation=require_confirmation,
+        )
+
+    def execute_question_plan(
+        self, plan, adhoc_datasources=None, allow_partial=False, model=None
+    ):
+        """Execute a previously generated question plan."""
+        return execute_warehouse_question_plan(
+            self,
+            plan,
+            adhoc_datasources=adhoc_datasources,
+            allow_partial=allow_partial,
+            model=model,
+        )
+
     def execute_text(self, text, adhoc_datasources=None, allow_partial=False):
-        """Build and execute a report from a natural language query. Requires
-        the nlp extension to be installed.
+        """Answer a natural language analytics question.
 
         **Parameters:**
 
-        * **text** - (*str*) A natural language query
+        * **text** - (*str*) A natural language question
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers
         specific to this request
-        * **allow_partial** - (*bool, optional*) If True, allow partial
+        * **allow_partial** - (*bool, optional*) If True, allow partial report execution
 
         **Returns:**
 
-        (*ReportResult*) - The result of the report
+        (*QuestionAnswerResult*) - The combined data payload and summary
 
         """
-        if not nlp_installed:
-            raise WarehouseException("nlp extension is not installed")
-
-        if not self._get_embeddings_collection_name():
-            info("Initializing Warehouse embeddings")
-            self.init_embeddings()
-
         start = time.time()
-        report = Report.from_text(
-            self, text, adhoc_datasources=adhoc_datasources, allow_partial=allow_partial
+        result = self.answer_question(
+            text,
+            adhoc_datasources=adhoc_datasources,
+            allow_partial=allow_partial,
         )
-        result = report.execute()
         dbg("warehouse report took %.3fs" % (time.time() - start))
         return result
 
@@ -550,31 +583,7 @@ class Warehouse(FieldManagerMixin):
             )
         return table_set
 
-    def init_embeddings(self, force_recreate=False):
-        """Initialize the warehouse embeddings collection. This is necessary
-        to use natural language query to report features.
-
-        **Parameters:**
-
-        * **force_recreate** - (*bool, optional*) If True, force the embeddings
-        collection to be recreated from scratch.
-
-        """
-        collection_name = init_warehouse_embeddings(self, force_recreate=force_recreate)
-        self._set_embeddings_collection_name(collection_name)
-
-    def _get_embeddings_collection_name(self):
-        """Get the name of the embeddings collection for this warehouse"""
-        return (self.meta or {}).get("nlp", {}).get("collection_name", None)
-
-    def _set_embeddings_collection_name(self, name):
-        """Set the name of the embeddings collection for this warehouse"""
-        self.meta = self.meta or {}
-        self.meta.setdefault("nlp", {})["collection_name"] = name
-
-    def _create_or_update_datasources(
-        self, ds_configs, skip_integrity_checks=False, nlp=False
-    ):
+    def _create_or_update_datasources(self, ds_configs, skip_integrity_checks=False):
         """Given a set of datasource configs, create or update the datasources
         on this warehouse. If a datasource exists already it will be updated by
         applying the datasource config. Otherwise this attempts to create a
@@ -586,8 +595,6 @@ class Warehouse(FieldManagerMixin):
         datasource configs
         * **skip_integrity_checks** - (*bool, optional*) If True, skip warehouse
         integrity checks
-        * **nlp** - (*bool, optional*) If true, allow NLP analysis when creating
-        fields
 
         """
         for ds_name in ds_configs:
@@ -595,7 +602,7 @@ class Warehouse(FieldManagerMixin):
                 self.get_datasource(ds_name).apply_config(ds_configs[ds_name])
                 continue
 
-            ds = DataSource(ds_name, config=ds_configs[ds_name], nlp=nlp)
+            ds = DataSource(ds_name, config=ds_configs[ds_name])
             self.add_datasource(ds, skip_integrity_checks=skip_integrity_checks)
 
     def _clear_supported_dimension_cache(self):
@@ -1166,6 +1173,10 @@ class Warehouse(FieldManagerMixin):
             )
 
         params = json.loads(wh["params"])
+        if "nlp" in params:
+            warn("Ignoring legacy Warehouse param 'nlp' while loading persisted state")
+            params.pop("nlp", None)
+
         meta = json.loads(wh["meta"]) if wh["meta"] else None
         result = Warehouse(**params)
         result.meta = meta

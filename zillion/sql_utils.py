@@ -14,7 +14,6 @@ import sqlparse as sp
 
 from zillion.core import *
 
-# from zillion.nlp import build_chain, PromptTemplate
 
 DIGIT_THRESHOLD_FOR_MEAN_AGGR = 1
 
