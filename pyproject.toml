@@ -53,7 +53,7 @@ duckdb = [
   "duckdb-engine>=0.10,<1.0; python_version >= '3.12'",
 ]
 agent = [
-  "openai~=1.96.0",
+  "openai~=2.36.0",
   "openai-agents~=0.17.7",
 ]
 dev = [
