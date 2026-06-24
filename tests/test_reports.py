@@ -1288,6 +1288,271 @@ def test_report_table_priority(config):
     assert report.queries[0].table_set.ds_table.name == "sales"
 
 
+def test_report_table_criteria_limits(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "2020-04-30"]
+    ]
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", ">=", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", "<", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+
+def test_report_table_criteria_limits_with_type_conversions(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "2020-04-30"]
+    ]
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("hour", ">=", "2020-04-30 23:00:00")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("hour", ">=", "2020-04-29 23:00:00")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+
+def test_report_table_criteria_limits_on_joined_dimension(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["partner_name", "=", "Partner B"]
+    ]
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("partner_name", "=", "Partner B")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("partner_name", "=", "Partner A")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+
+def test_report_table_criteria_limits_multiple_limits(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["partner_name", "=", "Partner B"],
+        ["date", ">=", "2020-04-30"],
+    ]
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("partner_name", "=", "Partner B"), ("date", ">=", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("partner_name", "=", "Partner B")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", ">=", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+
+def test_report_table_criteria_limits_operator_variants(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["partner_name", "in", ["Partner A", "Partner B"]]
+    ]
+    wh = Warehouse(config=config)
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("partner_name", "=", "Partner B")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("partner_name", "=", "Partner C")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", "between", ["2020-04-30", "2020-04-30"]]
+    ]
+    wh = Warehouse(config=config)
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", "=", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", "<", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+
+def test_report_table_criteria_limits_relative_dates(config, monkeypatch):
+    import datetime as py_datetime
+    import zillion.datasource as datasource_module
+
+    class FrozenDateTime(py_datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            result = cls(2020, 7, 29, 12, 0, 0)
+            if tz is not None:
+                return tz.fromutc(result.replace(tzinfo=tz))
+            return result
+
+    monkeypatch.setattr(datasource_module.datetime, "datetime", FrozenDateTime)
+
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "90 days ago"]
+    ]
+    wh = Warehouse(config=config)
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", ">=", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", ">=", "2020-04-29")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "last 90 days"]
+    ]
+    wh = Warehouse(config=config)
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", ">=", "2020-04-30")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+
+def test_report_table_criteria_limits_invalid_operator(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["partner_name", "like", "Partner %"]
+    ]
+    from marshmallow.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        Warehouse(config=config)
+
+
+def test_report_table_criteria_limits_unknown_dimension(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["unknown_dimension", "=", "x"]
+    ]
+
+    with pytest.raises(WarehouseException):
+        Warehouse(config=config)
+
+
 def test_report_disabled_tables(wh):
     metrics = ["revenue", "leads", "sales"]
     dimensions = ["partner_name"]

@@ -82,6 +82,9 @@ DATASOURCE_NAME_ALLOWED_CHARS_STR = (
 )
 DATASOURCE_NAME_ALLOWED_CHARS = set(DATASOURCE_NAME_ALLOWED_CHARS_STR)
 DATASOURCE_CONNECT_FUNC_DEFAULT = "zillion.datasource.url_connect"
+TABLE_CRITERIA_LIMIT_OPERATIONS = CRITERIA_OPERATIONS - set(
+    ["in report", "not in report", "like", "not like"]
+)
 
 
 def _is_local_config_path(path):
@@ -432,6 +435,48 @@ def is_valid_datasource_criteria_conversions(val):
     return True
 
 
+def is_valid_criteria_row(row, allowed_operations=None):
+    """Validate a single criteria row."""
+    if not isinstance(row, (list, tuple)):
+        raise ValidationError("Criteria row must be a list or tuple: %s" % row)
+    if len(row) != 3:
+        raise ValidationError("Criteria row must have 3 items: %s" % row)
+
+    field, op, value = row
+    if not isinstance(field, str):
+        raise ValidationError("Criteria field name must be a string: %s" % row)
+
+    operations = allowed_operations or CRITERIA_OPERATIONS
+    if op not in operations:
+        raise ValidationError("Invalid criteria operation: %s" % op)
+
+    if op in ["between", "not between"]:
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValidationError(
+                "Between criteria values must be a 2-item list or tuple: %s" % row
+            )
+    elif op in ["in", "not in"]:
+        if not isinstance(value, (list, tuple)):
+            raise ValidationError(
+                "In criteria values must be a list or tuple: %s" % row
+            )
+
+    return True
+
+
+def is_valid_criteria_limits(val):
+    """Validate table criteria limits."""
+    if val is None:
+        return True
+    if not isinstance(val, list):
+        raise ValidationError(
+            "Criteria limits must be a list of criteria rows: %s" % val
+        )
+    for row in val:
+        is_valid_criteria_row(row, allowed_operations=TABLE_CRITERIA_LIMIT_OPERATIONS)
+    return True
+
+
 def is_valid_connect_type(val):
     """Validate technical type"""
     if isinstance(val, str):
@@ -610,6 +655,14 @@ class DataSourceCriteriaConversionsField(mfields.Field):
         super()._validate(value)
 
 
+class CriteriaLimitsField(mfields.Field):
+    """A field for defining table-level criteria requirements."""
+
+    def _validate(self, value):
+        is_valid_criteria_limits(value)
+        super()._validate(value)
+
+
 class DimensionValuesField(mfields.Field):
     """A field for defining dimension values"""
 
@@ -737,6 +790,7 @@ class TableInfoSchema(BaseSchema):
     incomplete_dimensions = mfields.List(mfields.Str, load_default=None)
     priority = mfields.Integer(load_default=1)
     prefix_with = mfields.Str(load_default=None)
+    criteria_limits = CriteriaLimitsField(load_default=None)
 
 
 class TableConfigSchema(TableInfoSchema):

@@ -2,6 +2,7 @@ from collections import defaultdict
 import datetime
 import os
 import random
+import re
 from urllib.parse import urlparse, urlunparse, parse_qs
 
 import pandas as pd
@@ -28,6 +29,7 @@ from zillion.configs import (
 )
 from zillion.core import *
 from zillion.field import (
+    DATETIME_CONVERSION_FIELDS,
     Metric,
     Dimension,
     get_table_metrics,
@@ -52,6 +54,319 @@ from zillion.sql_utils import (
 
 DEFAULT_DB_ENGINE_POOL_SIZE = 10
 DEFAULT_DB_ENGINE_MAX_OVERFLOW = 20
+SUPPORTED_TEMPORAL_CRITERIA_FIELDS = set(
+    ["year", "month", "date", "hour", "minute", "datetime"]
+)
+TEMPORAL_CONVERSION_FIELD_NAMES = set(
+    [
+        field.name
+        for field in DATETIME_CONVERSION_FIELDS
+        if field.name in SUPPORTED_TEMPORAL_CRITERIA_FIELDS
+    ]
+)
+RELATIVE_TEMPORAL_VALUE_RE = re.compile(
+    r"^(?:(?P<last>last)\s+)?(?P<count>\d+)\s+"
+    r"(?P<unit>day|days|week|weeks|hour|hours|minute|minutes)"
+    r"(?:\s+ago)?$",
+    re.IGNORECASE,
+)
+
+
+def _iter_criteria_values(value):
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def _shift_month(dt, months=1):
+    month_index = (dt.month - 1) + months
+    year = dt.year + (month_index // 12)
+    month = (month_index % 12) + 1
+    return dt.replace(year=year, month=month, day=1)
+
+
+def _truncate_temporal_point(kind, value):
+    if kind == "year":
+        return value.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    if kind == "month":
+        return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if kind == "date":
+        return value.replace(hour=0, minute=0, second=0, microsecond=0)
+    if kind == "hour":
+        return value.replace(minute=0, second=0, microsecond=0)
+    if kind == "minute":
+        return value.replace(second=0, microsecond=0)
+    if kind == "datetime":
+        return value.replace(microsecond=0)
+    raise ValueError("Unsupported temporal criteria field: %s" % kind)
+
+
+def _parse_relative_temporal_point(kind, value):
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip().lower()
+    now = datetime.datetime.now()
+
+    if normalized == "today":
+        return _truncate_temporal_point(kind, now)
+
+    if normalized == "yesterday":
+        return _truncate_temporal_point(kind, now - datetime.timedelta(days=1))
+
+    match = RELATIVE_TEMPORAL_VALUE_RE.match(normalized)
+    if not match:
+        return None
+
+    count = int(match.group("count"))
+    unit = match.group("unit")
+    delta_kwargs = {}
+    if unit in ["day", "days"]:
+        delta_kwargs["days"] = count
+    elif unit in ["week", "weeks"]:
+        delta_kwargs["weeks"] = count
+    elif unit in ["hour", "hours"]:
+        delta_kwargs["hours"] = count
+    elif unit in ["minute", "minutes"]:
+        delta_kwargs["minutes"] = count
+    else:
+        return None
+
+    relative_value = now - datetime.timedelta(**delta_kwargs)
+    return _truncate_temporal_point(kind, relative_value)
+
+
+def _parse_datetime_value(value, fmt):
+    if isinstance(value, datetime.datetime):
+        return value
+    if isinstance(value, datetime.date):
+        return datetime.datetime.combine(value, datetime.time())
+    return datetime.datetime.strptime(str(value), fmt)
+
+
+def _parse_temporal_point(kind, value):
+    relative_value = _parse_relative_temporal_point(kind, value)
+    if relative_value is not None:
+        return relative_value
+
+    if kind == "year":
+        return datetime.datetime(int(value), 1, 1)
+    if kind == "month":
+        return _parse_datetime_value(value, "%Y-%m")
+    if kind == "date":
+        return _parse_datetime_value(value, "%Y-%m-%d")
+    if kind in ["hour", "minute", "datetime"]:
+        return _parse_datetime_value(value, "%Y-%m-%d %H:%M:%S")
+    raise ValueError("Unsupported temporal criteria field: %s" % kind)
+
+
+def _temporal_point_upper_bound(kind, value):
+    start = _parse_temporal_point(kind, value)
+    if kind == "year":
+        return start.replace(year=start.year + 1)
+    if kind == "month":
+        return _shift_month(start, 1)
+    if kind == "date":
+        return start + datetime.timedelta(days=1)
+    if kind == "hour":
+        return start + datetime.timedelta(hours=1)
+    if kind == "minute":
+        return start + datetime.timedelta(minutes=1)
+    if kind == "datetime":
+        return start
+    raise ValueError("Unsupported temporal criteria field: %s" % kind)
+
+
+def _criteria_to_temporal_clauses(kind, op, value):
+    if op == "=":
+        if kind == "datetime":
+            return [("=", _parse_temporal_point(kind, value))]
+        return [
+            (">=", _parse_temporal_point(kind, value)),
+            ("<", _temporal_point_upper_bound(kind, value)),
+        ]
+    if op == "!=":
+        if kind == "datetime":
+            return [("!=", _parse_temporal_point(kind, value))]
+        return [
+            (
+                "not between",
+                [
+                    _parse_temporal_point(kind, value),
+                    _temporal_point_upper_bound(kind, value)
+                    - datetime.timedelta(seconds=1),
+                ],
+            )
+        ]
+    if op == ">":
+        if kind == "datetime":
+            return [(">", _parse_temporal_point(kind, value))]
+        return [(">=", _temporal_point_upper_bound(kind, value))]
+    if op == ">=":
+        return [(">=", _parse_temporal_point(kind, value))]
+    if op == "<":
+        return [("<", _parse_temporal_point(kind, value))]
+    if op == "<=":
+        if kind == "datetime":
+            return [("<=", _parse_temporal_point(kind, value))]
+        return [("<", _temporal_point_upper_bound(kind, value))]
+    if op == "between":
+        return [
+            (">=", _parse_temporal_point(kind, value[0])),
+            (
+                "<" if kind != "datetime" else "<=",
+                _temporal_point_upper_bound(kind, value[1])
+                if kind != "datetime"
+                else _parse_temporal_point(kind, value[1]),
+            ),
+        ]
+    if op == "not between":
+        return [
+            (
+                "not between",
+                [
+                    _parse_temporal_point(kind, value[0]),
+                    _temporal_point_upper_bound(kind, value[1])
+                    - datetime.timedelta(seconds=1),
+                ],
+            )
+        ]
+    if op == "in":
+        return [("in", [_parse_temporal_point(kind, x) for x in value])]
+    if op == "not in":
+        return [("not in", [_parse_temporal_point(kind, x) for x in value])]
+    return None
+
+
+def _update_lower_bound(summary, value, inclusive):
+    current = summary["lower"]
+    if current is None:
+        summary["lower"] = (value, inclusive)
+        return
+    current_value, current_inclusive = current
+    if value > current_value or (
+        value == current_value and not inclusive and current_inclusive
+    ):
+        summary["lower"] = (value, inclusive)
+
+
+def _update_upper_bound(summary, value, inclusive):
+    current = summary["upper"]
+    if current is None:
+        summary["upper"] = (value, inclusive)
+        return
+    current_value, current_inclusive = current
+    if value < current_value or (
+        value == current_value and not inclusive and current_inclusive
+    ):
+        summary["upper"] = (value, inclusive)
+
+
+def _value_matches_bounds(summary, value):
+    lower = summary["lower"]
+    if lower:
+        lower_value, lower_inclusive = lower
+        if value < lower_value or (value == lower_value and not lower_inclusive):
+            return False
+    upper = summary["upper"]
+    if upper:
+        upper_value, upper_inclusive = upper
+        if value > upper_value or (value == upper_value and not upper_inclusive):
+            return False
+    return True
+
+
+def _filter_exact_values(summary):
+    if summary["exact_values"] is None:
+        return
+    summary["exact_values"] = {
+        value
+        for value in summary["exact_values"]
+        if _value_matches_bounds(summary, value)
+    }
+
+
+def _apply_clause_to_summary(summary, op, value):
+    if op == "=":
+        exact_values = set(_iter_criteria_values(value))
+        if summary["exact_values"] is None:
+            summary["exact_values"] = exact_values
+        else:
+            summary["exact_values"] &= exact_values
+        _filter_exact_values(summary)
+        return True
+    if op == "in":
+        exact_values = set(value)
+        if summary["exact_values"] is None:
+            summary["exact_values"] = exact_values
+        else:
+            summary["exact_values"] &= exact_values
+        _filter_exact_values(summary)
+        return True
+    if op == ">":
+        _update_lower_bound(summary, value, False)
+        _filter_exact_values(summary)
+        return True
+    if op == ">=":
+        _update_lower_bound(summary, value, True)
+        _filter_exact_values(summary)
+        return True
+    if op == "<":
+        _update_upper_bound(summary, value, False)
+        _filter_exact_values(summary)
+        return True
+    if op == "<=":
+        _update_upper_bound(summary, value, True)
+        _filter_exact_values(summary)
+        return True
+    if op == "between":
+        _update_lower_bound(summary, value[0], True)
+        _update_upper_bound(summary, value[1], True)
+        _filter_exact_values(summary)
+        return True
+    return False
+
+
+def _lower_bound_implies(summary, limit_value, limit_inclusive):
+    lower = summary["lower"]
+    if not lower:
+        return False
+    request_value, request_inclusive = lower
+    if request_value > limit_value:
+        return True
+    if request_value < limit_value:
+        return False
+    if limit_inclusive:
+        return True
+    return not request_inclusive
+
+
+def _upper_bound_implies(summary, limit_value, limit_inclusive):
+    upper = summary["upper"]
+    if not upper:
+        return False
+    request_value, request_inclusive = upper
+    if request_value < limit_value:
+        return True
+    if request_value > limit_value:
+        return False
+    if limit_inclusive:
+        return True
+    return not request_inclusive
+
+
+def _all_exact_values_match(summary, predicate):
+    exact_values = summary["exact_values"]
+    if exact_values is None:
+        return None
+    return all(predicate(value) for value in exact_values)
+
+
+def _get_table_field_column_if_present(table, field_name):
+    """Return the supporting column for a field if it exists on the table."""
+    if field_name not in get_table_fields(table):
+        return None
+    return get_table_field_column(table, field_name)
 
 
 def entity_name_from_file(filename):
@@ -832,7 +1147,7 @@ class DataSource(FieldManagerMixin, PrintMixin):
         return possible_joins
 
     def find_possible_table_sets(
-        self, ds_tables_with_field, field, grain, dimension_grain
+        self, ds_tables_with_field, field, grain, dimension_grain, criteria=None
     ):
         """Find table sets that meet the grain
 
@@ -844,6 +1159,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
         * **grain** - (*iterable*) The grain the table set must support
         * **dimension_grain** - The subset of the grain that are requested
         dimensions
+        * **criteria** - (*list, optional*) The normalized report criteria used
+        to filter out candidate table sets that do not satisfy table-level
+        `criteria_limits`.
 
         **Returns:**
 
@@ -857,6 +1175,8 @@ class DataSource(FieldManagerMixin, PrintMixin):
 
             if (not grain) or grain.issubset(get_table_fields(field_table)):
                 table_set = TableSet(self, field_table, None, grain, set([field]))
+                if not self._table_set_meets_criteria_limits(table_set, criteria):
+                    continue
                 table_sets.append(table_set)
                 dbg("full grain (%s) covered in %s" % (grain, field_table.fullname))
                 continue
@@ -872,9 +1192,228 @@ class DataSource(FieldManagerMixin, PrintMixin):
             )
             for join, covered_dims in joins.items():
                 table_set = TableSet(self, field_table, join, grain, set([field]))
+                if not self._table_set_meets_criteria_limits(table_set, criteria):
+                    continue
                 table_sets.append(table_set)
 
         return table_sets
+
+    def _get_temporal_criteria_field_kind(self, column, field_name):
+        """Return the supported temporal conversion type for a field on a column."""
+        prefix = getattr(column.zillion, "type_conversion_prefix", None) or ""
+        if prefix and field_name.startswith(prefix):
+            suffix = field_name[len(prefix) :]
+            if suffix in TEMPORAL_CONVERSION_FIELD_NAMES:
+                return suffix
+        if field_name in TEMPORAL_CONVERSION_FIELD_NAMES:
+            return field_name
+        return None
+
+    def _build_criteria_summary(self, clauses):
+        """Summarize request criteria clauses into exact values and bounds."""
+        summary = {"exact_values": None, "lower": None, "upper": None}
+        supported = False
+
+        for op, value in clauses:
+            if _apply_clause_to_summary(summary, op, value):
+                supported = True
+
+        return summary, supported
+
+    def _limit_clause_implied(self, summary, op, value):
+        """Return True when summarized criteria imply the given clause."""
+        exact_match = None
+        if op == ">=":
+            exact_match = _all_exact_values_match(summary, lambda x: x >= value)
+            if exact_match is not None:
+                return exact_match
+            return _lower_bound_implies(summary, value, True)
+
+        if op == ">":
+            exact_match = _all_exact_values_match(summary, lambda x: x > value)
+            if exact_match is not None:
+                return exact_match
+            return _lower_bound_implies(summary, value, False)
+
+        if op == "<=":
+            exact_match = _all_exact_values_match(summary, lambda x: x <= value)
+            if exact_match is not None:
+                return exact_match
+            return _upper_bound_implies(summary, value, True)
+
+        if op == "<":
+            exact_match = _all_exact_values_match(summary, lambda x: x < value)
+            if exact_match is not None:
+                return exact_match
+            return _upper_bound_implies(summary, value, False)
+
+        if op == "=":
+            exact_match = _all_exact_values_match(summary, lambda x: x == value)
+            if exact_match is not None:
+                return exact_match
+            lower = summary["lower"]
+            upper = summary["upper"]
+            return bool(
+                lower
+                and upper
+                and lower[0] == value
+                and upper[0] == value
+                and lower[1]
+                and upper[1]
+            )
+
+        if op == "!=":
+            exact_match = _all_exact_values_match(summary, lambda x: x != value)
+            if exact_match is not None:
+                return exact_match
+            lower = summary["lower"]
+            if lower and lower[0] > value:
+                return True
+            if lower and lower[0] == value and not lower[1]:
+                return True
+            upper = summary["upper"]
+            if upper and upper[0] < value:
+                return True
+            if upper and upper[0] == value and not upper[1]:
+                return True
+            return False
+
+        if op == "in":
+            exact_match = _all_exact_values_match(summary, lambda x: x in set(value))
+            return bool(exact_match)
+
+        if op == "not in":
+            exact_match = _all_exact_values_match(
+                summary, lambda x: x not in set(value)
+            )
+            return bool(exact_match)
+
+        if op == "between":
+            exact_match = _all_exact_values_match(
+                summary, lambda x: value[0] <= x <= value[1]
+            )
+            if exact_match is not None:
+                return exact_match
+            return _lower_bound_implies(
+                summary, value[0], True
+            ) and _upper_bound_implies(summary, value[1], True)
+
+        if op == "not between":
+            exact_match = _all_exact_values_match(
+                summary, lambda x: x < value[0] or x > value[1]
+            )
+            if exact_match is not None:
+                return exact_match
+            upper = summary["upper"]
+            if upper and (
+                upper[0] < value[0] or (upper[0] == value[0] and not upper[1])
+            ):
+                return True
+            lower = summary["lower"]
+            if lower and (
+                lower[0] > value[1] or (lower[0] == value[1] and not lower[1])
+            ):
+                return True
+            return False
+
+        return False
+
+    def _criteria_limit_met(self, tables, limit, criteria):
+        """Return True when the request criteria imply a table criteria limit."""
+        field_name, op, value = limit
+        limit_columns = []
+        for table in tables:
+            limit_column = _get_table_field_column_if_present(table, field_name)
+            if limit_column is not None:
+                limit_columns.append(limit_column)
+
+        candidate_limits = []
+        if not limit_columns:
+            candidate_limits.append((None, [(op, value)]))
+        else:
+            for limit_column in limit_columns:
+                limit_kind = self._get_temporal_criteria_field_kind(
+                    limit_column, field_name
+                )
+                if limit_kind:
+                    limit_clauses = _criteria_to_temporal_clauses(limit_kind, op, value)
+                else:
+                    limit_clauses = [(op, value)]
+                if limit_clauses:
+                    candidate_limits.append((limit_column, limit_clauses))
+
+        for limit_column, limit_clauses in candidate_limits:
+            request_clauses = []
+            for req_field, req_op, req_value in criteria or []:
+                if limit_column is None:
+                    if req_field.name != field_name:
+                        continue
+                    request_clauses.append((req_op, req_value))
+                    continue
+
+                req_column = _get_table_field_column_if_present(
+                    limit_column.table, req_field.name
+                )
+                if req_column is None:
+                    continue
+
+                if req_column is not limit_column:
+                    continue
+
+                req_kind = self._get_temporal_criteria_field_kind(
+                    req_column, req_field.name
+                )
+                if req_kind:
+                    clauses = _criteria_to_temporal_clauses(req_kind, req_op, req_value)
+                    if not clauses:
+                        continue
+                    request_clauses.extend(clauses)
+                else:
+                    request_clauses.append((req_op, req_value))
+
+            if not request_clauses:
+                continue
+
+            summary, supported = self._build_criteria_summary(request_clauses)
+            if not supported:
+                continue
+
+            if all(
+                self._limit_clause_implied(summary, clause_op, clause_value)
+                for clause_op, clause_value in limit_clauses
+            ):
+                return True
+
+        return False
+
+    def _table_meets_criteria_limits(self, table, tables, criteria):
+        """Return True when a single table is eligible under its criteria limits."""
+        limits = getattr(table.zillion, "criteria_limits", None)
+        if not limits:
+            return True
+        if not criteria:
+            return False
+        return all(
+            self._criteria_limit_met(tables, limit, criteria) for limit in limits
+        )
+
+    def _get_table_set_tables(self, table_set):
+        """Get all tables participating in a candidate table set."""
+        tables = [table_set.ds_table]
+        if table_set.join:
+            for table_name in table_set.join.table_names:
+                if table_name == table_set.ds_table.fullname:
+                    continue
+                tables.append(self.get_table(table_name))
+        return tables
+
+    def _table_set_meets_criteria_limits(self, table_set, criteria):
+        """Return True when every table in a candidate table set satisfies its limits."""
+        tables = self._get_table_set_tables(table_set)
+        return all(
+            self._table_meets_criteria_limits(table, tables, criteria)
+            for table in tables
+        )
 
     def get_dialect_name(self):
         """Get the name of the SQLAlchemy metadata dialect"""

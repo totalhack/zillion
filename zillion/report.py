@@ -2101,6 +2101,7 @@ class Report(ExecutionStateMixin):
                     metric_name,
                     grain,
                     dimension_grain=dim_grain,
+                    criteria=self.criteria,
                     adhoc_datasources=self.adhoc_datasources,
                     disabled_tables=disabled_tables,
                 )
@@ -2133,6 +2134,7 @@ class Report(ExecutionStateMixin):
             table_set = self.warehouse.get_dimension_table_set(
                 grain,
                 dimension_grain=dim_grain,
+                criteria=self.criteria,
                 adhoc_datasources=self.adhoc_datasources,
                 disabled_tables=disabled_tables,
             )

@@ -236,6 +236,7 @@ class Warehouse(FieldManagerMixin):
         errors.extend(
             self._check_valid_table_parents(adhoc_datasources=adhoc_datasources)
         )
+        errors.extend(self._check_criteria_limits(adhoc_datasources=adhoc_datasources))
 
         if errors:
             raise WarehouseException("Integrity check(s) failed.\n%s" % pf(errors))
@@ -442,6 +443,7 @@ class Warehouse(FieldManagerMixin):
         metric,
         grain,
         dimension_grain,
+        criteria=None,
         adhoc_datasources=None,
         disabled_tables=None,
     ):
@@ -454,6 +456,9 @@ class Warehouse(FieldManagerMixin):
         grain required including dimension and criteria grain
         * **dimension_grain** - (*list of str*) A list of dimension names
         representing the requested dimensions for report grouping
+        * **criteria** - (*list, optional*) The normalized report criteria used
+        to determine whether candidate tables satisfy any configured
+        `criteria_limits`.
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
         * **disabled_tables** - (*list, optional*) A list of table names to disable
@@ -473,6 +478,7 @@ class Warehouse(FieldManagerMixin):
             metric,
             grain,
             dimension_grain,
+            criteria=criteria,
             adhoc_datasources=adhoc_datasources,
         )
         if not ds_table_sets:
@@ -487,7 +493,12 @@ class Warehouse(FieldManagerMixin):
         return table_set
 
     def get_dimension_table_set(
-        self, grain, dimension_grain, adhoc_datasources=None, disabled_tables=None
+        self,
+        grain,
+        dimension_grain,
+        criteria=None,
+        adhoc_datasources=None,
+        disabled_tables=None,
     ):
         """Get a TableSet that can satisfy dimension table joins across this
         grain
@@ -498,6 +509,9 @@ class Warehouse(FieldManagerMixin):
         grain required including dimension and criteria grain
         * **dimension_grain** - (*list of str*) A list of dimension names
         representing the requested dimensions for report grouping
+        * **criteria** - (*list, optional*) The normalized report criteria used
+        to determine whether candidate tables satisfy any configured
+        `criteria_limits`.
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
         * **disabled_tables** - (*list, optional*) A list of table names to disable
@@ -522,6 +536,7 @@ class Warehouse(FieldManagerMixin):
                 dim_name,
                 grain,
                 dimension_grain,
+                criteria=criteria,
                 adhoc_datasources=adhoc_datasources,
             )
             if not ds_table_sets:
@@ -802,6 +817,28 @@ class Warehouse(FieldManagerMixin):
 
         return errors
 
+    def _check_criteria_limits(self, adhoc_datasources=None):
+        """Integrity check for table criteria limits."""
+        errors = []
+
+        for ds in self.get_field_managers(adhoc_fms=adhoc_datasources):
+            for table in ds.metadata.tables.values():
+                if not is_active(table):
+                    continue
+
+                limits = getattr(table.zillion, "criteria_limits", None)
+                if not limits:
+                    continue
+
+                for field_name, _, _ in limits:
+                    if not self.has_dimension(field_name, adhoc_fms=adhoc_datasources):
+                        errors.append(
+                            "Table %s->%s criteria_limit references unknown dimension %s"
+                            % (ds.name, table.fullname, field_name)
+                        )
+
+        return errors
+
     def _get_supported_dimensions_for_metric(
         self, metric, use_cache=True, adhoc_datasources=None, disabled_tables=None
     ):
@@ -959,7 +996,13 @@ class Warehouse(FieldManagerMixin):
         return ds_tables
 
     def _get_ds_table_sets(
-        self, ds_tables, field, grain, dimension_grain, adhoc_datasources=None
+        self,
+        ds_tables,
+        field,
+        grain,
+        dimension_grain,
+        criteria=None,
+        adhoc_datasources=None,
     ):
         """Get a list of TableSets that can satisfy the grain in each datasource
 
@@ -973,6 +1016,9 @@ class Warehouse(FieldManagerMixin):
         grain required including dimension and criteria grain
         * **dimension_grain** - (*list of str*) A list of dimension names
         representing the requested dimensions for report grouping
+        * **criteria** - (*list, optional*) The normalized report criteria used
+        to filter out candidate table sets that do not satisfy table-level
+        `criteria_limits`.
         * **adhoc_datasources** - (*list, optional*) A list of FieldManagers for
         this request
 
@@ -986,7 +1032,11 @@ class Warehouse(FieldManagerMixin):
         for ds_name, ds_tables_with_field in ds_tables.items():
             ds = self.get_datasource(ds_name, adhoc_datasources=adhoc_datasources)
             possible_table_sets = ds.find_possible_table_sets(
-                ds_tables_with_field, field, grain, dimension_grain
+                ds_tables_with_field,
+                field,
+                grain,
+                dimension_grain,
+                criteria=criteria,
             )
             if not possible_table_sets:
                 continue
