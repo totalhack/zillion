@@ -58,6 +58,7 @@ agent = [
 ]
 dev = [
   "black",
+  "build",
   "pre-commit",
   "pylint>=3.0",
   "pytest==7.1.2",
