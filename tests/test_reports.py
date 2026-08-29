@@ -1350,6 +1350,91 @@ def test_report_table_criteria_limits_with_type_conversions(config):
     assert report.queries[0].table_set.ds_table.name == "leads"
 
 
+def test_report_table_criteria_limits_ignore_incompatible_temporal_criteria(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "2020-04-30"]
+    ]
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("date", ">=", "2020-04-30"), ("day_of_week", "=", 4)],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+
+def test_report_table_criteria_limits_with_year_criteria(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "2020-04-30"]
+    ]
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("year", "=", 2020)],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("year", ">=", 2021)],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+
+def test_report_table_criteria_limits_with_month_criteria(config):
+    config = config.copy()
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["criteria_limits"] = [
+        ["date", ">=", "2020-04-30"]
+    ]
+    config["datasources"]["testdb1"]["tables"]["main.sales"]["columns"]["created_at"][
+        "type_conversion_prefix"
+    ] = None
+
+    wh = Warehouse(config=config)
+    metrics = ["repeated_metric"]
+    dimensions = ["partner_name"]
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("month", "=", "2020-04")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "leads"
+
+    report = Report(
+        wh,
+        metrics=metrics,
+        dimensions=dimensions,
+        criteria=[("month", "=", "2020-05")],
+    )
+    assert report.queries[0].table_set.ds_table.name == "sales"
+
+
 def test_report_table_criteria_limits_on_joined_dimension(config):
     config = config.copy()
     config["datasources"]["testdb1"]["tables"]["main.sales"]["priority"] = 0

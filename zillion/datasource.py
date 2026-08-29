@@ -1357,7 +1357,9 @@ class DataSource(FieldManagerMixin, PrintMixin):
                 req_kind = self._get_temporal_criteria_field_kind(
                     req_column, req_field.name
                 )
-                if req_kind:
+                if limit_kind:
+                    if not req_kind:
+                        continue
                     clauses = _criteria_to_temporal_clauses(req_kind, req_op, req_value)
                     if not clauses:
                         continue
