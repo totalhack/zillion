@@ -267,6 +267,16 @@ basic settings. The `ZILLION_CONFIG` environment var can point to a yaml config 
 
 The database used to store Zillion report specs can be configured by setting the DB_URL value in your `Zillion` config to a valid database connection string. By default a SQLite DB in /tmp is used.
 
+Set `DATASOURCE_QUERY_ANALYZE_PREFIX: true` to compare MySQL queries with and
+without a table or datasource `prefix_with`, using `EXPLAIN FORMAT=JSON`.
+This is disabled by default and has no effect on other database dialects.
+The prefix is dropped only when its estimated `query_cost` is at least
+`DATASOURCE_QUERY_PREFIX_COST_RATIO` times the unprefixed cost (default: 5)
+and exceeds it by at least `DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE`. The
+ratio must be greater than 1 and the minimum difference nonnegative. Failed
+comparisons retain the prefix. Both EXPLAINs count toward the query timeout;
+prefix removals are logged at INFO and comparisons at DEBUG.
+
 ---
 
 <a name="example-sales-analytics"></a>

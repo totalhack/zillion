@@ -307,6 +307,22 @@ def sqla_compile(expr):
     return str(expr.compile(compile_kwargs={"literal_binds": True}))
 
 
+class ExplainJSON(exp.Executable, exp.ClauseElement):
+    """Explain a statement without executing it, preserving its bound parameters."""
+
+    inherit_cache = False
+
+    def __init__(self, statement):
+        self.statement = statement
+
+
+@compiles(ExplainJSON, "mysql")
+def compile_explain_json(element, compiler, **kwargs):
+    """Keep SELECT result types separate from EXPLAIN's single JSON column."""
+    with compiler._nested_result():
+        return "EXPLAIN FORMAT=JSON " + compiler.process(element.statement, **kwargs)
+
+
 def printexpr(expr):
     """Print a SQLAlchemy expression"""
     print(sqla_compile(expr))

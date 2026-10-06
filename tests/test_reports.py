@@ -1,5 +1,6 @@
 import pytest
 import threading
+import zillion.report as report_module
 
 import pandas as pd
 
@@ -8,6 +9,32 @@ from zillion.configs import zillion_config
 from zillion.core import *
 from zillion.field import Metric
 from zillion.report import ROLLUP_INDEX_LABEL
+
+
+def _make_prefix_analysis_query(prefixed_cost, unprefixed_cost, dialect_name="mysql"):
+    query = report_module.DataSourceQuery.__new__(report_module.DataSourceQuery)
+    prefixed_select = object()
+    unprefixed_select = object()
+    cost_calls = []
+    kill_checks = []
+
+    query.select = prefixed_select
+    query._select_without_prefix = unprefixed_select
+    query._query_prefix = "STRAIGHT_JOIN"
+    query._state = ExecutionState.READY
+    query.get_dialect_name = lambda: dialect_name
+    query._raise_if_killed = lambda: kill_checks.append(True)
+
+    def fake_get_query_cost(select):
+        cost_calls.append(select)
+        if select is prefixed_select:
+            return prefixed_cost
+        if select is unprefixed_select:
+            return unprefixed_cost
+        raise AssertionError("Unexpected select passed to _get_query_cost")
+
+    query._get_query_cost = fake_get_query_cost
+    return query, prefixed_select, unprefixed_select, cost_calls, kill_checks
 
 
 def test_basic_report(wh):
@@ -2083,6 +2110,89 @@ def test_type_conversion_prefix_sql_injection(config):
 
     with pytest.raises(ValidationError):
         wh = Warehouse(config=config)
+
+
+def test_query_prefix_analysis_skips_non_mysql():
+    query, prefixed_select, unprefixed_select, cost_calls, kill_checks = (
+        _make_prefix_analysis_query(100, 10, dialect_name="postgresql")
+    )
+
+    with update_zillion_config(dict(DATASOURCE_QUERY_ANALYZE_PREFIX=True)):
+        query._analyze_query_prefix()
+
+    assert cost_calls == []
+    assert kill_checks == []
+    assert query.select is prefixed_select
+    assert query._select_without_prefix is unprefixed_select
+    assert query._query_prefix == "STRAIGHT_JOIN"
+
+
+def test_query_prefix_analysis_drops_expensive_prefix():
+    query, prefixed_select, unprefixed_select, cost_calls, kill_checks = (
+        _make_prefix_analysis_query(1000, 100)
+    )
+
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_ANALYZE_PREFIX=True,
+            DATASOURCE_QUERY_PREFIX_COST_RATIO=5,
+            DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE=100,
+        )
+    ):
+        query._analyze_query_prefix()
+
+    assert cost_calls == [prefixed_select, unprefixed_select]
+    assert kill_checks == [True, True]
+    assert query.select is unprefixed_select
+    assert query._select_without_prefix is None
+    assert query._query_prefix is None
+
+
+def test_query_prefix_analysis_keeps_prefix_when_cost_delta_is_too_small():
+    query, prefixed_select, unprefixed_select, cost_calls, kill_checks = (
+        _make_prefix_analysis_query(100, 30)
+    )
+
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_ANALYZE_PREFIX=True,
+            DATASOURCE_QUERY_PREFIX_COST_RATIO=5,
+            DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE=10,
+        )
+    ):
+        query._analyze_query_prefix()
+
+    assert cost_calls == [prefixed_select, unprefixed_select]
+    assert kill_checks == [True, True]
+    assert query.select is prefixed_select
+    assert query._select_without_prefix is unprefixed_select
+    assert query._query_prefix == "STRAIGHT_JOIN"
+
+
+def test_query_prefix_analysis_keeps_prefix_when_config_is_invalid(monkeypatch):
+    query, prefixed_select, unprefixed_select, cost_calls, kill_checks = (
+        _make_prefix_analysis_query(1000, 100)
+    )
+    warnings = []
+    monkeypatch.setattr(
+        report_module, "warn", lambda msg, **kwargs: warnings.append(msg)
+    )
+
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_ANALYZE_PREFIX=True,
+            DATASOURCE_QUERY_PREFIX_COST_RATIO=1,
+        )
+    ):
+        query._analyze_query_prefix()
+
+    assert cost_calls == []
+    assert kill_checks == []
+    assert query.select is prefixed_select
+    assert query._select_without_prefix is unprefixed_select
+    assert query._query_prefix == "STRAIGHT_JOIN"
+    assert warnings
+    assert "Could not analyze query prefix" in warnings[0]
 
 
 def test_table_name_sql_injection(config):

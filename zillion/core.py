@@ -50,6 +50,11 @@ ROLLUP_INDEX_DISPLAY_LABEL = "::"
 ADHOC_DS_URL = "adhoc"  # A placeholder to denote its an adhoc datasource
 RESERVED_FIELD_NAMES = set(["row_hash"])
 DEFAULT_REPLACE_AFTER = "1 days"
+DATASOURCE_QUERY_PREFIX_ANALYSIS_DEFAULTS = dict(
+    DATASOURCE_QUERY_ANALYZE_PREFIX=False,
+    DATASOURCE_QUERY_PREFIX_COST_RATIO=5,
+    DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE=1e5,
+)
 CRITERIA_OPERATIONS = set(
     [
         ">",
@@ -450,6 +455,9 @@ def load_zillion_config():
                 DATASOURCE_MAX_JOINS=None,
                 DATASOURCE_CONTEXTS={},
             )
+
+    for key, value in DATASOURCE_QUERY_PREFIX_ANALYSIS_DEFAULTS.items():
+        config.setdefault(key, value)
 
     for k, v in os.environ.items():
         if k.startswith("ZILLION_"):

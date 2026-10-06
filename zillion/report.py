@@ -27,6 +27,7 @@ from zillion.field import (
 )
 from zillion.model import zillion_engine, ReportSpecs
 from zillion.sql_utils import (
+    ExplainJSON,
     sqla_compile,
     get_sqla_criterion_expr,
     to_sqlite_type,
@@ -250,7 +251,10 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         # TODO: this implies metrics defined on multiple levels will
         # favor warehouse-level definition.
         self.metrics[metric] = self.warehouse.get_metric(metric, adhoc_fms=adhoc_fms)
-        self.select = self.select.column(self._get_field_expression(metric))
+        expression = self._get_field_expression(metric)
+        self.select = self.select.column(expression)
+        if self._select_without_prefix is not None:
+            self._select_without_prefix = self._select_without_prefix.column(expression)
 
     def get_conn(self):
         """Get a connection to this query's datasource"""
@@ -283,9 +287,12 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
 
             if label:
                 self.select = self.select.comment(label)
+                if self._select_without_prefix is not None:
+                    self._select_without_prefix = self._select_without_prefix.comment(
+                        label
+                    )
 
             try:
-                dbg("\n" + self._format_query())
 
                 def do_timeout(main_thread):
                     nonlocal is_timeout
@@ -298,6 +305,9 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                     t.start()
 
                 try:
+                    self._analyze_query_prefix()
+                    self._raise_if_killed()
+                    dbg("\n" + self._format_query())
                     result = self._conn.execute(self.select)
                     data = result.fetchall()
                 except Exception as e:
@@ -403,10 +413,95 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                 break
 
         prefix_with = prefix_with or self.get_datasource().prefix_with
+        self._query_prefix = prefix_with
+        self._select_without_prefix = select if prefix_with else None
         if prefix_with:
             dbg(f"Prefixing query with: {prefix_with}")
             select = select.prefix_with(prefix_with)
         return select
+
+    def _get_query_cost(self, select):
+        """Read MySQL's estimated query cost, without running the SELECT."""
+        result = self._conn.execute(ExplainJSON(select))
+        try:
+            plan = json.loads(result.scalar())
+        finally:
+            result.close()
+        cost = decimal.Decimal(str(plan["query_block"]["cost_info"]["query_cost"]))
+        if not cost.is_finite() or cost < 0:
+            raise ValueError("Invalid estimated query cost")
+        return cost
+
+    def _analyze_query_prefix(self):
+        """Drop a MySQL query prefix only for a sufficiently cheaper estimated plan."""
+        enabled = zillion_config.get(
+            "DATASOURCE_QUERY_ANALYZE_PREFIX",
+            DATASOURCE_QUERY_PREFIX_ANALYSIS_DEFAULTS[
+                "DATASOURCE_QUERY_ANALYZE_PREFIX"
+            ],
+        )
+        if str(enabled).strip().lower() not in ("true", "1", "yes", "on"):
+            return
+        if not self._query_prefix or self.get_dialect_name() != "mysql":
+            return
+
+        try:
+            ratio = decimal.Decimal(
+                str(
+                    zillion_config.get(
+                        "DATASOURCE_QUERY_PREFIX_COST_RATIO",
+                        DATASOURCE_QUERY_PREFIX_ANALYSIS_DEFAULTS[
+                            "DATASOURCE_QUERY_PREFIX_COST_RATIO"
+                        ],
+                    )
+                )
+            )
+            min_difference = decimal.Decimal(
+                str(
+                    zillion_config.get(
+                        "DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE",
+                        DATASOURCE_QUERY_PREFIX_ANALYSIS_DEFAULTS[
+                            "DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE"
+                        ],
+                    )
+                )
+            )
+            if not ratio.is_finite() or ratio <= 1:
+                raise ValueError("Prefix cost ratio must be finite and greater than 1")
+            if not min_difference.is_finite() or min_difference < 0:
+                raise ValueError(
+                    "Minimum prefix cost difference must be finite and nonnegative"
+                )
+
+            prefixed_cost = self._get_query_cost(self.select)
+            self._raise_if_killed()
+            unprefixed_cost = self._get_query_cost(self._select_without_prefix)
+            self._raise_if_killed()
+            drop_prefix = (
+                prefixed_cost > unprefixed_cost
+                and prefixed_cost >= ratio * unprefixed_cost
+                and prefixed_cost - unprefixed_cost >= min_difference
+            )
+        except Exception as exc:
+            if self._killed or (
+                isinstance(exc, sa.exc.DBAPIError) and exc.connection_invalidated
+            ):
+                raise
+            warn("Could not analyze query prefix; keeping original query: %s" % exc)
+            return
+
+        dbg(
+            "Query prefix %s: prefixed cost=%s, unprefixed cost=%s, drop=%s"
+            % (self._query_prefix, prefixed_cost, unprefixed_cost, drop_prefix)
+        )
+        if drop_prefix:
+            info(
+                "Dropping query prefix %s: estimated cost %s -> %s"
+                % (self._query_prefix, prefixed_cost, unprefixed_cost)
+            )
+            self.select = self._select_without_prefix
+            self._select_without_prefix = None
+            self._query_prefix = None
 
     def _build_select(self):
         """Build the select for this datasource query"""
