@@ -1,5 +1,6 @@
 import pytest
 import threading
+from types import SimpleNamespace
 import zillion.report as report_module
 
 import pandas as pd
@@ -11,7 +12,13 @@ from zillion.field import Metric
 from zillion.report import ROLLUP_INDEX_LABEL
 
 
-def _make_prefix_analysis_query(prefixed_cost, unprefixed_cost, dialect_name="mysql"):
+def _make_prefix_analysis_query(
+    prefixed_cost,
+    unprefixed_cost,
+    dialect_name="mysql",
+    prefixed_plan=None,
+    unprefixed_plan=None,
+):
     query = report_module.DataSourceQuery.__new__(report_module.DataSourceQuery)
     prefixed_select = object()
     unprefixed_select = object()
@@ -28,13 +35,59 @@ def _make_prefix_analysis_query(prefixed_cost, unprefixed_cost, dialect_name="my
     def fake_get_query_cost(select):
         cost_calls.append(select)
         if select is prefixed_select:
+            query._query_cost_plan = prefixed_plan
             return prefixed_cost
         if select is unprefixed_select:
+            query._query_cost_plan = unprefixed_plan
             return unprefixed_cost
         raise AssertionError("Unexpected select passed to _get_query_cost")
 
     query._get_query_cost = fake_get_query_cost
     return query, prefixed_select, unprefixed_select, cost_calls, kill_checks
+
+
+@pytest.fixture
+def prefix_analysis_plans():
+    prefixed_plan = {
+        "query_block": {
+            "cost_info": {"query_cost": "1000000"},
+            "grouping_operation": {
+                "nested_loop": [
+                    {
+                        "table": {
+                            "table_name": "facts",
+                            "access_type": "range",
+                            "used_key_parts": ["created_at"],
+                            "attached_condition": (
+                                " ((`sample`.`facts`.`created_at` "
+                                ">= '2026-01-01 13:30:00'))"
+                            ),
+                        }
+                    },
+                    {"table": {"table_name": "accounts", "access_type": "eq_ref"}},
+                ]
+            },
+        }
+    }
+    unprefixed_plan = {
+        "query_block": {
+            "cost_info": {"query_cost": "1000"},
+            "grouping_operation": {
+                "nested_loop": [
+                    {
+                        "table": {
+                            "table_name": "accounts",
+                            "access_type": "index",
+                            "filtered": "90.32",
+                        }
+                    },
+                    {"table": {"table_name": "attributes", "access_type": "ref"}},
+                    {"table": {"table_name": "facts", "access_type": "eq_ref"}},
+                ]
+            },
+        }
+    }
+    return prefixed_plan, unprefixed_plan
 
 
 def test_basic_report(wh):
@@ -2193,6 +2246,201 @@ def test_query_prefix_analysis_keeps_prefix_when_config_is_invalid(monkeypatch):
     assert query._query_prefix == "STRAIGHT_JOIN"
     assert warnings
     assert "Could not analyze query prefix" in warnings[0]
+
+
+@pytest.mark.parametrize("condition_key", ["index_condition", "attached_condition"])
+@pytest.mark.parametrize(
+    "condition, expected",
+    [
+        ("  (`sample`.`facts`.`created_at` >= '2026-01-01 13:30:00')", True),
+        ("created_at > '2026-01-01'", True),
+        (
+            "created_at >= '2026-01-01' and created_at "
+            "< <cache>(('2026-02-01' + interval 1 day))",
+            True,
+        ),
+        ("created_at < '2026-02-01'", False),
+        ("created_at >= 100 and created_at < 200", False),
+        ("created_at >= 'not-a-date'", False),
+        ("created_at >= '2026-01-01' or created_at < '2026-02-01'", False),
+        ("not (created_at >= '2026-01-01')", False),
+        ("updated_at >= '2026-01-01'", False),
+    ],
+)
+def test_query_prefix_date_range_scan(condition_key, condition, expected):
+    table = {
+        "access_type": "range",
+        "used_key_parts": ["created_at"],
+        condition_key: condition,
+    }
+
+    assert report_module.DataSourceQuery._has_date_range_scan(table) is expected
+
+
+@pytest.mark.parametrize("ratio", [1.5, 5])
+@pytest.mark.parametrize(
+    "driver_access, filtered, fanout_access, fact_access",
+    [
+        ("index", "90.32", "ref", "eq_ref"),
+        ("ALL", "1.00", "ref", "ref"),
+        ("range", "20.00", "ref", "eq_ref"),
+        ("const", "100.00", "ref", "eq_ref"),
+        ("eq_ref", None, "ref_or_null", "ref_or_null"),
+        ("const", "100.00", "ref", "ref"),
+    ],
+)
+def test_query_prefix_analysis_guards_date_first_plan(
+    prefix_analysis_plans,
+    ratio,
+    driver_access,
+    filtered,
+    fanout_access,
+    fact_access,
+    monkeypatch,
+):
+    prefixed_plan, unprefixed_plan = prefix_analysis_plans
+    joins = unprefixed_plan["query_block"]["grouping_operation"]["nested_loop"]
+    joins[0]["table"]["access_type"] = driver_access
+    if filtered is None:
+        joins[0]["table"].pop("filtered")
+    else:
+        joins[0]["table"]["filtered"] = filtered
+    joins[1]["table"]["access_type"] = fanout_access
+    joins[2]["table"]["access_type"] = fact_access
+    query, prefixed_select, unprefixed_select, cost_calls, kill_checks = (
+        _make_prefix_analysis_query(
+            1000000, 1000, prefixed_plan=prefixed_plan, unprefixed_plan=unprefixed_plan
+        )
+    )
+    messages = []
+    monkeypatch.setattr(report_module, "info", messages.append)
+
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_ANALYZE_PREFIX=True,
+            DATASOURCE_QUERY_PREFIX_COST_RATIO=ratio,
+            DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE=100,
+        )
+    ):
+        query._analyze_query_prefix()
+
+    assert query.select is prefixed_select
+    assert query._select_without_prefix is unprefixed_select
+    assert query._query_prefix == "STRAIGHT_JOIN"
+    assert cost_calls == [prefixed_select, unprefixed_select]
+    assert kill_checks == [True, True]
+    assert any("Keeping query prefix STRAIGHT_JOIN" in message for message in messages)
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "full_scan",
+        "numeric_range",
+        "unique_join",
+        "fact_range",
+        "fact_index",
+        "fact_full_scan",
+        "fact_const",
+        "date_first",
+        "date_second",
+        "missing_table",
+        "duplicate_table",
+        "other_prefix",
+    ],
+)
+def test_query_prefix_analysis_drops_prefix_outside_guard(
+    prefix_analysis_plans, scenario
+):
+    prefixed_plan, unprefixed_plan = prefix_analysis_plans
+    driver = prefixed_plan["query_block"]["grouping_operation"]["nested_loop"][0][
+        "table"
+    ]
+    joins = unprefixed_plan["query_block"]["grouping_operation"]["nested_loop"]
+    if scenario == "full_scan":
+        driver["access_type"] = "ALL"
+    elif scenario == "numeric_range":
+        driver["attached_condition"] = "created_at >= 100"
+    elif scenario == "unique_join":
+        joins[1]["table"]["access_type"] = "eq_ref"
+    elif scenario == "fact_range":
+        joins[2]["table"] = dict(driver)
+    elif scenario == "fact_index":
+        joins[2]["table"]["access_type"] = "index"
+    elif scenario == "fact_full_scan":
+        joins[2]["table"]["access_type"] = "ALL"
+    elif scenario == "fact_const":
+        joins[2]["table"]["access_type"] = "const"
+    elif scenario == "date_first":
+        joins.insert(0, joins.pop())
+    elif scenario == "date_second":
+        joins.insert(1, joins.pop())
+    elif scenario == "missing_table":
+        joins.pop()
+    elif scenario == "duplicate_table":
+        joins.append({"table": {"table_name": "facts", "access_type": "eq_ref"}})
+    query, prefixed_select, unprefixed_select, cost_calls, kill_checks = (
+        _make_prefix_analysis_query(
+            1000000, 1000, prefixed_plan=prefixed_plan, unprefixed_plan=unprefixed_plan
+        )
+    )
+    if scenario == "other_prefix":
+        query._query_prefix = "OTHER_HINT"
+
+    with update_zillion_config(
+        dict(
+            DATASOURCE_QUERY_ANALYZE_PREFIX=True,
+            DATASOURCE_QUERY_PREFIX_COST_RATIO=5,
+            DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE=100,
+        )
+    ):
+        query._analyze_query_prefix()
+
+    assert query.select is unprefixed_select
+    assert query._select_without_prefix is None
+    assert query._query_prefix is None
+    assert cost_calls == [prefixed_select, unprefixed_select]
+    assert kill_checks == [True, True]
+
+
+@pytest.mark.parametrize(
+    "wrapper", ["grouping_operation", "ordering_operation", "duplicates_removal"]
+)
+def test_query_prefix_plan_join_tables_unwraps_operations(wrapper):
+    tables = [{"table_name": "accounts"}, {"table_name": "facts"}]
+    plan = {
+        "query_block": {
+            wrapper: {"nested_loop": [{"table": table} for table in tables]}
+        }
+    }
+
+    assert report_module.DataSourceQuery._get_plan_join_tables(plan) == tables
+
+
+def test_query_prefix_cost_retains_plan_and_closes_result(
+    prefix_analysis_plans, monkeypatch
+):
+    prefixed_plan, _ = prefix_analysis_plans
+    query, prefixed_select, *_ = _make_prefix_analysis_query(1000000, 1000)
+    del query._get_query_cost
+    executed = []
+    closed = []
+    result = SimpleNamespace(
+        scalar=lambda: report_module.json.dumps(prefixed_plan),
+        close=lambda: closed.append(True),
+    )
+
+    def execute(statement):
+        executed.append(statement)
+        return result
+
+    query._conn = SimpleNamespace(execute=execute)
+    monkeypatch.setattr(report_module, "ExplainJSON", lambda select: select)
+
+    assert query._get_query_cost(prefixed_select) == 1000000
+    assert query._query_cost_plan == prefixed_plan
+    assert executed == [prefixed_select]
+    assert closed == [True]
 
 
 def test_table_name_sql_injection(config):

@@ -7,6 +7,16 @@ import zillion.report as report_module
 from zillion.sql_utils import sqla_compile
 
 
+@pytest.fixture
+def mysql_prefix_guard_cases():
+    cases = test_config.get("MySQLPrefixGuardCases")
+    if not cases:
+        pytest.skip(
+            "Configure TEST.MySQLPrefixGuardCases for read-only live-plan tests"
+        )
+    return cases
+
+
 class RecordingConn:
     def __init__(self, conn):
         self._conn = conn
@@ -218,3 +228,69 @@ def test_mysql_query_prefix_analysis_disabled_skips_explains(mysql_wh, monkeypat
     assert result
     assert wrapped_connections
     assert sum(len(conn.explain_calls) for conn in wrapped_connections) == 0
+
+
+def test_mysql_query_prefix_guard_live_plans(
+    sqlalchemy_mysql_conn, mysql_prefix_guard_cases
+):
+    for case in mysql_prefix_guard_cases:
+        for sql in (case["prefixed_sql"], case["unprefixed_sql"]):
+            statements = report_module.sqlparse.parse(sql)
+            assert len(statements) == 1
+            assert statements[0].get_type() == "SELECT"
+        assert "STRAIGHT_JOIN" in case["prefixed_sql"].upper()
+        assert "STRAIGHT_JOIN" not in case["unprefixed_sql"].upper()
+        conn = RecordingConn(sqlalchemy_mysql_conn)
+        query = report_module.DataSourceQuery.__new__(report_module.DataSourceQuery)
+        report_module.ExecutionStateMixin.__init__(query)
+        query._state = ExecutionState.READY
+        query._conn = conn
+        query._query_prefix = "STRAIGHT_JOIN"
+        query.select = sa.text(case["prefixed_sql"])
+        query._select_without_prefix = sa.text(case["unprefixed_sql"])
+        query.get_dialect_name = lambda: sqlalchemy_mysql_conn.dialect.name
+        prefixed_select = query.select
+        unprefixed_select = query._select_without_prefix
+        costs = []
+        plans = []
+        original_get_query_cost = query._get_query_cost
+
+        def record_query_cost(select):
+            cost = original_get_query_cost(select)
+            costs.append(cost)
+            plans.append(query._query_cost_plan)
+            return cost
+
+        query._get_query_cost = record_query_cost
+        with update_zillion_config(
+            dict(
+                DATASOURCE_QUERY_ANALYZE_PREFIX=True,
+                DATASOURCE_QUERY_PREFIX_COST_RATIO=1.5,
+                DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE=0,
+            )
+        ):
+            query._analyze_query_prefix()
+            assert len(plans) == len(costs) == len(conn.explain_calls) == 2
+            assert not conn.query_sql
+            assert query._should_keep_range_prefix(*plans) is case["expected_guard"]
+
+        cost_would_drop = (
+            costs[0] > costs[1]
+            and costs[0] >= report_module.decimal.Decimal("1.5") * costs[1]
+        )
+        if case["expected_guard"]:
+            assert cost_would_drop
+            assert query.select is prefixed_select
+            assert query._select_without_prefix is unprefixed_select
+            assert query._query_prefix == "STRAIGHT_JOIN"
+        elif cost_would_drop:
+            assert query.select is unprefixed_select
+            assert query._select_without_prefix is None
+            assert query._query_prefix is None
+        else:
+            assert query.select is prefixed_select
+
+        info(
+            "Live prefix guard: prefixed cost=%s, unprefixed cost=%s, guard=%s"
+            % (costs[0], costs[1], case["expected_guard"])
+        )

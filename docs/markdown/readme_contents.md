@@ -196,13 +196,31 @@ The database used to store Zillion report specs can be configured by setting the
 
 Set `DATASOURCE_QUERY_ANALYZE_PREFIX: true` to compare MySQL queries with and
 without a table or datasource `prefix_with`, using `EXPLAIN FORMAT=JSON`.
-This is disabled by default and has no effect on other database dialects.
+This requires prefix analysis to be enabled and has no effect on other database dialects.
 The prefix is dropped only when its estimated `query_cost` is at least
-`DATASOURCE_QUERY_PREFIX_COST_RATIO` times the unprefixed cost (default: 5)
+`DATASOURCE_QUERY_PREFIX_COST_RATIO` times the unprefixed cost
 and exceeds it by at least `DATASOURCE_QUERY_PREFIX_MIN_COST_DIFFERENCE`. The
 ratio must be greater than 1 and the minimum difference nonnegative. Failed
 comparisons retain the prefix. Both EXPLAINs count toward the query timeout;
 prefix removals are logged at INFO and comparisons at DEBUG.
+
+For `STRAIGHT_JOIN`, a join-order guard can retain the hint despite a lower
+estimated cost. It protects a leading range scan with an ISO lower date
+bound on an index column, with or without an upper bound, when the alternative
+passes through a nonunique `ref` or `ref_or_null` join before accessing the
+original date-filtered table through `eq_ref`, `ref`, or `ref_or_null` lookups.
+The starting dimension's access type and estimated retained-row percentage
+do not affect the guard; even a single account can have large historical fan-out.
+Alternatives that retain fact-table range access or have only unique upstream
+lookups remain eligible for the cost comparison. Guard decisions are logged at INFO.
+This conservative heuristic can reject faster plans; it does not measure
+execution time. Unsupported plan shapes still use the cost comparison.
+
+Read-only MySQL guard regressions can be configured through
+`TEST.MySQLPrefixGuardCases`. Each case contains `prefixed_sql`,
+`unprefixed_sql`, and an `expected_guard` boolean. Both SQL strings must be
+single SELECT statements. The integration test runs their EXPLAINs, checks
+the guard decision, and does not execute the aggregate or create tables.
 
 ---
 

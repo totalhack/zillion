@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import datetime
 import decimal
 import logging
 import random
@@ -13,6 +14,7 @@ import numpy as np
 from pymysql.converters import escape_string
 import pandas as pd
 import sqlalchemy as sa
+import sqlparse
 from stopit import async_raise
 from tlbx import is_int, st
 
@@ -430,7 +432,96 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
         cost = decimal.Decimal(str(plan["query_block"]["cost_info"]["query_cost"]))
         if not cost.is_finite() or cost < 0:
             raise ValueError("Invalid estimated query cost")
+        self._query_cost_plan = plan
         return cost
+
+    @staticmethod
+    def _get_plan_join_tables(plan):
+        """Read the top-level join order without descending into subqueries."""
+        block = (plan or {}).get("query_block", {})
+        while "nested_loop" not in block:
+            wrapper = next(
+                (
+                    name
+                    for name in (
+                        "grouping_operation",
+                        "ordering_operation",
+                        "duplicates_removal",
+                    )
+                    if name in block
+                ),
+                None,
+            )
+            if wrapper is None:
+                return []
+            block = block[wrapper]
+        joins = block["nested_loop"]
+        if not all(isinstance(join.get("table"), dict) for join in joins):
+            return []
+        return [join["table"] for join in joins]
+
+    @staticmethod
+    def _has_date_range_scan(table):
+        """Recognize an ISO lower date bound on a range index column."""
+        if table.get("access_type") != "range":
+            return False
+        key_parts = set(table.get("used_key_parts", []))
+        condition = " ".join(
+            table.get(name, "") for name in ("index_condition", "attached_condition")
+        )
+        bounds = {}
+        column = None
+        comparison = None
+        for token_type, value in sqlparse.lexer.tokenize(condition):
+            if token_type in sqlparse.tokens.Keyword:
+                if value.upper() in ("OR", "NOT", "XOR"):
+                    return False
+                if value.upper() == "AND":
+                    column = comparison = None
+            elif token_type in sqlparse.tokens.Name:
+                identifier = value.strip('`"')
+                if identifier in key_parts:
+                    column = identifier
+                    comparison = None
+            elif token_type in sqlparse.tokens.Operator.Comparison:
+                if column is not None and comparison is None:
+                    comparison = value
+            elif token_type in sqlparse.tokens.Literal.String.Single:
+                if column is None or comparison not in (">", ">=", "<", "<="):
+                    continue
+                try:
+                    datetime.fromisoformat(value[1:-1])
+                except ValueError:
+                    continue
+                bounds.setdefault(column, set()).add(comparison[0])
+                column = comparison = None
+        return any(">" in operators for operators in bounds.values())
+
+    def _should_keep_range_prefix(self, prefixed_plan, unprefixed_plan):
+        """Protect date-first range access from downstream lookups after fan-out."""
+        if str(self._query_prefix).strip().upper() != "STRAIGHT_JOIN":
+            return False
+        prefixed_tables = self._get_plan_join_tables(prefixed_plan)
+        unprefixed_tables = self._get_plan_join_tables(unprefixed_plan)
+        if not prefixed_tables or not unprefixed_tables:
+            return False
+        driver = prefixed_tables[0]
+        if not self._has_date_range_scan(driver):
+            return False
+        driver_positions = [
+            position
+            for position, table in enumerate(unprefixed_tables)
+            if table.get("table_name") == driver.get("table_name")
+        ]
+        if len(driver_positions) != 1 or driver_positions[0] < 2:
+            return False
+        alternative_fact = unprefixed_tables[driver_positions[0]]
+        if alternative_fact.get("access_type") not in ("eq_ref", "ref", "ref_or_null"):
+            return False
+        return any(
+            table.get("access_type") in ("ref", "ref_or_null")
+            for table in unprefixed_tables[1 : driver_positions[0]]
+        )
 
     def _analyze_query_prefix(self):
         """Drop a MySQL query prefix only for a sufficiently cheaper estimated plan."""
@@ -473,15 +564,28 @@ class DataSourceQuery(ExecutionStateMixin, PrintMixin):
                     "Minimum prefix cost difference must be finite and nonnegative"
                 )
 
+            self._query_cost_plan = None
             prefixed_cost = self._get_query_cost(self.select)
+            prefixed_plan = self._query_cost_plan
             self._raise_if_killed()
+            self._query_cost_plan = None
             unprefixed_cost = self._get_query_cost(self._select_without_prefix)
+            unprefixed_plan = self._query_cost_plan
             self._raise_if_killed()
             drop_prefix = (
                 prefixed_cost > unprefixed_cost
                 and prefixed_cost >= ratio * unprefixed_cost
                 and prefixed_cost - unprefixed_cost >= min_difference
             )
+            if drop_prefix and self._should_keep_range_prefix(
+                prefixed_plan, unprefixed_plan
+            ):
+                info(
+                    "Keeping query prefix %s: alternative replaces a leading "
+                    "date range scan with downstream lookups after a nonunique join"
+                    % self._query_prefix
+                )
+                drop_prefix = False
         except Exception as exc:
             if self._killed or (
                 isinstance(exc, sa.exc.DBAPIError) and exc.connection_invalidated
